@@ -1,9 +1,15 @@
 {
   "name": "the-house-protocol",
   "private": true,
-  "workspaces": [
-    "web",
-    "backend",
-    "contract"
-  ]
+  "workspaces": ["web", "backend", "contract"],
+  "scripts": {
+    "dev": "bun run --filter '*' dev",
+    "dev:web": "bun run --cwd web dev",
+    "dev:backend": "bun run --cwd backend dev",
+    "build": "bun run --filter '*' build",
+    "build:web": "bun run --cwd web build",
+    "lint": "bun run --filter '*' lint",
+    "typecheck": "bun run --filter '*' typecheck"
+  },
+  "packageManager": "bun@1.1.0"
 }
