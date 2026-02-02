@@ -1,0 +1,9 @@
+{
+  "name": "the-house-protocol",
+  "private": true,
+  "workspaces": [
+    "web",
+    "backend",
+    "contract"
+  ]
+}
