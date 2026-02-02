@@ -9,7 +9,10 @@
     "build": "bun run --filter '*' build",
     "build:web": "bun run --cwd web build",
     "lint": "bun run --filter '*' lint",
-    "typecheck": "bun run --filter '*' typecheck"
+    "typecheck": "bun run --filter '*' typecheck",
+    "compile": "bun run --cwd contract compile",
+    "test:contract": "bun run --cwd contract test",
+    "deploy": "bun run --cwd contract deploy"
   },
   "packageManager": "bun@1.1.0"
 }
