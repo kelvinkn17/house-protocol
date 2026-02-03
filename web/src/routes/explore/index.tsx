@@ -1,11 +1,14 @@
 import { createFileRoute, Link } from '@tanstack/react-router'
 import { useEffect, useRef, useState } from 'react'
-// @ts-expect-error gsap types missing
 import { gsap } from 'gsap'
-// @ts-expect-error gsap types missing
 import { ScrollTrigger } from 'gsap/ScrollTrigger'
+import * as THREE from 'three'
 
 gsap.registerPlugin(ScrollTrigger)
+
+// shared colors for 3d models
+const GOLD = 0xcbad6d
+const DARK_GOLD = 0x8a7440
 
 export const Route = createFileRoute('/explore/')({
   component: LandingPage,
@@ -106,6 +109,7 @@ function HeroSection() {
       to: '/explore/app/stake',
       icon: '◆',
       num: '01',
+      Model: StakerModel,
     },
     {
       title: 'PLAYERS',
@@ -114,6 +118,7 @@ function HeroSection() {
       to: '/explore/app/play',
       icon: '◇',
       num: '02',
+      Model: PlayerModel,
     },
     {
       title: 'BUILDERS',
@@ -122,6 +127,7 @@ function HeroSection() {
       to: '/explore/build',
       icon: '○',
       num: '03',
+      Model: BuilderModel,
     },
   ]
 
@@ -214,9 +220,9 @@ function HeroSection() {
               <Link
                 key={role.title}
                 to={role.to}
-                className="hero-role-card group relative border border-neutral-800 p-4 lg:p-5 hover:border-neutral-600 transition-all duration-300 bg-neutral-900/50 opacity-0"
+                className="hero-role-card group relative border border-neutral-800 p-4 lg:p-5 hover:border-neutral-600 transition-all duration-300 bg-neutral-900/50 opacity-0 overflow-hidden"
               >
-                <div className="flex items-start gap-4">
+                <div className="flex items-start gap-4 relative z-10">
                   <div className="flex flex-col items-center shrink-0">
                     <span className="text-2xl text-neutral-700 group-hover:text-[#dcb865] transition-colors duration-300">
                       {role.icon}
@@ -239,6 +245,10 @@ function HeroSection() {
                   <div className="flex items-center opacity-0 -translate-x-2 group-hover:opacity-100 group-hover:translate-x-0 transition-all duration-300 shrink-0">
                     <span className="text-lg text-[#dcb865]">→</span>
                   </div>
+                </div>
+                {/* 3d model accent */}
+                <div className="absolute -bottom-8 -right-8 opacity-40 group-hover:opacity-60 transition-opacity duration-500 pointer-events-none">
+                  <role.Model />
                 </div>
                 <div className="absolute bottom-0 left-0 w-0 h-0.5 group-hover:w-full transition-all duration-500" style={{ backgroundColor: '#dcb865' }} />
               </Link>
@@ -452,11 +462,11 @@ function StatsSection() {
           <div className="flex-1 h-px" style={{ backgroundColor: '#1a3d30' }} />
         </div>
 
-        <div className="grid grid-cols-2 md:grid-cols-4 gap-[1px]" style={{ backgroundColor: '#1a3d30' }}>
+        <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
           {stats.map((stat, i) => (
             <div
               key={stat.label}
-              className="stat-item bg-neutral-950 p-8 md:p-10 flex flex-col group hover:bg-neutral-900/50 transition-colors duration-500 relative overflow-hidden opacity-0"
+              className="stat-item bg-neutral-950 p-8 md:p-10 flex flex-col group hover:bg-neutral-900/50 transition-colors duration-500 relative overflow-hidden opacity-0 border border-neutral-800 hover:border-neutral-700"
             >
               {/* index marker */}
               <span className="absolute top-4 right-4 text-[9px] font-mono text-neutral-700">
@@ -624,12 +634,11 @@ function RolesSection() {
           </p>
         </div>
 
-        <div className="grid md:grid-cols-3 gap-[1px]" style={{ backgroundColor: '#1a3d30', perspective: '1000px' }}>
-          {roles.map((role, i) => (
+        <div className="grid md:grid-cols-3 gap-4" style={{ perspective: '1000px' }}>
+          {roles.map((role) => (
             <div
               key={role.number}
-              className="role-card group relative bg-neutral-950 p-8 transition-all duration-500 opacity-0"
-              style={{ marginTop: i === 1 ? '1.5rem' : '0' }}
+              className="role-card group relative bg-neutral-950 p-8 transition-all duration-500 opacity-0 border border-neutral-800 hover:border-neutral-700"
             >
               {/* watermark number */}
               <span className="absolute -top-6 -right-2 text-[9rem] font-black leading-none pointer-events-none select-none transition-colors duration-500 text-neutral-900/40 group-hover:text-[#1a3d30]/40">
@@ -869,12 +878,12 @@ function GamePrimitivesSection() {
   }, [])
 
   const primitives = [
-    { type: 'PICK ONE', example: 'Coinflip', icon: '◐', desc: 'Pick option, one wins', featured: true },
-    { type: 'PICK NUMBER', example: 'Dice', icon: '▣', desc: 'Over/under target', featured: false },
-    { type: 'SPIN WHEEL', example: 'Roulette', icon: '◎', desc: 'Land on segment', featured: false },
-    { type: 'REVEAL TILES', example: 'Mines', icon: '▦', desc: 'Avoid the bombs', featured: false },
-    { type: 'CASH OUT', example: 'Crash', icon: '△', desc: 'Bail before crash', featured: true },
-    { type: 'DEAL CARDS', example: 'Blackjack', icon: '◇', desc: 'Beat the dealer', featured: false },
+    { type: 'PICK ONE', example: 'Coinflip', icon: '◐', desc: 'Pick option, one wins' },
+    { type: 'PICK NUMBER', example: 'Dice', icon: '▣', desc: 'Over/under target' },
+    { type: 'SPIN WHEEL', example: 'Roulette', icon: '◎', desc: 'Land on segment' },
+    { type: 'REVEAL TILES', example: 'Mines', icon: '▦', desc: 'Avoid the bombs' },
+    { type: 'CASH OUT', example: 'Crash', icon: '△', desc: 'Bail before crash' },
+    { type: 'DEAL CARDS', example: 'Blackjack', icon: '◇', desc: 'Beat the dealer' },
   ]
 
   return (
@@ -899,18 +908,18 @@ function GamePrimitivesSection() {
             </p>
           </div>
 
-          {/* bento grid */}
-          <div className="primitives-grid grid grid-cols-2 md:grid-cols-4 gap-[1px] auto-rows-fr" style={{ backgroundColor: '#1a3d30' }}>
+          {/* grid */}
+          <div className="primitives-grid grid grid-cols-2 md:grid-cols-3 border border-neutral-800">
             {primitives.map((p, i) => (
               <div
                 key={p.type}
-                className={`primitive-card group relative bg-neutral-950 p-6 md:p-8 transition-all duration-300 cursor-pointer overflow-hidden opacity-0 ${
-                  p.featured ? 'md:col-span-2 md:row-span-2' : ''
-                }`}
+                className={`primitive-card group relative bg-neutral-950 p-6 md:p-8 transition-all duration-300 cursor-pointer overflow-hidden opacity-0 border-neutral-800 ${
+                  i % 3 !== 2 ? 'md:border-r' : ''
+                } ${i < 3 ? 'md:border-b' : ''} ${i % 2 === 0 ? 'border-r md:border-r-0' : ''} ${i < 4 ? 'border-b md:border-b-0' : ''}`}
               >
                 <div className="h-full flex flex-col">
                   <div className="flex items-start justify-between mb-4">
-                    <span className={`${p.featured ? 'text-7xl md:text-8xl' : 'text-4xl md:text-5xl'} text-neutral-700 group-hover:text-[#dcb865] transition-colors duration-300`}>
+                    <span className="text-4xl md:text-5xl text-neutral-700 group-hover:text-[#dcb865] transition-colors duration-300">
                       {p.icon}
                     </span>
                     <span className="text-[9px] font-mono text-neutral-700">
@@ -918,7 +927,7 @@ function GamePrimitivesSection() {
                     </span>
                   </div>
                   <div className="mt-auto">
-                    <h3 className={`${p.featured ? 'text-2xl md:text-3xl' : 'text-lg md:text-xl'} font-black tracking-tight text-neutral-100 mb-2`}>
+                    <h3 className="text-lg md:text-xl font-black tracking-tight text-neutral-100 mb-2">
                       {p.type}
                     </h3>
                     <p className="text-xs text-neutral-400 font-mono mb-1">{p.desc}</p>
@@ -926,15 +935,12 @@ function GamePrimitivesSection() {
                   </div>
                 </div>
 
-                {/* hover overlay */}
-                <div className="absolute inset-0 flex items-center justify-center translate-y-full group-hover:translate-y-0 transition-transform duration-300 ease-out" style={{ backgroundColor: '#dcb865' }}>
-                  <span className="text-sm font-black uppercase tracking-[0.15em]" style={{ color: '#0b0d0b' }}>
+                {/* hover right bar */}
+                <div className="absolute top-0 right-0 bottom-0 w-10 flex items-center justify-center translate-x-full group-hover:translate-x-0 transition-transform duration-300 ease-out" style={{ backgroundColor: '#dcb865' }}>
+                  <span className="text-xs font-black uppercase tracking-[0.15em] -rotate-90 whitespace-nowrap" style={{ color: '#0b0d0b' }}>
                     Use this →
                   </span>
                 </div>
-
-                {/* corner accent */}
-                <div className="absolute bottom-0 right-0 w-8 h-8 opacity-0 group-hover:opacity-100 transition-opacity duration-300" style={{ backgroundColor: '#1a3d30' }} />
               </div>
             ))}
           </div>
@@ -1026,11 +1032,11 @@ function TestimonialsSection() {
           </p>
         </div>
 
-        <div className="testimonials-grid grid md:grid-cols-3 gap-[1px]" style={{ backgroundColor: '#1a3d30', perspective: '1000px' }}>
+        <div className="testimonials-grid grid md:grid-cols-3 gap-4" style={{ perspective: '1000px' }}>
           {testimonials.map((t, i) => (
             <div
               key={i}
-              className="testimonial-card bg-neutral-950 p-8 flex flex-col relative group opacity-0"
+              className="testimonial-card bg-neutral-950 p-8 flex flex-col relative group opacity-0 border border-neutral-800 hover:border-neutral-700"
             >
               {/* index */}
               <span className="absolute top-4 right-4 text-xs font-mono text-neutral-700">
@@ -1183,11 +1189,11 @@ function InfraSection() {
             </div>
           </div>
 
-          <div className="infra-grid grid grid-cols-2 md:grid-cols-4 gap-[1px]" style={{ backgroundColor: '#1a3d30' }}>
+          <div className="infra-grid grid grid-cols-2 md:grid-cols-4 gap-4">
             {infra.map((item, i) => (
               <div
                 key={item.name}
-                className="infra-item bg-neutral-950 p-6 md:p-8 group relative overflow-hidden opacity-0"
+                className="infra-item bg-neutral-950 p-6 md:p-8 group relative overflow-hidden opacity-0 border border-neutral-800 hover:border-neutral-700"
               >
                 {/* index */}
                 <span className="absolute top-4 right-4 text-[9px] font-mono text-neutral-700">
@@ -1225,6 +1231,395 @@ function InfraSection() {
       </section>
     </>
   )
+}
+
+// 3d model for stakers, crystal vault gem
+function StakerModel() {
+  const containerRef = useRef<HTMLDivElement>(null)
+
+  useEffect(() => {
+    if (!containerRef.current) return
+
+    const container = containerRef.current
+    const w = 140
+    const h = 140
+
+    const renderer = new THREE.WebGLRenderer({ antialias: true, alpha: true })
+    renderer.setSize(w, h)
+    renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2))
+    renderer.setClearColor(0x000000, 0)
+    container.appendChild(renderer.domElement)
+
+    const scene = new THREE.Scene()
+    const camera = new THREE.PerspectiveCamera(40, 1, 0.1, 100)
+    camera.position.set(0, 0.5, 5)
+
+    // lighting
+    scene.add(new THREE.AmbientLight(0xffffff, 0.3))
+    const key = new THREE.DirectionalLight(0xffffff, 0.8)
+    key.position.set(3, 4, 5)
+    scene.add(key)
+    const rim = new THREE.DirectionalLight(GOLD, 0.4)
+    rim.position.set(-3, -2, 3)
+    scene.add(rim)
+    const point = new THREE.PointLight(GOLD, 0.5, 10)
+    point.position.set(0, 2, 3)
+    scene.add(point)
+
+    // outer octahedron wireframe
+    const outerGeo = new THREE.OctahedronGeometry(1.3, 0)
+    const outerMat = new THREE.MeshBasicMaterial({
+      color: GOLD,
+      wireframe: true,
+      transparent: true,
+      opacity: 0.35,
+    })
+    const outer = new THREE.Mesh(outerGeo, outerMat)
+    scene.add(outer)
+
+    // middle octahedron solid
+    const midGeo = new THREE.OctahedronGeometry(1.0, 0)
+    const midMat = new THREE.MeshPhongMaterial({
+      color: 0x1a1a1a,
+      emissive: DARK_GOLD,
+      emissiveIntensity: 0.15,
+      transparent: true,
+      opacity: 0.6,
+      shininess: 120,
+      specular: new THREE.Color(GOLD),
+    })
+    const mid = new THREE.Mesh(midGeo, midMat)
+    scene.add(mid)
+
+    // inner cube core
+    const innerGeo = new THREE.BoxGeometry(0.55, 0.55, 0.55)
+    const innerMat = new THREE.MeshPhongMaterial({
+      color: GOLD,
+      emissive: DARK_GOLD,
+      emissiveIntensity: 0.3,
+      shininess: 200,
+      specular: new THREE.Color(0xffffff),
+    })
+    const inner = new THREE.Mesh(innerGeo, innerMat)
+    scene.add(inner)
+
+    // particles
+    const particleGeo = new THREE.BufferGeometry()
+    const pCount = 40
+    const pPos = new Float32Array(pCount * 3)
+    for (let i = 0; i < pCount; i++) {
+      const theta = Math.random() * Math.PI * 2
+      const phi = Math.acos(2 * Math.random() - 1)
+      const r = 1.8 + Math.random() * 0.5
+      pPos[i * 3] = r * Math.sin(phi) * Math.cos(theta)
+      pPos[i * 3 + 1] = r * Math.sin(phi) * Math.sin(theta)
+      pPos[i * 3 + 2] = r * Math.cos(phi)
+    }
+    particleGeo.setAttribute('position', new THREE.BufferAttribute(pPos, 3))
+    const particleMat = new THREE.PointsMaterial({ color: GOLD, size: 0.03, transparent: true, opacity: 0.5 })
+    const particles = new THREE.Points(particleGeo, particleMat)
+    scene.add(particles)
+
+    let animationId: number
+    const animate = (t: number) => {
+      const time = t * 0.001
+      outer.rotation.y = time * 0.3
+      outer.rotation.x = time * 0.15
+      mid.rotation.y = -time * 0.2
+      mid.rotation.x = time * 0.1
+      inner.rotation.y = time * 0.5
+      inner.rotation.x = time * 0.25
+      inner.position.y = Math.sin(time * 1.2) * 0.05
+      particles.rotation.y = time * 0.08
+      particles.rotation.x = time * 0.04
+      renderer.render(scene, camera)
+      animationId = requestAnimationFrame(animate)
+    }
+    animationId = requestAnimationFrame(animate)
+
+    return () => {
+      cancelAnimationFrame(animationId)
+      renderer.dispose()
+      container.removeChild(renderer.domElement)
+    }
+  }, [])
+
+  return <div ref={containerRef} className="w-[140px] h-[140px]" />
+}
+
+// 3d model for players, dynamic icosahedron
+function PlayerModel() {
+  const containerRef = useRef<HTMLDivElement>(null)
+
+  useEffect(() => {
+    if (!containerRef.current) return
+
+    const container = containerRef.current
+    const w = 140
+    const h = 140
+
+    const renderer = new THREE.WebGLRenderer({ antialias: true, alpha: true })
+    renderer.setSize(w, h)
+    renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2))
+    renderer.setClearColor(0x000000, 0)
+    container.appendChild(renderer.domElement)
+
+    const scene = new THREE.Scene()
+    const camera = new THREE.PerspectiveCamera(40, 1, 0.1, 100)
+    camera.position.set(0, 0.3, 5)
+
+    // lighting
+    scene.add(new THREE.AmbientLight(0xffffff, 0.3))
+    const key = new THREE.DirectionalLight(0xffffff, 0.8)
+    key.position.set(3, 4, 5)
+    scene.add(key)
+    const rim = new THREE.DirectionalLight(GOLD, 0.4)
+    rim.position.set(-3, -2, 3)
+    scene.add(rim)
+    const point = new THREE.PointLight(GOLD, 0.5, 10)
+    point.position.set(0, 2, 3)
+    scene.add(point)
+
+    // main icosahedron
+    const mainGeo = new THREE.IcosahedronGeometry(1.0, 0)
+    const mainMat = new THREE.MeshPhongMaterial({
+      color: 0x1a1a1a,
+      emissive: DARK_GOLD,
+      emissiveIntensity: 0.2,
+      flatShading: true,
+      shininess: 80,
+      specular: new THREE.Color(GOLD),
+    })
+    const main = new THREE.Mesh(mainGeo, mainMat)
+    scene.add(main)
+
+    // wireframe overlay
+    const wireGeo = new THREE.IcosahedronGeometry(1.15, 0)
+    const wireMat = new THREE.MeshBasicMaterial({
+      color: GOLD,
+      wireframe: true,
+      transparent: true,
+      opacity: 0.2,
+    })
+    const wire = new THREE.Mesh(wireGeo, wireMat)
+    scene.add(wire)
+
+    // orbiting rings
+    const rings: THREE.Mesh[] = []
+    for (let i = 0; i < 3; i++) {
+      const ringGeo = new THREE.TorusGeometry(1.5 + i * 0.15, 0.008, 8, 64)
+      const ringMat = new THREE.MeshBasicMaterial({
+        color: GOLD,
+        transparent: true,
+        opacity: 0.15 - i * 0.03,
+      })
+      const ring = new THREE.Mesh(ringGeo, ringMat)
+      ring.rotation.x = Math.PI / 2 + (i - 1) * 0.3
+      ring.rotation.z = i * 0.5
+      scene.add(ring)
+      rings.push(ring)
+    }
+
+    // trail dots
+    const trailGeo = new THREE.BufferGeometry()
+    const tCount = 60
+    const tPos = new Float32Array(tCount * 3)
+    for (let i = 0; i < tCount; i++) {
+      const angle = (i / tCount) * Math.PI * 2
+      const r = 1.6
+      tPos[i * 3] = Math.cos(angle) * r * (0.8 + Math.random() * 0.4)
+      tPos[i * 3 + 1] = (Math.random() - 0.5) * 1.5
+      tPos[i * 3 + 2] = Math.sin(angle) * r * (0.8 + Math.random() * 0.4)
+    }
+    trailGeo.setAttribute('position', new THREE.BufferAttribute(tPos, 3))
+    const trailMat = new THREE.PointsMaterial({ color: GOLD, size: 0.025, transparent: true, opacity: 0.35 })
+    const trail = new THREE.Points(trailGeo, trailMat)
+    scene.add(trail)
+
+    let animationId: number
+    const animate = (t: number) => {
+      const time = t * 0.001
+      main.rotation.x = time * 0.6 + Math.sin(time * 2) * 0.15
+      main.rotation.y = time * 0.8
+      main.rotation.z = Math.sin(time * 1.5) * 0.1
+      wire.rotation.x = main.rotation.x
+      wire.rotation.y = main.rotation.y
+      wire.rotation.z = main.rotation.z
+      const pulse = 1 + Math.sin(time * 3) * 0.03
+      main.scale.set(pulse, pulse, pulse)
+      rings.forEach((ring, i) => {
+        ring.rotation.z = time * (0.3 + i * 0.15) + i
+        ring.rotation.x = Math.PI / 2 + Math.sin(time * 0.5 + i) * 0.4
+      })
+      trail.rotation.y = time * 0.15
+      renderer.render(scene, camera)
+      animationId = requestAnimationFrame(animate)
+    }
+    animationId = requestAnimationFrame(animate)
+
+    return () => {
+      cancelAnimationFrame(animationId)
+      renderer.dispose()
+      container.removeChild(renderer.domElement)
+    }
+  }, [])
+
+  return <div ref={containerRef} className="w-[140px] h-[140px]" />
+}
+
+// 3d model for builders, assembling blocks
+function BuilderModel() {
+  const containerRef = useRef<HTMLDivElement>(null)
+
+  useEffect(() => {
+    if (!containerRef.current) return
+
+    const container = containerRef.current
+    const w = 140
+    const h = 140
+
+    const renderer = new THREE.WebGLRenderer({ antialias: true, alpha: true })
+    renderer.setSize(w, h)
+    renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2))
+    renderer.setClearColor(0x000000, 0)
+    container.appendChild(renderer.domElement)
+
+    const scene = new THREE.Scene()
+    const camera = new THREE.PerspectiveCamera(40, 1, 0.1, 100)
+    camera.position.set(0, 0.8, 5.5)
+
+    // lighting
+    scene.add(new THREE.AmbientLight(0xffffff, 0.3))
+    const key = new THREE.DirectionalLight(0xffffff, 0.8)
+    key.position.set(3, 4, 5)
+    scene.add(key)
+    const rim = new THREE.DirectionalLight(GOLD, 0.4)
+    rim.position.set(-3, -2, 3)
+    scene.add(rim)
+    const point = new THREE.PointLight(GOLD, 0.5, 10)
+    point.position.set(0, 2, 3)
+    scene.add(point)
+
+    const group = new THREE.Group()
+    scene.add(group)
+
+    // block positions
+    const positions = [
+      { x: 0, y: -0.7, z: 0, s: 0.45 },
+      { x: 0.55, y: -0.7, z: 0, s: 0.35 },
+      { x: -0.55, y: -0.7, z: 0, s: 0.35 },
+      { x: 0.15, y: -0.1, z: 0.1, s: 0.38 },
+      { x: -0.3, y: -0.1, z: -0.1, s: 0.32 },
+      { x: 0, y: 0.5, z: 0, s: 0.3 },
+      { x: 0.7, y: 0.4, z: 0.3, s: 0.18 },
+      { x: -0.65, y: 0.6, z: -0.2, s: 0.15 },
+    ]
+
+    const blocks: { mesh: THREE.Mesh; orig: typeof positions[0]; phase: number }[] = []
+
+    positions.forEach((p, i) => {
+      const geo = new THREE.BoxGeometry(p.s, p.s, p.s)
+      const isAccent = i >= 6
+
+      const mat = isAccent
+        ? new THREE.MeshPhongMaterial({
+            color: GOLD,
+            emissive: DARK_GOLD,
+            emissiveIntensity: 0.3,
+            shininess: 150,
+            specular: new THREE.Color(0xffffff),
+          })
+        : new THREE.MeshPhongMaterial({
+            color: 0x1a1a1a,
+            emissive: DARK_GOLD,
+            emissiveIntensity: i < 3 ? 0.05 : 0.12,
+            flatShading: true,
+            shininess: 60,
+            specular: new THREE.Color(GOLD),
+          })
+
+      const mesh = new THREE.Mesh(geo, mat)
+      mesh.position.set(p.x, p.y, p.z)
+
+      const edges = new THREE.EdgesGeometry(geo)
+      const line = new THREE.LineSegments(
+        edges,
+        new THREE.LineBasicMaterial({
+          color: GOLD,
+          transparent: true,
+          opacity: isAccent ? 0.5 : 0.12,
+        })
+      )
+      mesh.add(line)
+
+      group.add(mesh)
+      blocks.push({ mesh, orig: { ...p }, phase: Math.random() * Math.PI * 2 })
+    })
+
+    // connection lines
+    const connections = [
+      [0, 3],
+      [0, 4],
+      [3, 5],
+      [4, 5],
+      [1, 3],
+      [2, 4],
+    ]
+    const linePoints: THREE.Vector3[] = []
+    connections.forEach(([a, b]) => {
+      linePoints.push(
+        new THREE.Vector3(positions[a].x, positions[a].y, positions[a].z),
+        new THREE.Vector3(positions[b].x, positions[b].y, positions[b].z)
+      )
+    })
+    const lineGeo = new THREE.BufferGeometry().setFromPoints(linePoints)
+    const lineMat = new THREE.LineBasicMaterial({ color: GOLD, transparent: true, opacity: 0.08 })
+    const connectionLines = new THREE.LineSegments(lineGeo, lineMat)
+    group.add(connectionLines)
+
+    let animationId: number
+    const animate = (t: number) => {
+      const time = t * 0.001
+      group.rotation.y = time * 0.25
+
+      blocks.forEach((b, i) => {
+        const float = Math.sin(time * 0.8 + b.phase) * 0.06
+        b.mesh.position.y = b.orig.y + float
+        if (i >= 6) {
+          b.mesh.rotation.x = time * 0.4 + b.phase
+          b.mesh.rotation.z = time * 0.3
+        } else {
+          b.mesh.rotation.y = Math.sin(time * 0.3 + b.phase) * 0.05
+        }
+      })
+
+      // update connection lines
+      const pos = connectionLines.geometry.attributes.position.array as Float32Array
+      connections.forEach(([a, b], idx) => {
+        const ba = blocks[a]
+        const bb = blocks[b]
+        pos[idx * 6] = ba.mesh.position.x
+        pos[idx * 6 + 1] = ba.mesh.position.y
+        pos[idx * 6 + 2] = ba.mesh.position.z
+        pos[idx * 6 + 3] = bb.mesh.position.x
+        pos[idx * 6 + 4] = bb.mesh.position.y
+        pos[idx * 6 + 5] = bb.mesh.position.z
+      })
+      connectionLines.geometry.attributes.position.needsUpdate = true
+
+      renderer.render(scene, camera)
+      animationId = requestAnimationFrame(animate)
+    }
+    animationId = requestAnimationFrame(animate)
+
+    return () => {
+      cancelAnimationFrame(animationId)
+      renderer.dispose()
+      container.removeChild(renderer.domElement)
+    }
+  }, [])
+
+  return <div ref={containerRef} className="w-[140px] h-[140px]" />
 }
 
 // final CTA
