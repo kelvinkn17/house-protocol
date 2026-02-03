@@ -11,8 +11,8 @@ export default function StakerModel() {
     if (!containerRef.current) return
 
     const container = containerRef.current
-    const w = 140
-    const h = 140
+    const w = 160
+    const h = 160
 
     const renderer = new THREE.WebGLRenderer({ antialias: true, alpha: true })
     renderer.setSize(w, h)
@@ -114,5 +114,5 @@ export default function StakerModel() {
     }
   }, [])
 
-  return <div ref={containerRef} className="w-[140px] h-[140px]" />
+  return <div ref={containerRef} className="w-[160px] h-[160px]" />
 }

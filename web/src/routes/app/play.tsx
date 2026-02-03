@@ -1,6 +1,6 @@
 import { createFileRoute, Link } from '@tanstack/react-router'
 
-export const Route = createFileRoute('/explore/app/play')({
+export const Route = createFileRoute('/app/play')({
   component: PlayPage,
 })
 
@@ -41,7 +41,7 @@ function PlayPage() {
           {GAMES.map((game) => (
             <Link
               key={game.slug}
-              to="/explore/app/play/$slug"
+              to="/app/play/$slug"
               params={{ slug: game.slug }}
               className="group rounded-xl border border-neutral-800 bg-neutral-900/50 p-6 transition-colors hover:border-neutral-700 hover:bg-neutral-900"
             >

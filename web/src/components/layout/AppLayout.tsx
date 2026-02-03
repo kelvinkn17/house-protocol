@@ -9,14 +9,14 @@ interface AppLayoutProps {
 export default function AppLayout({ children, noPadding }: AppLayoutProps) {
   const location = useLocation()
   const path = location.pathname
-  const isBuild = path.startsWith('/explore/build')
+  const isBuild = path.startsWith('/build')
 
   return (
     <div className="min-h-screen bg-[#151515]">
       {/* Sticky navbar */}
       <header className="sticky top-0 z-40 h-14 bg-[#151515] px-4 sm:px-6">
         <nav className="mx-auto flex h-full max-w-7xl items-center justify-between">
-          <Link to="/explore" className="flex items-center">
+          <Link to="/" className="flex items-center">
             <img
               src="/assets/logos/the-house-protocol-horizontal-logo.svg"
               alt="House Protocol"
@@ -25,13 +25,13 @@ export default function AppLayout({ children, noPadding }: AppLayoutProps) {
           </Link>
 
           <div className="flex items-center gap-1">
-            <NavLink to="/explore/app/stake" active={path.includes('/stake')}>
+            <NavLink to="/app/stake" active={path.includes('/stake')}>
               Stake
             </NavLink>
-            <NavLink to="/explore/app/play" active={path.includes('/play')}>
+            <NavLink to="/app/play" active={path.includes('/play')}>
               Play
             </NavLink>
-            <NavLink to="/explore/build" active={isBuild}>
+            <NavLink to="/build" active={isBuild}>
               Build
             </NavLink>
           </div>
@@ -78,7 +78,7 @@ function NavLink({ to, active, children }: { to: string; active: boolean; childr
       to={to}
       className={cnm(
         'px-3 py-2 text-sm font-bold uppercase tracking-wider transition-colors',
-        active ? 'text-[#0b0d0b]' : 'text-[#0b0d0b]/60 hover:text-[#0b0d0b]'
+        active ? 'text-white' : 'text-white/60 hover:text-white'
       )}
     >
       {children}
