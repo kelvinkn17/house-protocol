@@ -14,5 +14,8 @@
     "test:contract": "bun run --cwd contract test",
     "deploy": "bun run --cwd contract deploy"
   },
-  "packageManager": "bun@1.1.0"
+  "packageManager": "bun@1.1.0",
+  "dependencies": {
+    "nitro-nightly": "^3.0.1-20260202-124820-1954b824"
+  }
 }
