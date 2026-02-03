@@ -12,31 +12,32 @@ export default function AppLayout({ children, noPadding }: AppLayoutProps) {
   const isBuild = path.startsWith('/build')
 
   return (
-    <div className="min-h-screen bg-[#151515]">
-      {/* Sticky navbar */}
-      <header className="sticky top-0 z-40 h-14 bg-[#151515] px-4 sm:px-6">
+    <div className="min-h-screen bg-[#cdff57]">
+      {/* Sticky navbar - no border, clean */}
+      <header className="sticky top-0 z-40 h-14 bg-[#cdff57] px-4 sm:px-6">
         <nav className="mx-auto flex h-full max-w-7xl items-center justify-between">
           <Link to="/" className="flex items-center">
-            <img
-              src="/assets/logos/the-house-protocol-horizontal-logo.svg"
-              alt="House Protocol"
-              className="h-7"
-            />
+            <div className="px-3 py-1.5 bg-black text-[#CDFF57] font-black text-lg tracking-tight">
+              HOUSE PROTOCOL
+            </div>
           </Link>
 
-          <div className="flex items-center gap-1">
+          <div className="hidden md:flex items-center gap-6">
             <NavLink to="/app/stake" active={path.includes('/stake')}>
-              Stake
-            </NavLink>
-            <NavLink to="/app/play" active={path.includes('/play')}>
-              Play
+              STAKERS
             </NavLink>
             <NavLink to="/build" active={isBuild}>
-              Build
+              BUILDERS
+            </NavLink>
+            <NavLink to="/docs" active={path.includes('/docs')}>
+              DOCS
             </NavLink>
           </div>
 
-          <button className="rounded-sm px-4 py-2 text-sm font-bold transition-colors bg-[#0b0d0b] text-white">
+          <button
+            className="px-5 py-2.5 text-sm font-black uppercase tracking-wide rounded-full border-2 border-black bg-white text-black hover:translate-x-0.5 hover:translate-y-0.5 transition-transform duration-200"
+            style={{ boxShadow: '4px 4px 0px black' }}
+          >
             Connect Wallet
           </button>
         </nav>
@@ -44,13 +45,13 @@ export default function AppLayout({ children, noPadding }: AppLayoutProps) {
 
       {/* Sticky inverted corners */}
       <div className="pointer-events-none sticky top-14 z-20 mx-2 flex justify-between sm:mx-6">
-        <div className="h-6 w-6 bg-[#151515] sm:h-8 sm:w-8 [mask-image:radial-gradient(circle_at_100%_100%,transparent_23px,black_24px)] sm:[mask-image:radial-gradient(circle_at_100%_100%,transparent_31px,black_32px)]" />
-        <div className="h-6 w-6 bg-[#151515] sm:h-8 sm:w-8 [mask-image:radial-gradient(circle_at_0%_100%,transparent_23px,black_24px)] sm:[mask-image:radial-gradient(circle_at_0%_100%,transparent_31px,black_32px)]" />
+        <div className="h-6 w-6 bg-[#cdff57] sm:h-8 sm:w-8 [mask-image:radial-gradient(circle_at_100%_100%,transparent_23px,black_24px)] sm:[mask-image:radial-gradient(circle_at_100%_100%,transparent_31px,black_32px)]" />
+        <div className="h-6 w-6 bg-[#cdff57] sm:h-8 sm:w-8 [mask-image:radial-gradient(circle_at_0%_100%,transparent_23px,black_24px)] sm:[mask-image:radial-gradient(circle_at_0%_100%,transparent_31px,black_32px)]" />
       </div>
 
-      {/* Main content wrapper */}
+      {/* Main content wrapper with rounded top card */}
       <div className="relative -mt-6 px-2 sm:-mt-8 sm:px-6">
-        <main className="relative min-h-[calc(100vh-56px)] overflow-hidden rounded-t-[24px] bg-[#0b0d0b] sm:rounded-t-[32px]">
+        <main className="relative min-h-[calc(100vh-56px)] overflow-hidden rounded-t-[24px] bg-[#EDEBE6] sm:rounded-t-[32px]">
           <div
             className={cnm(
               'min-h-[calc(100vh-56px)]',
@@ -61,24 +62,27 @@ export default function AppLayout({ children, noPadding }: AppLayoutProps) {
               {children}
             </div>
           </div>
-          <footer className="border-t border-[#1a3d30] py-8">
-            <div className="mx-auto max-w-6xl px-4 text-center text-sm text-neutral-600 font-mono tracking-wider">
-              HOUSE//PROTOCOL — EVERYONE CAN BE THE HOUSE
-            </div>
-          </footer>
         </main>
       </div>
     </div>
   )
 }
 
-function NavLink({ to, active, children }: { to: string; active: boolean; children: React.ReactNode }) {
+function NavLink({
+  to,
+  active,
+  children,
+}: {
+  to: string
+  active: boolean
+  children: React.ReactNode
+}) {
   return (
     <Link
       to={to}
       className={cnm(
-        'px-3 py-2 text-sm font-bold uppercase tracking-wider transition-colors',
-        active ? 'text-white' : 'text-white/60 hover:text-white'
+        'text-sm font-black uppercase tracking-wide transition-colors',
+        active ? 'text-black' : 'text-black/50 hover:text-black'
       )}
     >
       {children}

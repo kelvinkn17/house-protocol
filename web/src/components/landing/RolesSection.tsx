@@ -15,12 +15,11 @@ export default function RolesSection() {
       cards.forEach((card, i) => {
         gsap.fromTo(
           card,
-          { y: 120, opacity: 0, rotateY: 15 },
+          { y: 80, opacity: 0 },
           {
             y: 0,
             opacity: 1,
-            rotateY: 0,
-            duration: 1.2,
+            duration: 1,
             ease: 'power3.out',
             scrollTrigger: {
               trigger: card,
@@ -60,7 +59,7 @@ export default function RolesSection() {
       perks: ['Passive yield from house edge', 'Withdraw anytime', 'hUSDC / hETH tokens'],
       cta: 'Stake Now',
       to: '/app/stake',
-      icon: '◆',
+      color: 'bg-white',
     },
     {
       number: '02',
@@ -71,7 +70,7 @@ export default function RolesSection() {
       perks: ['2 transactions total', 'Unlimited rounds', 'Provably fair RNG'],
       cta: 'Play Now',
       to: '/app/play',
-      icon: '◇',
+      color: 'bg-[#FF6B9D]',
     },
     {
       number: '03',
@@ -82,104 +81,74 @@ export default function RolesSection() {
       perks: ['No code required', 'Your branding', '25% revenue share'],
       cta: 'Build Now',
       to: '/build',
-      icon: '○',
+      color: 'bg-[#CDFF57]',
     },
   ]
 
   return (
-    <section
-      ref={sectionRef}
-      className="py-32 px-4 md:px-8 relative"
-      style={{ backgroundColor: 'rgba(11, 13, 11, 0.95)' }}
-    >
-      {/* asymmetric bg block */}
-      <div className="absolute top-0 left-0 w-1/4 h-full opacity-[0.015]" style={{ backgroundColor: '#dcb865' }} />
-
+    <section ref={sectionRef} className="py-32 px-4 md:px-8 relative bg-[#EDEBE6]">
       <div className="mx-auto max-w-6xl relative">
-        <div className="roles-title mb-20 flex flex-col lg:flex-row lg:items-end lg:justify-between gap-8 opacity-0">
+        <div className="roles-title mb-16 flex flex-col lg:flex-row lg:items-end lg:justify-between gap-8 opacity-0">
           <div>
-            <span className="text-[10px] font-mono font-bold uppercase tracking-[0.4em] text-neutral-500 block mb-4">
+            <span className="text-xs font-black uppercase tracking-widest text-black/50 block mb-4">
               [002] Three ways in
             </span>
-            <h2 className="text-5xl md:text-7xl lg:text-8xl font-black tracking-[-0.03em] text-neutral-100">
+            <h2 className="text-5xl md:text-7xl lg:text-8xl font-black tracking-tight text-black">
               Pick your
             </h2>
-            <h2 className="text-5xl md:text-7xl lg:text-8xl font-black tracking-[-0.03em] italic" style={{ color: '#dcb865' }}>
+            <h2 className="text-5xl md:text-7xl lg:text-8xl font-black tracking-tight text-[#FF6B9D]">
               side.
             </h2>
           </div>
-          <p className="max-w-xs text-neutral-500 font-mono text-sm lg:text-right">
+          <p className="max-w-xs text-black/60 font-mono text-sm lg:text-right">
             Or play all three.
             <br />
-            <span className="text-neutral-400">We do not judge.</span>
+            <span className="text-black">We do not judge.</span>
           </p>
         </div>
 
-        <div className="grid md:grid-cols-3 gap-4" style={{ perspective: '1000px' }}>
+        <div className="grid md:grid-cols-3 gap-6">
           {roles.map((role) => (
             <div
               key={role.number}
-              className="role-card group relative bg-neutral-950 p-8 transition-all duration-500 opacity-0 border border-neutral-800 hover:border-neutral-700"
+              className={`role-card group relative ${role.color} p-8 rounded-2xl border-2 border-black opacity-0 hover:translate-x-1 hover:translate-y-1 transition-transform duration-200`}
+              style={{ boxShadow: '6px 6px 0px black' }}
             >
-              {/* watermark number */}
-              <span className="absolute -top-6 -right-2 text-[9rem] font-black leading-none pointer-events-none select-none transition-colors duration-500 text-neutral-900/40 group-hover:text-[#1a3d30]/40">
-                {role.number}
-              </span>
-
               {/* top bar */}
-              <div className="flex items-center justify-between mb-8">
-                <span className="text-3xl text-neutral-700 group-hover:text-[#dcb865] transition-colors duration-300">
-                  {role.icon}
-                </span>
-                <span className="text-[9px] font-mono text-neutral-700 uppercase tracking-widest">
+              <div className="flex items-center justify-between mb-6">
+                <span className="text-xs font-mono text-black/50">
                   role.{role.number}
                 </span>
               </div>
 
               <div className="relative">
-                <h3 className="text-2xl md:text-3xl font-black tracking-tight text-neutral-100 mb-1 group-hover:text-white transition-colors">
+                <h3 className="text-3xl md:text-4xl font-black tracking-tight text-black mb-1">
                   {role.title}
                 </h3>
-                <p className="text-sm font-mono italic text-neutral-500 mb-8 group-hover:text-neutral-400 transition-colors">
+                <p className="text-sm font-mono text-black/60 mb-6">
                   {role.tagline}
                 </p>
 
-                <p className="text-neutral-300 text-sm leading-relaxed mb-8">{role.description}</p>
+                <p className="text-black/80 text-sm leading-relaxed mb-8">{role.description}</p>
 
-                <ul className="space-y-3 mb-10">
-                  {role.perks.map((perk, j) => (
-                    <li key={perk} className="flex items-center gap-3 text-sm text-neutral-400">
-                      <span className="w-1.5 h-1.5 transition-colors duration-300" style={{ backgroundColor: '#1a3d30' }} />
-                      <span
-                        className="group-hover:text-neutral-300 transition-colors"
-                        style={{ transitionDelay: `${j * 50}ms` }}
-                      >
-                        {perk}
-                      </span>
-                    </li>
-                  ))}
-                </ul>
+                <div className="border-t border-black/20 pt-6 mb-8">
+                  <ul className="space-y-2">
+                    {role.perks.map((perk) => (
+                      <li key={perk} className="flex items-center gap-3 text-sm text-black/70 font-mono">
+                        <span>&gt;</span>
+                        <span>{perk}</span>
+                      </li>
+                    ))}
+                  </ul>
+                </div>
 
                 <Link
                   to={role.to}
-                  className="group/btn block w-full py-4 text-center border text-sm font-black uppercase tracking-[0.15em] text-neutral-100 transition-all duration-300 relative overflow-hidden"
-                  style={{ borderColor: '#1a3d30' }}
+                  className="block w-full py-4 text-center bg-black text-white text-sm font-black uppercase tracking-wide rounded-full hover:bg-black/80 transition-colors duration-200"
                 >
-                  <span className="relative z-10 group-hover/btn:text-[#0b0d0b] transition-colors duration-300">
-                    {role.cta}
-                  </span>
-                  <div
-                    className="absolute inset-0 translate-y-full group-hover/btn:translate-y-0 transition-transform duration-300"
-                    style={{ backgroundColor: '#dcb865' }}
-                  />
+                  {role.cta}
                 </Link>
               </div>
-
-              {/* bottom accent */}
-              <div
-                className="absolute bottom-0 left-0 right-0 h-1 scale-x-0 group-hover:scale-x-100 transition-transform duration-500 origin-left"
-                style={{ backgroundColor: '#dcb865' }}
-              />
             </div>
           ))}
         </div>

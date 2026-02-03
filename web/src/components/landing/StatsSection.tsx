@@ -58,46 +58,36 @@ export default function StatsSection() {
     { value: 27, prefix: '', suffix: '', label: 'GAMES', note: 'live on protocol' },
   ]
 
-  return (
-    <section ref={sectionRef} className="py-28 px-4 md:px-8 relative" style={{ backgroundColor: '#0b0d0b' }}>
-      {/* large bg text */}
-      <div className="absolute top-1/2 -translate-y-1/2 left-0 text-[20vw] font-black text-neutral-900/30 leading-none pointer-events-none select-none tracking-tighter">
-        STATS
-      </div>
+  const colors = ['bg-[#CDFF57]', 'bg-[#FF6B9D]', 'bg-white', 'bg-[#CDFF57]']
 
+  return (
+    <section ref={sectionRef} className="py-28 px-4 md:px-8 relative bg-[#EDEBE6]">
       <div className="mx-auto max-w-6xl relative">
-        <div className="stats-label mb-8 flex items-center gap-4 opacity-0">
-          <span className="text-[10px] font-mono font-bold uppercase tracking-[0.4em] text-neutral-500">
+        <div className="stats-label mb-10 flex items-center gap-4 opacity-0">
+          <span className="text-xs font-black uppercase tracking-widest text-black/50">
             [001.5] Live numbers
           </span>
-          <div className="flex-1 h-px" style={{ backgroundColor: '#1a3d30' }} />
+          <div className="flex-1 h-px bg-black/20" />
         </div>
 
-        <div className="grid grid-cols-2 md:grid-cols-4 gap-[1px]" style={{ backgroundColor: '#1a3d30' }}>
+        <div className="grid grid-cols-2 md:grid-cols-4 gap-5">
           {stats.map((stat, i) => (
             <div
               key={stat.label}
-              className="stat-item bg-neutral-950 p-8 md:p-10 flex flex-col group hover:bg-neutral-900/50 transition-colors duration-500 relative overflow-hidden opacity-0"
+              className={`stat-item ${colors[i]} p-6 md:p-8 flex flex-col rounded-2xl border-2 border-black hover:translate-x-1 hover:translate-y-1 transition-transform duration-200 opacity-0`}
+              style={{ boxShadow: '6px 6px 0px black' }}
             >
               {/* index marker */}
-              <span className="absolute top-4 right-4 text-[9px] font-mono text-neutral-700">0{i + 1}</span>
-              <span
-                className="text-4xl md:text-5xl lg:text-6xl font-black tracking-tight mb-4 tabular-nums"
-                style={{ color: '#dcb865' }}
-              >
+              <span className="text-xs font-mono text-black/40 mb-4">0{i + 1}</span>
+              <span className="text-4xl md:text-5xl lg:text-6xl font-black tracking-tight mb-2 text-black tabular-nums">
                 {stat.prefix}
                 <CountUp end={stat.value} decimals={stat.suffix === 'M' ? 1 : 0} shouldAnimate={hasAnimated} />
                 {stat.suffix}
               </span>
-              <span className="text-[10px] font-mono font-bold uppercase tracking-[0.3em] text-neutral-300 mb-2">
+              <span className="text-sm font-black uppercase tracking-wide text-black mb-1">
                 {stat.label}
               </span>
-              <span className="text-xs text-neutral-500 font-mono">{stat.note}</span>
-              {/* bottom accent line */}
-              <div
-                className="absolute bottom-0 left-0 right-0 h-0.5 scale-x-0 group-hover:scale-x-100 transition-transform duration-500 origin-left"
-                style={{ backgroundColor: '#dcb865' }}
-              />
+              <span className="text-xs text-black/60 font-mono">{stat.note}</span>
             </div>
           ))}
         </div>
