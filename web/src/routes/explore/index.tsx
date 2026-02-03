@@ -13,7 +13,14 @@ export const Route = createFileRoute('/explore/')({
 
 function LandingPage() {
   return (
-    <div className="min-h-screen overflow-x-hidden selection:bg-[#dcb865] selection:text-[#0b0d0b]" style={{ backgroundColor: '#0b0d0b' }}>
+    <div className="min-h-screen overflow-x-hidden selection:bg-[#dcb865] selection:text-[#0b0d0b] relative" style={{ backgroundColor: '#0b0d0b' }}>
+      {/* noise texture overlay for brutalist authenticity */}
+      <div
+        className="fixed inset-0 pointer-events-none z-[100] opacity-[0.025]"
+        style={{
+          backgroundImage: `url("data:image/svg+xml,%3Csvg viewBox='0 0 200 200' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='noise'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.85' numOctaves='4' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23noise)'/%3E%3C/svg%3E")`,
+        }}
+      />
       <HeroSection />
       <MarqueeStrip />
       <StatsSection />
@@ -121,7 +128,7 @@ function HeroSection() {
   return (
     <section
       ref={containerRef}
-      className="relative min-h-screen flex flex-col justify-center px-4 md:px-8 pt-20 pb-8 overflow-hidden"
+      className="relative min-h-screen flex flex-col px-4 md:px-8 pt-24 pb-8 overflow-hidden"
     >
       {/* grid bg */}
       <div ref={gridRef} className="absolute inset-0 overflow-hidden pointer-events-none">
@@ -135,87 +142,79 @@ function HeroSection() {
             backgroundSize: '80px 80px',
           }}
         />
-        <div className="absolute top-0 right-0 w-1/2 h-full opacity-[0.02]">
-          <svg className="w-full h-full" preserveAspectRatio="none">
-            <line x1="0" y1="100%" x2="100%" y2="0" stroke="white" strokeWidth="1" />
-          </svg>
-        </div>
       </div>
 
       <FloatingBlocks />
+      <SpinningGeo />
 
-      <div className="mx-auto max-w-7xl w-full relative flex-1 flex flex-col justify-center">
+      <div className="mx-auto max-w-7xl w-full relative">
         {/* top bar decoration */}
-        <div className="absolute top-0 left-0 right-0 flex justify-between items-center text-[10px] font-mono text-neutral-700 tracking-[0.3em]">
+        <div className="flex justify-between items-center text-[10px] font-mono text-neutral-600 tracking-[0.3em] mb-8">
           <span>[001]</span>
           <span className="hidden md:block">HOUSE//PROTOCOL</span>
           <span>2025</span>
         </div>
 
         {/* main hero content */}
-        <div className="mb-8 lg:mb-12">
-          <div ref={leftRef} className="relative">
-            {/* staggered artistic title */}
-            <h1
-              className="font-black tracking-[-0.05em] text-neutral-100 leading-[0.85] mb-6"
-              style={{ fontSize: 'clamp(2.5rem, 8vw, 7rem)', perspective: '1000px' }}
-            >
-              <span className="title-line block overflow-hidden">
-                <span className="inline-block">EVERYONE</span>
-              </span>
-              <span className="title-line block overflow-hidden" style={{ paddingLeft: 'clamp(1rem, 4vw, 4rem)' }}>
-                <span className="inline-block">CAN BE</span>
-              </span>
-              <span className="title-line block overflow-hidden italic" style={{ paddingLeft: 'clamp(2rem, 8vw, 8rem)', color: '#dcb865' }}>
-                <span className="inline-block">THE HOUSE.</span>
-              </span>
-            </h1>
+        <div ref={leftRef} className="relative mb-10">
+          {/* staggered artistic title */}
+          <h1
+            className="font-black tracking-[-0.05em] text-neutral-100 leading-[0.85] mb-6"
+            style={{ fontSize: 'clamp(2.5rem, 8vw, 7rem)', perspective: '1000px' }}
+          >
+            <span className="title-line block overflow-hidden opacity-0">
+              <span className="inline-block">EVERYONE</span>
+            </span>
+            <span className="title-line block overflow-hidden opacity-0" style={{ paddingLeft: 'clamp(1rem, 4vw, 4rem)' }}>
+              <span className="inline-block">CAN BE</span>
+            </span>
+            <span className="title-line block overflow-hidden italic opacity-0" style={{ paddingLeft: 'clamp(2rem, 8vw, 8rem)', color: '#dcb865' }}>
+              <span className="inline-block">THE HOUSE.</span>
+            </span>
+          </h1>
 
-            <div className="flex flex-col lg:flex-row lg:items-end lg:justify-between gap-6 lg:gap-12">
-              <p className="hero-sub max-w-sm text-base md:text-lg text-neutral-500 font-mono leading-relaxed">
-                Shared liquidity for on-chain gambling.
-                <br />
-                <span className="text-neutral-200">Stake. Play. Build.</span>
-                <span className="text-xs text-neutral-600 ml-2">(yes, really)</span>
-              </p>
+          <div className="flex flex-col lg:flex-row lg:items-end lg:justify-between gap-6 lg:gap-12">
+            <p className="hero-sub max-w-sm text-base md:text-lg text-neutral-400 font-mono leading-relaxed opacity-0">
+              Shared liquidity for on-chain gambling.
+              <br />
+              <span className="text-neutral-100">Stake. Play. Build.</span>
+              <span className="text-xs text-neutral-500 ml-2">(yes, really)</span>
+            </p>
 
-              <div className="hero-cta flex flex-col sm:flex-row gap-3">
-                <Link
-                  to="/explore/app/stake"
-                  className="group relative px-8 py-4 text-sm font-black uppercase tracking-[0.15em] overflow-hidden"
-                  style={{ backgroundColor: '#dcb865', color: '#0b0d0b' }}
-                >
-                  <span className="relative z-10 group-hover:text-neutral-100 transition-colors duration-300">
-                    Start Staking
-                  </span>
-                  <div className="absolute inset-0 translate-y-full group-hover:translate-y-0 transition-transform duration-300 ease-out" style={{ backgroundColor: '#1a3d30' }} />
-                </Link>
-                <Link
-                  to="/explore/build"
-                  className="group px-8 py-4 border-2 text-neutral-100 text-sm font-black uppercase tracking-[0.15em] transition-colors duration-300 relative overflow-hidden"
-                  style={{ borderColor: '#1a3d30' }}
-                >
-                  <span className="relative z-10">Build a Game</span>
-                  <div className="absolute bottom-0 left-0 w-full h-0.5 scale-x-0 group-hover:scale-x-100 transition-transform duration-300 origin-left" style={{ backgroundColor: '#dcb865' }} />
-                </Link>
-              </div>
+            <div className="hero-cta flex flex-col sm:flex-row gap-3 opacity-0">
+              <Link
+                to="/explore/app/stake"
+                className="group relative px-8 py-4 text-sm font-black uppercase tracking-[0.15em] overflow-hidden"
+                style={{ backgroundColor: '#dcb865', color: '#0b0d0b' }}
+              >
+                <span className="relative z-10 group-hover:text-neutral-100 transition-colors duration-300">
+                  Start Staking
+                </span>
+                <div className="absolute inset-0 translate-y-full group-hover:translate-y-0 transition-transform duration-300 ease-out" style={{ backgroundColor: '#0b0d0b' }} />
+              </Link>
+              <Link
+                to="/explore/build"
+                className="group px-8 py-4 border text-neutral-100 text-sm font-black uppercase tracking-[0.15em] transition-colors duration-300 relative overflow-hidden border-neutral-700 hover:border-neutral-500"
+              >
+                <span className="relative z-10">Build a Game</span>
+                <div className="absolute bottom-0 left-0 w-full h-0.5 scale-x-0 group-hover:scale-x-100 transition-transform duration-300 origin-left" style={{ backgroundColor: '#dcb865' }} />
+              </Link>
             </div>
           </div>
         </div>
 
-        {/* role cards - horizontal on desktop */}
-        <div className="mt-auto">
-          <div className="text-[10px] font-mono text-neutral-600 uppercase tracking-[0.3em] mb-4 flex items-center gap-4">
+        {/* role cards - right below hero */}
+        <div>
+          <div className="text-[10px] font-mono text-neutral-500 uppercase tracking-[0.3em] mb-4 flex items-center gap-4">
             <span>CHOOSE YOUR PATH</span>
-            <div className="flex-1 h-px bg-neutral-800" />
+            <div className="flex-1 h-px bg-neutral-700" />
           </div>
           <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
             {heroRoles.map((role) => (
               <Link
                 key={role.title}
                 to={role.to}
-                className="hero-role-card group relative border p-4 lg:p-5 hover:border-neutral-500 transition-all duration-500 backdrop-blur-xs"
-                style={{ backgroundColor: 'rgba(26, 61, 48, 0.15)', borderColor: '#1a3d30' }}
+                className="hero-role-card group relative border border-neutral-800 p-4 lg:p-5 hover:border-neutral-600 transition-all duration-300 bg-neutral-900/50 opacity-0"
               >
                 <div className="flex items-start gap-4">
                   <div className="flex flex-col items-center shrink-0">
@@ -230,10 +229,10 @@ function HeroSection() {
                     <h3 className="text-lg font-black tracking-tight text-neutral-100 mb-0.5 group-hover:text-white transition-colors">
                       {role.title}
                     </h3>
-                    <p className="text-[10px] font-mono italic text-neutral-500 mb-1">
+                    <p className="text-[10px] font-mono italic text-neutral-400 mb-1">
                       {role.tagline}
                     </p>
-                    <p className="text-xs text-neutral-400 group-hover:text-neutral-300 transition-colors">
+                    <p className="text-sm text-neutral-300 group-hover:text-neutral-200 transition-colors">
                       {role.desc}
                     </p>
                   </div>
@@ -295,6 +294,43 @@ function FloatingBlocks() {
   )
 }
 
+// spinning geometric element
+function SpinningGeo() {
+  const geoRef = useRef<HTMLDivElement>(null)
+
+  useEffect(() => {
+    if (!geoRef.current) return
+
+    gsap.to(geoRef.current, {
+      rotation: 360,
+      duration: 30,
+      repeat: -1,
+      ease: 'none',
+    })
+
+    gsap.to('.geo-inner', {
+      rotation: -360,
+      duration: 20,
+      repeat: -1,
+      ease: 'none',
+    })
+  }, [])
+
+  return (
+    <div
+      ref={geoRef}
+      className="absolute right-[5%] top-1/2 -translate-y-1/2 w-[280px] h-[280px] lg:w-[380px] lg:h-[380px] opacity-10 pointer-events-none hidden lg:block"
+    >
+      <div className="absolute inset-0 border border-neutral-700" style={{ clipPath: 'polygon(50% 0%, 100% 50%, 50% 100%, 0% 50%)' }} />
+      <div className="geo-inner absolute inset-8 border border-neutral-600" style={{ clipPath: 'polygon(50% 0%, 100% 50%, 50% 100%, 0% 50%)' }} />
+      <div className="absolute inset-16 border border-neutral-500" style={{ clipPath: 'polygon(50% 0%, 100% 50%, 50% 100%, 0% 50%)' }} />
+      <div className="absolute inset-0 flex items-center justify-center">
+        <div className="w-2 h-2 rounded-full" style={{ backgroundColor: '#dcb865' }} />
+      </div>
+    </div>
+  )
+}
+
 // double marquee
 function MarqueeStrip() {
   const items = [
@@ -311,29 +347,33 @@ function MarqueeStrip() {
   ]
 
   return (
-    <div className="relative border-y border-neutral-800 bg-neutral-900/50 overflow-hidden backdrop-blur-xs">
+    <div className="relative border-y overflow-hidden" style={{ borderColor: '#1a3d30', backgroundColor: 'rgba(11, 13, 11, 0.95)' }}>
+      {/* gradient edges */}
+      <div className="absolute left-0 top-0 bottom-0 w-32 z-10 bg-gradient-to-r from-[#0b0d0b] to-transparent" />
+      <div className="absolute right-0 top-0 bottom-0 w-32 z-10 bg-gradient-to-l from-[#0b0d0b] to-transparent" />
+
       <div className="py-5 overflow-hidden">
         <div className="flex animate-marquee">
           {[...items, ...items, ...items, ...items].map((item, i) => (
             <span
               key={`top-${i}`}
-              className="shrink-0 mx-10 text-sm font-mono font-bold uppercase tracking-[0.25em] text-neutral-600 whitespace-nowrap"
+              className="shrink-0 mx-10 text-sm font-mono font-bold uppercase tracking-[0.25em] text-neutral-500 whitespace-nowrap"
             >
               {item}
-              <span className="ml-10 text-neutral-800">•</span>
+              <span className="ml-10" style={{ color: '#1a3d30' }}>◆</span>
             </span>
           ))}
         </div>
       </div>
-      <div className="py-5 overflow-hidden border-t border-neutral-800/50">
+      <div className="py-5 overflow-hidden border-t" style={{ borderColor: '#1a3d30' }}>
         <div className="flex animate-marquee-reverse">
           {[...items, ...items, ...items, ...items].map((item, i) => (
             <span
               key={`btm-${i}`}
-              className="shrink-0 mx-10 text-sm font-mono font-bold uppercase tracking-[0.25em] text-neutral-700 whitespace-nowrap"
+              className="shrink-0 mx-10 text-sm font-mono font-bold uppercase tracking-[0.25em] text-neutral-600 whitespace-nowrap"
             >
               {item}
-              <span className="ml-10 text-neutral-800">•</span>
+              <span className="ml-10" style={{ color: '#1a3d30' }}>◇</span>
             </span>
           ))}
         </div>
@@ -370,6 +410,21 @@ function StatsSection() {
           },
         }
       )
+
+      gsap.fromTo(
+        '.stats-label',
+        { x: -50, opacity: 0 },
+        {
+          x: 0,
+          opacity: 1,
+          duration: 1,
+          ease: 'power3.out',
+          scrollTrigger: {
+            trigger: sectionRef.current,
+            start: 'top 80%',
+          },
+        }
+      )
     }, sectionRef)
 
     return () => ctx.revert()
@@ -383,14 +438,30 @@ function StatsSection() {
   ]
 
   return (
-    <section ref={sectionRef} className="py-28 px-4 md:px-8" style={{ backgroundColor: '#0b0d0b' }}>
-      <div className="mx-auto max-w-6xl">
-        <div className="grid grid-cols-2 md:grid-cols-4 gap-[1px] bg-neutral-800">
-          {stats.map((stat) => (
+    <section ref={sectionRef} className="py-28 px-4 md:px-8 relative" style={{ backgroundColor: '#0b0d0b' }}>
+      {/* large bg text */}
+      <div className="absolute top-1/2 -translate-y-1/2 left-0 text-[20vw] font-black text-neutral-900/30 leading-none pointer-events-none select-none tracking-tighter">
+        STATS
+      </div>
+
+      <div className="mx-auto max-w-6xl relative">
+        <div className="stats-label mb-8 flex items-center gap-4 opacity-0">
+          <span className="text-[10px] font-mono font-bold uppercase tracking-[0.4em] text-neutral-500">
+            [001.5] Live numbers
+          </span>
+          <div className="flex-1 h-px" style={{ backgroundColor: '#1a3d30' }} />
+        </div>
+
+        <div className="grid grid-cols-2 md:grid-cols-4 gap-[1px]" style={{ backgroundColor: '#1a3d30' }}>
+          {stats.map((stat, i) => (
             <div
               key={stat.label}
-              className="stat-item bg-neutral-950 p-8 md:p-10 flex flex-col group hover:bg-neutral-900/50 transition-colors duration-500"
+              className="stat-item bg-neutral-950 p-8 md:p-10 flex flex-col group hover:bg-neutral-900/50 transition-colors duration-500 relative overflow-hidden opacity-0"
             >
+              {/* index marker */}
+              <span className="absolute top-4 right-4 text-[9px] font-mono text-neutral-700">
+                0{i + 1}
+              </span>
               <span className="text-4xl md:text-5xl lg:text-6xl font-black tracking-tight mb-4 tabular-nums" style={{ color: '#dcb865' }}>
                 {stat.prefix}
                 <CountUp
@@ -400,10 +471,12 @@ function StatsSection() {
                 />
                 {stat.suffix}
               </span>
-              <span className="text-[10px] font-mono font-bold uppercase tracking-[0.3em] text-neutral-400 mb-2">
+              <span className="text-[10px] font-mono font-bold uppercase tracking-[0.3em] text-neutral-300 mb-2">
                 {stat.label}
               </span>
-              <span className="text-xs text-neutral-600 font-mono">{stat.note}</span>
+              <span className="text-xs text-neutral-500 font-mono">{stat.note}</span>
+              {/* bottom accent line */}
+              <div className="absolute bottom-0 left-0 right-0 h-0.5 scale-x-0 group-hover:scale-x-100 transition-transform duration-500 origin-left" style={{ backgroundColor: '#dcb865' }} />
             </div>
           ))}
         </div>
@@ -455,10 +528,11 @@ function RolesSection() {
       cards.forEach((card, i) => {
         gsap.fromTo(
           card,
-          { y: 120, opacity: 0 },
+          { y: 120, opacity: 0, rotateY: 15 },
           {
             y: 0,
             opacity: 1,
+            rotateY: 0,
             duration: 1.2,
             ease: 'power3.out',
             scrollTrigger: {
@@ -499,6 +573,7 @@ function RolesSection() {
       perks: ['Passive yield from house edge', 'Withdraw anytime', 'hUSDC / hETH tokens'],
       cta: 'Stake Now',
       to: '/explore/app/stake',
+      icon: '◆',
     },
     {
       number: '02',
@@ -509,6 +584,7 @@ function RolesSection() {
       perks: ['2 transactions total', 'Unlimited rounds', 'Provably fair RNG'],
       cta: 'Play Now',
       to: '/explore/app/play',
+      icon: '◇',
     },
     {
       number: '03',
@@ -519,69 +595,117 @@ function RolesSection() {
       perks: ['No code required', 'Your branding', '25% revenue share'],
       cta: 'Build Now',
       to: '/explore/build',
+      icon: '○',
     },
   ]
 
   return (
-    <section ref={sectionRef} className="py-32 px-4 md:px-8" style={{ backgroundColor: 'rgba(26, 61, 48, 0.12)' }}>
-      <div className="mx-auto max-w-6xl">
-        <div className="roles-title mb-20">
-          <span className="text-[10px] font-mono font-bold uppercase tracking-[0.4em] text-neutral-600 block mb-4">
-            [002] Three ways in
-          </span>
-          <h2 className="text-5xl md:text-7xl lg:text-8xl font-black tracking-[-0.03em] text-neutral-100">
-            Pick your side.
-          </h2>
-          <p className="mt-6 text-neutral-500 font-mono text-sm max-w-md">
-            Or play all three. We do not judge.
+    <section ref={sectionRef} className="py-32 px-4 md:px-8 relative" style={{ backgroundColor: 'rgba(11, 13, 11, 0.95)' }}>
+      {/* asymmetric bg block */}
+      <div className="absolute top-0 left-0 w-1/4 h-full opacity-[0.015]" style={{ backgroundColor: '#dcb865' }} />
+
+      <div className="mx-auto max-w-6xl relative">
+        <div className="roles-title mb-20 flex flex-col lg:flex-row lg:items-end lg:justify-between gap-8 opacity-0">
+          <div>
+            <span className="text-[10px] font-mono font-bold uppercase tracking-[0.4em] text-neutral-500 block mb-4">
+              [002] Three ways in
+            </span>
+            <h2 className="text-5xl md:text-7xl lg:text-8xl font-black tracking-[-0.03em] text-neutral-100">
+              Pick your
+            </h2>
+            <h2 className="text-5xl md:text-7xl lg:text-8xl font-black tracking-[-0.03em] italic" style={{ color: '#dcb865' }}>
+              side.
+            </h2>
+          </div>
+          <p className="max-w-xs text-neutral-500 font-mono text-sm lg:text-right">
+            Or play all three.
+            <br />
+            <span className="text-neutral-400">We do not judge.</span>
           </p>
         </div>
 
-        <div className="grid md:grid-cols-3 gap-5">
-          {roles.map((role) => (
+        <div className="grid md:grid-cols-3 gap-[1px]" style={{ backgroundColor: '#1a3d30', perspective: '1000px' }}>
+          {roles.map((role, i) => (
             <div
               key={role.number}
-              className="role-card group relative bg-neutral-950 border border-neutral-800 p-8 hover:border-neutral-500 transition-all duration-500"
+              className="role-card group relative bg-neutral-950 p-8 transition-all duration-500 opacity-0"
+              style={{ marginTop: i === 1 ? '1.5rem' : '0' }}
             >
               {/* watermark number */}
-              <span className="absolute -top-6 -right-2 text-[9rem] font-black leading-none pointer-events-none select-none transition-colors duration-500" style={{ color: 'rgba(26, 61, 48, 0.4)' }}>
+              <span className="absolute -top-6 -right-2 text-[9rem] font-black leading-none pointer-events-none select-none transition-colors duration-500 text-neutral-900/40 group-hover:text-[#1a3d30]/40">
                 {role.number}
               </span>
 
+              {/* top bar */}
+              <div className="flex items-center justify-between mb-8">
+                <span className="text-3xl text-neutral-700 group-hover:text-[#dcb865] transition-colors duration-300">
+                  {role.icon}
+                </span>
+                <span className="text-[9px] font-mono text-neutral-700 uppercase tracking-widest">
+                  role.{role.number}
+                </span>
+              </div>
+
               <div className="relative">
-                <h3 className="text-2xl md:text-3xl font-black tracking-tight text-neutral-100 mb-1">
+                <h3 className="text-2xl md:text-3xl font-black tracking-tight text-neutral-100 mb-1 group-hover:text-white transition-colors">
                   {role.title}
                 </h3>
-                <p className="text-sm font-mono italic text-neutral-500 mb-8">
+                <p className="text-sm font-mono italic text-neutral-500 mb-8 group-hover:text-neutral-400 transition-colors">
                   {role.tagline}
                 </p>
 
-                <p className="text-neutral-400 text-sm leading-relaxed mb-8">
+                <p className="text-neutral-300 text-sm leading-relaxed mb-8">
                   {role.description}
                 </p>
 
                 <ul className="space-y-3 mb-10">
-                  {role.perks.map((perk) => (
-                    <li key={perk} className="flex items-center gap-3 text-sm text-neutral-500">
-                      <span className="w-1.5 h-1.5 bg-neutral-700 group-hover:bg-neutral-400 transition-colors duration-300" />
-                      {perk}
+                  {role.perks.map((perk, j) => (
+                    <li key={perk} className="flex items-center gap-3 text-sm text-neutral-400">
+                      <span className="w-1.5 h-1.5 transition-colors duration-300" style={{ backgroundColor: '#1a3d30' }} />
+                      <span className="group-hover:text-neutral-300 transition-colors" style={{ transitionDelay: `${j * 50}ms` }}>
+                        {perk}
+                      </span>
                     </li>
                   ))}
                 </ul>
 
                 <Link
                   to={role.to}
-                  className="block w-full py-4 text-center border text-sm font-black uppercase tracking-[0.15em] text-neutral-100 transition-all duration-300 hover:text-[#0b0d0b] hover:bg-[#dcb865] hover:border-[#dcb865]"
+                  className="group/btn block w-full py-4 text-center border text-sm font-black uppercase tracking-[0.15em] text-neutral-100 transition-all duration-300 relative overflow-hidden"
                   style={{ borderColor: '#1a3d30' }}
                 >
-                  {role.cta}
+                  <span className="relative z-10 group-hover/btn:text-[#0b0d0b] transition-colors duration-300">
+                    {role.cta}
+                  </span>
+                  <div className="absolute inset-0 translate-y-full group-hover/btn:translate-y-0 transition-transform duration-300" style={{ backgroundColor: '#dcb865' }} />
                 </Link>
               </div>
+
+              {/* bottom accent */}
+              <div className="absolute bottom-0 left-0 right-0 h-1 scale-x-0 group-hover:scale-x-100 transition-transform duration-500 origin-left" style={{ backgroundColor: '#dcb865' }} />
             </div>
           ))}
         </div>
       </div>
     </section>
+  )
+}
+
+// dramatic separator
+function SectionDivider({ label }: { label: string }) {
+  return (
+    <div className="relative py-4 overflow-hidden" style={{ backgroundColor: '#1a3d30' }}>
+      <div className="flex animate-marquee">
+        {Array.from({ length: 20 }).map((_, i) => (
+          <span
+            key={i}
+            className="shrink-0 mx-8 text-xs font-mono font-bold uppercase tracking-[0.3em] text-black/40 whitespace-nowrap"
+          >
+            {label}
+          </span>
+        ))}
+      </div>
+    </div>
   )
 }
 
@@ -648,51 +772,62 @@ function HowItWorksSection() {
   ]
 
   return (
-    <section ref={sectionRef} className="py-32 px-4 md:px-8 border-t border-neutral-800" style={{ backgroundColor: '#0b0d0b' }}>
-      <div className="mx-auto max-w-6xl">
-        <div className="how-title mb-20 flex flex-col md:flex-row md:items-end md:justify-between gap-8">
-          <div>
-            <span className="text-[10px] font-mono font-bold uppercase tracking-[0.4em] text-neutral-600 block mb-4">
-              [003] How it works
-            </span>
-            <h2 className="text-5xl md:text-7xl lg:text-8xl font-black tracking-[-0.03em] text-neutral-100">
-              4 steps.
-            </h2>
-            <h2 className="text-5xl md:text-7xl lg:text-8xl font-black tracking-[-0.03em] text-neutral-500">
-              That is it.
-            </h2>
+    <>
+      <SectionDivider label="HOW IT WORKS" />
+      <section ref={sectionRef} className="py-32 px-4 md:px-8 relative" style={{ backgroundColor: '#0b0d0b' }}>
+        {/* asymmetric bg element */}
+        <div className="absolute top-20 right-0 w-1/3 h-[80%] opacity-[0.02]" style={{ backgroundColor: '#dcb865' }} />
+
+        <div className="mx-auto max-w-6xl relative">
+          <div className="how-title mb-20 flex flex-col md:flex-row md:items-end md:justify-between gap-8 opacity-0">
+            <div>
+              <span className="text-[10px] font-mono font-bold uppercase tracking-[0.4em] text-neutral-500 block mb-4">
+                [003] How it works
+              </span>
+              <h2 className="text-5xl md:text-7xl lg:text-8xl font-black tracking-[-0.03em] text-neutral-100">
+                4 steps.
+              </h2>
+              <h2 className="text-5xl md:text-7xl lg:text-8xl font-black tracking-[-0.03em] italic" style={{ color: '#dcb865', opacity: 0.5 }}>
+                That is it.
+              </h2>
+            </div>
+            <p className="max-w-sm text-sm text-neutral-400 font-mono leading-relaxed md:text-right">
+              State channels let you play unlimited rounds with just 2 on-chain transactions.
+            </p>
           </div>
-          <p className="max-w-sm text-sm text-neutral-500 font-mono leading-relaxed">
-            State channels let you play unlimited rounds with just 2 on-chain transactions.
-          </p>
-        </div>
 
-        <div className="steps-container relative">
-          <div className="step-line absolute top-[72px] left-[10%] right-[10%] h-px bg-neutral-700/50 origin-left hidden md:block" />
+          <div className="steps-container relative">
+            <div className="step-line absolute top-[72px] left-[10%] right-[10%] h-px origin-left hidden md:block scale-x-0" style={{ backgroundColor: '#1a3d30' }} />
 
-          <div className="grid grid-cols-2 md:grid-cols-4 gap-10 md:gap-6">
-            {steps.map((step) => (
-              <div key={step.num} className="step-item relative group">
-                <div className="w-36 h-36 border flex flex-col items-center justify-center mb-8 relative z-10 transition-all duration-300" style={{ backgroundColor: 'rgba(26, 61, 48, 0.2)', borderColor: '#1a3d30' }}>
-                  <span className="text-2xl text-neutral-600 mb-2 group-hover:text-neutral-400 transition-colors">
-                    {step.icon}
-                  </span>
-                  <span className="text-4xl font-black" style={{ color: '#dcb865' }}>{step.num}</span>
+            <div className="grid grid-cols-2 md:grid-cols-4 gap-10 md:gap-6">
+              {steps.map((step, i) => (
+                <div key={step.num} className="step-item relative group opacity-0" style={{ marginTop: i % 2 === 1 ? '2rem' : '0' }}>
+                  <div className="w-36 h-36 border bg-neutral-950 flex flex-col items-center justify-center mb-8 relative z-10 transition-all duration-300 group-hover:border-neutral-500" style={{ borderColor: '#1a3d30' }}>
+                    <span className="text-2xl text-neutral-600 mb-2 group-hover:text-[#dcb865] transition-colors">
+                      {step.icon}
+                    </span>
+                    <span className="text-4xl font-black" style={{ color: '#dcb865' }}>{step.num}</span>
+                  </div>
+                  <h3 className="text-xl font-black text-neutral-100 mb-2 tracking-tight">
+                    {step.title}
+                  </h3>
+                  <p className="text-sm text-neutral-400 font-mono">{step.desc}</p>
                 </div>
-                <h3 className="text-xl font-black text-neutral-100 mb-2 tracking-tight">
-                  {step.title}
-                </h3>
-                <p className="text-sm text-neutral-500 font-mono">{step.desc}</p>
-              </div>
-            ))}
+              ))}
+            </div>
+          </div>
+
+          {/* decorative arrow */}
+          <div className="hidden md:block absolute -bottom-8 left-1/2 -translate-x-1/2 text-4xl" style={{ color: '#1a3d30' }}>
+            ↓
           </div>
         </div>
-      </div>
-    </section>
+      </section>
+    </>
   )
 }
 
-// game primitives
+// game primitives with bento layout
 function GamePrimitivesSection() {
   const sectionRef = useRef<HTMLElement>(null)
 
@@ -734,58 +869,87 @@ function GamePrimitivesSection() {
   }, [])
 
   const primitives = [
-    { type: 'PICK ONE', example: 'Coinflip', icon: '◐', desc: 'Pick option, one wins' },
-    { type: 'PICK NUMBER', example: 'Dice', icon: '▣', desc: 'Over/under target' },
-    { type: 'SPIN WHEEL', example: 'Roulette', icon: '◎', desc: 'Land on segment' },
-    { type: 'REVEAL TILES', example: 'Mines', icon: '▦', desc: 'Avoid the bombs' },
-    { type: 'CASH OUT', example: 'Crash', icon: '△', desc: 'Bail before crash' },
-    { type: 'DEAL CARDS', example: 'Blackjack', icon: '◇', desc: 'Beat the dealer' },
+    { type: 'PICK ONE', example: 'Coinflip', icon: '◐', desc: 'Pick option, one wins', featured: true },
+    { type: 'PICK NUMBER', example: 'Dice', icon: '▣', desc: 'Over/under target', featured: false },
+    { type: 'SPIN WHEEL', example: 'Roulette', icon: '◎', desc: 'Land on segment', featured: false },
+    { type: 'REVEAL TILES', example: 'Mines', icon: '▦', desc: 'Avoid the bombs', featured: false },
+    { type: 'CASH OUT', example: 'Crash', icon: '△', desc: 'Bail before crash', featured: true },
+    { type: 'DEAL CARDS', example: 'Blackjack', icon: '◇', desc: 'Beat the dealer', featured: false },
   ]
 
   return (
-    <section ref={sectionRef} className="py-32 px-4 md:px-8" style={{ backgroundColor: 'rgba(26, 61, 48, 0.12)' }}>
-      <div className="mx-auto max-w-6xl">
-        <div className="primitives-title mb-20 text-center">
-          <span className="text-[10px] font-mono font-bold uppercase tracking-[0.4em] text-neutral-600 block mb-4">
-            [004] Game Primitives
-          </span>
-          <h2 className="text-5xl md:text-7xl font-black tracking-[-0.03em] text-neutral-100 mb-6">
-            Pre-built mechanics.
-          </h2>
-          <p className="max-w-xl mx-auto text-neutral-500 font-mono text-sm leading-relaxed">
-            Builders configure, not code. Protocol enforces payout math.
-          </p>
-        </div>
-
-        <div className="primitives-grid grid grid-cols-2 md:grid-cols-3 gap-4">
-          {primitives.map((p) => (
-            <div
-              key={p.type}
-              className="primitive-card group relative bg-neutral-950 border border-neutral-800 p-6 md:p-8 hover:border-neutral-500 transition-all duration-300 cursor-pointer overflow-hidden"
-            >
-              <span className="text-5xl mb-6 block text-neutral-700 group-hover:text-neutral-400 transition-colors duration-300">
-                {p.icon}
+    <>
+      <SectionDivider label="GAME PRIMITIVES" />
+      <section ref={sectionRef} className="py-32 px-4 md:px-8 relative" style={{ backgroundColor: 'rgba(26, 61, 48, 0.03)' }}>
+        <div className="mx-auto max-w-6xl">
+          <div className="primitives-title mb-20 flex flex-col lg:flex-row lg:items-end lg:justify-between gap-8 opacity-0">
+            <div>
+              <span className="text-[10px] font-mono font-bold uppercase tracking-[0.4em] text-neutral-500 block mb-4">
+                [004] Game Primitives
               </span>
-              <h3 className="text-lg md:text-xl font-black tracking-tight text-neutral-100 mb-2">
-                {p.type}
-              </h3>
-              <p className="text-xs text-neutral-500 font-mono mb-1">{p.desc}</p>
-              <p className="text-[10px] text-neutral-700 font-mono">e.g. {p.example}</p>
-
-              <div className="absolute inset-0 flex items-center justify-center translate-y-full group-hover:translate-y-0 transition-transform duration-300 ease-out" style={{ backgroundColor: '#dcb865' }}>
-                <span className="text-sm font-black uppercase tracking-[0.15em]" style={{ color: '#0b0d0b' }}>
-                  Use this →
-                </span>
-              </div>
+              <h2 className="text-5xl md:text-7xl font-black tracking-[-0.03em] text-neutral-100 mb-4">
+                Pre-built
+              </h2>
+              <h2 className="text-5xl md:text-7xl font-black tracking-[-0.03em] italic" style={{ color: '#1a3d30' }}>
+                mechanics.
+              </h2>
             </div>
-          ))}
-        </div>
+            <p className="max-w-sm text-neutral-400 font-mono text-sm leading-relaxed lg:text-right">
+              Builders configure, not code. Protocol enforces payout math. No custom logic allowed.
+            </p>
+          </div>
 
-        <p className="mt-14 text-center text-xs font-mono text-neutral-600">
-          Payout: (1 / winProbability) × (1 - houseEdge). Always enforced.
-        </p>
-      </div>
-    </section>
+          {/* bento grid */}
+          <div className="primitives-grid grid grid-cols-2 md:grid-cols-4 gap-[1px] auto-rows-fr" style={{ backgroundColor: '#1a3d30' }}>
+            {primitives.map((p, i) => (
+              <div
+                key={p.type}
+                className={`primitive-card group relative bg-neutral-950 p-6 md:p-8 transition-all duration-300 cursor-pointer overflow-hidden opacity-0 ${
+                  p.featured ? 'md:col-span-2 md:row-span-2' : ''
+                }`}
+              >
+                <div className="h-full flex flex-col">
+                  <div className="flex items-start justify-between mb-4">
+                    <span className={`${p.featured ? 'text-7xl md:text-8xl' : 'text-4xl md:text-5xl'} text-neutral-700 group-hover:text-[#dcb865] transition-colors duration-300`}>
+                      {p.icon}
+                    </span>
+                    <span className="text-[9px] font-mono text-neutral-700">
+                      0{i + 1}
+                    </span>
+                  </div>
+                  <div className="mt-auto">
+                    <h3 className={`${p.featured ? 'text-2xl md:text-3xl' : 'text-lg md:text-xl'} font-black tracking-tight text-neutral-100 mb-2`}>
+                      {p.type}
+                    </h3>
+                    <p className="text-xs text-neutral-400 font-mono mb-1">{p.desc}</p>
+                    <p className="text-[10px] text-neutral-600 font-mono">e.g. {p.example}</p>
+                  </div>
+                </div>
+
+                {/* hover overlay */}
+                <div className="absolute inset-0 flex items-center justify-center translate-y-full group-hover:translate-y-0 transition-transform duration-300 ease-out" style={{ backgroundColor: '#dcb865' }}>
+                  <span className="text-sm font-black uppercase tracking-[0.15em]" style={{ color: '#0b0d0b' }}>
+                    Use this →
+                  </span>
+                </div>
+
+                {/* corner accent */}
+                <div className="absolute bottom-0 right-0 w-8 h-8 opacity-0 group-hover:opacity-100 transition-opacity duration-300" style={{ backgroundColor: '#1a3d30' }} />
+              </div>
+            ))}
+          </div>
+
+          <div className="mt-14 flex flex-col md:flex-row items-center justify-between gap-4 p-6 border" style={{ borderColor: '#1a3d30', backgroundColor: 'rgba(11, 13, 11, 0.8)' }}>
+            <p className="text-xs font-mono text-neutral-400">
+              <span style={{ color: '#dcb865' }}>Payout formula:</span> (1 / winProbability) × (1 - houseEdge)
+            </p>
+            <p className="text-xs font-mono text-neutral-600">
+              Always enforced. No exceptions.
+            </p>
+          </div>
+        </div>
+      </section>
+    </>
   )
 }
 
@@ -797,10 +961,11 @@ function TestimonialsSection() {
     const ctx = gsap.context(() => {
       gsap.fromTo(
         '.testimonial-card',
-        { y: 60, opacity: 0 },
+        { y: 60, opacity: 0, rotateX: 15 },
         {
           y: 0,
           opacity: 1,
+          rotateX: 0,
           duration: 0.8,
           stagger: 0.1,
           ease: 'power3.out',
@@ -821,57 +986,83 @@ function TestimonialsSection() {
       author: 'anon_degen',
       role: 'Staker',
       apy: '+12.4%',
+      num: '01',
     },
     {
       quote: 'Launched my coinflip game in 20 minutes. Already making passive income.',
       author: 'builder_chad',
       role: 'Builder',
       apy: '+$4.2k',
+      num: '02',
     },
     {
       quote: 'Zero gas between bets? State channels are actually magic.',
       author: 'gambler_69',
       role: 'Player',
       apy: '-$200',
+      num: '03',
     },
   ]
 
   return (
-    <section ref={sectionRef} className="py-32 px-4 md:px-8 border-t border-neutral-800" style={{ backgroundColor: '#0b0d0b' }}>
-      <div className="mx-auto max-w-6xl">
-        <div className="mb-16">
-          <span className="text-[10px] font-mono font-bold uppercase tracking-[0.4em] text-neutral-600 block mb-4">
-            [005] What they say
-          </span>
-          <h2 className="text-4xl md:text-5xl font-black tracking-[-0.03em] text-neutral-100">
-            Real feedback.
-          </h2>
+    <section ref={sectionRef} className="py-32 px-4 md:px-8 border-t relative overflow-hidden" style={{ backgroundColor: '#0b0d0b', borderColor: '#1a3d30' }}>
+      {/* large quote mark */}
+      <div className="absolute top-20 left-10 text-[20rem] font-serif leading-none pointer-events-none select-none" style={{ color: '#1a3d30', opacity: 0.15 }}>
+        "
+      </div>
+
+      <div className="mx-auto max-w-6xl relative">
+        <div className="mb-16 flex flex-col md:flex-row md:items-end md:justify-between gap-4">
+          <div>
+            <span className="text-[10px] font-mono font-bold uppercase tracking-[0.4em] text-neutral-500 block mb-4">
+              [005] What they say
+            </span>
+            <h2 className="text-4xl md:text-5xl font-black tracking-[-0.03em] text-neutral-100">
+              Real feedback.
+            </h2>
+          </div>
+          <p className="text-xs font-mono text-neutral-600">
+            (actual quotes, names changed)
+          </p>
         </div>
 
-        <div className="testimonials-grid grid md:grid-cols-3 gap-5">
+        <div className="testimonials-grid grid md:grid-cols-3 gap-[1px]" style={{ backgroundColor: '#1a3d30', perspective: '1000px' }}>
           {testimonials.map((t, i) => (
             <div
               key={i}
-              className="testimonial-card bg-neutral-900/50 border border-neutral-800 p-8 flex flex-col"
+              className="testimonial-card bg-neutral-950 p-8 flex flex-col relative group opacity-0"
             >
-              <p className="text-neutral-300 text-sm leading-relaxed mb-8 flex-1">
-                "{t.quote}"
+              {/* index */}
+              <span className="absolute top-4 right-4 text-xs font-mono text-neutral-700">
+                {t.num}
+              </span>
+              {/* giant quote */}
+              <span className="text-6xl font-serif mb-4" style={{ color: '#1a3d30' }}>"</span>
+              <p className="text-neutral-200 text-base leading-relaxed mb-8 flex-1">
+                {t.quote}
               </p>
-              <div className="flex items-center justify-between">
+              <div className="flex items-center justify-between pt-6 border-t" style={{ borderColor: '#1a3d30' }}>
                 <div>
                   <p className="text-neutral-100 font-bold text-sm">{t.author}</p>
-                  <p className="text-neutral-600 font-mono text-xs">{t.role}</p>
+                  <p className="text-neutral-500 font-mono text-xs">{t.role}</p>
                 </div>
                 <span
-                  className="font-mono text-sm font-bold"
+                  className="font-mono text-lg font-black tabular-nums"
                   style={{ color: t.apy.startsWith('-') ? '#b45555' : '#dcb865' }}
                 >
                   {t.apy}
                 </span>
               </div>
+              {/* hover line */}
+              <div className="absolute bottom-0 left-0 right-0 h-1 scale-x-0 group-hover:scale-x-100 transition-transform duration-500 origin-left" style={{ backgroundColor: '#dcb865' }} />
             </div>
           ))}
         </div>
+
+        {/* bottom note */}
+        <p className="mt-8 text-center text-xs font-mono text-neutral-600">
+          Past performance does not guarantee future results. This is gambling, folks.
+        </p>
       </div>
     </section>
   )
@@ -885,10 +1076,11 @@ function InfraSection() {
     const ctx = gsap.context(() => {
       gsap.fromTo(
         '.infra-item',
-        { y: 50, opacity: 0 },
+        { y: 50, opacity: 0, scale: 0.95 },
         {
           y: 0,
           opacity: 1,
+          scale: 1,
           duration: 0.8,
           stagger: 0.1,
           ease: 'power3.out',
@@ -913,48 +1105,125 @@ function InfraSection() {
           },
         }
       )
+
+      // connection lines animation
+      gsap.fromTo(
+        '.connect-line',
+        { scaleX: 0 },
+        {
+          scaleX: 1,
+          duration: 1.5,
+          ease: 'power2.out',
+          scrollTrigger: {
+            trigger: '.infra-grid',
+            start: 'top 75%',
+          },
+        }
+      )
     }, sectionRef)
 
     return () => ctx.revert()
   }, [])
 
   const infra = [
-    { name: 'Yellow Network', desc: 'State channels for gasless bets', tag: 'L2' },
-    { name: 'Chainlink VRF', desc: 'Verifiable random outcomes', tag: 'RNG' },
-    { name: 'Circle CCTP', desc: 'Cross-chain USDC deposits', tag: 'BRIDGE' },
-    { name: 'ERC-4626', desc: 'Standard yield vault', tag: 'VAULT' },
+    { name: 'Yellow Network', desc: 'State channels for gasless bets', tag: 'L2', icon: '⬡' },
+    { name: 'Chainlink VRF', desc: 'Verifiable random outcomes', tag: 'RNG', icon: '◎' },
+    { name: 'Circle CCTP', desc: 'Cross-chain USDC deposits', tag: 'BRIDGE', icon: '◈' },
+    { name: 'ERC-4626', desc: 'Standard yield vault', tag: 'VAULT', icon: '▣' },
   ]
 
   return (
-    <section ref={sectionRef} className="py-32 px-4 md:px-8" style={{ backgroundColor: 'rgba(26, 61, 48, 0.12)' }}>
-      <div className="mx-auto max-w-6xl">
-        <div className="infra-title mb-16">
-          <span className="text-[10px] font-mono font-bold uppercase tracking-[0.4em] text-neutral-600 block mb-4">
-            [006] Infrastructure
-          </span>
-          <h2 className="text-4xl md:text-6xl font-black tracking-[-0.03em] text-neutral-100">
-            Built on giants.
-          </h2>
+    <>
+      <SectionDivider label="INFRASTRUCTURE" />
+      <section ref={sectionRef} className="py-32 px-4 md:px-8 relative overflow-hidden" style={{ backgroundColor: '#0b0d0b' }}>
+        {/* tech grid bg */}
+        <div className="absolute inset-0 opacity-[0.02]">
+          <div
+            className="absolute inset-0"
+            style={{
+              backgroundImage: `radial-gradient(circle at center, #dcb865 1px, transparent 1px)`,
+              backgroundSize: '40px 40px',
+            }}
+          />
         </div>
 
-        <div className="infra-grid grid grid-cols-2 md:grid-cols-4 gap-4">
-          {infra.map((i) => (
-            <div
-              key={i.name}
-              className="infra-item bg-neutral-950 border border-neutral-800 p-6 hover:border-neutral-700 transition-colors group"
-            >
-              <span className="text-[10px] font-mono font-bold uppercase tracking-[0.25em] px-3 py-1.5 inline-block mb-5 transition-colors" style={{ backgroundColor: '#1a3d30', color: '#dcb865' }}>
-                {i.tag}
+        <div className="mx-auto max-w-6xl relative">
+          <div className="infra-title mb-16 flex flex-col md:flex-row md:items-end md:justify-between gap-8 opacity-0">
+            <div>
+              <span className="text-[10px] font-mono font-bold uppercase tracking-[0.4em] text-neutral-500 block mb-4">
+                [006] Infrastructure
               </span>
-              <h3 className="text-lg font-black text-neutral-100 mb-2 tracking-tight">
-                {i.name}
-              </h3>
-              <p className="text-xs text-neutral-500 font-mono">{i.desc}</p>
+              <h2 className="text-4xl md:text-6xl font-black tracking-[-0.03em] text-neutral-100">
+                Built on
+              </h2>
+              <h2 className="text-4xl md:text-6xl font-black tracking-[-0.03em]" style={{ color: '#1a3d30' }}>
+                giants.
+              </h2>
             </div>
-          ))}
+            <p className="max-w-xs text-xs font-mono text-neutral-500 md:text-right leading-relaxed">
+              Battle-tested protocols.
+              <br />
+              <span className="text-neutral-400">No reinventing the wheel.</span>
+            </p>
+          </div>
+
+          {/* connection visualization */}
+          <div className="relative mb-12 hidden md:block">
+            <div className="flex justify-between items-center">
+              <div className="w-3 h-3 rounded-full" style={{ backgroundColor: '#1a3d30' }} />
+              <div className="connect-line flex-1 h-px origin-left mx-4 scale-x-0" style={{ backgroundColor: '#1a3d30' }} />
+              <div className="w-3 h-3 rounded-full" style={{ backgroundColor: '#dcb865' }} />
+              <div className="connect-line flex-1 h-px origin-left mx-4 scale-x-0" style={{ backgroundColor: '#1a3d30' }} />
+              <div className="w-3 h-3 rounded-full" style={{ backgroundColor: '#1a3d30' }} />
+              <div className="connect-line flex-1 h-px origin-left mx-4 scale-x-0" style={{ backgroundColor: '#1a3d30' }} />
+              <div className="w-3 h-3 rounded-full" style={{ backgroundColor: '#1a3d30' }} />
+            </div>
+            <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 text-[10px] font-mono text-neutral-600 bg-[#0b0d0b] px-4">
+              connected
+            </div>
+          </div>
+
+          <div className="infra-grid grid grid-cols-2 md:grid-cols-4 gap-[1px]" style={{ backgroundColor: '#1a3d30' }}>
+            {infra.map((item, i) => (
+              <div
+                key={item.name}
+                className="infra-item bg-neutral-950 p-6 md:p-8 group relative overflow-hidden opacity-0"
+              >
+                {/* index */}
+                <span className="absolute top-4 right-4 text-[9px] font-mono text-neutral-700">
+                  0{i + 1}
+                </span>
+
+                {/* icon */}
+                <span className="text-4xl mb-6 block text-neutral-700 group-hover:text-[#dcb865] transition-colors duration-300">
+                  {item.icon}
+                </span>
+
+                <span className="text-[10px] font-mono font-bold uppercase tracking-[0.25em] px-3 py-1.5 inline-block mb-5 transition-colors text-neutral-500 group-hover:text-[#dcb865]" style={{ backgroundColor: '#1a3d30' }}>
+                  {item.tag}
+                </span>
+                <h3 className="text-lg font-black text-neutral-100 mb-2 tracking-tight group-hover:text-white transition-colors">
+                  {item.name}
+                </h3>
+                <p className="text-xs text-neutral-500 font-mono group-hover:text-neutral-400 transition-colors">
+                  {item.desc}
+                </p>
+
+                {/* hover accent */}
+                <div className="absolute bottom-0 left-0 right-0 h-0.5 scale-x-0 group-hover:scale-x-100 transition-transform duration-500 origin-left" style={{ backgroundColor: '#dcb865' }} />
+              </div>
+            ))}
+          </div>
+
+          {/* bottom note */}
+          <div className="mt-8 flex items-center justify-center gap-4 text-xs font-mono text-neutral-600">
+            <span className="w-8 h-px" style={{ backgroundColor: '#1a3d30' }} />
+            <span>Audited. Production-ready. Proven.</span>
+            <span className="w-8 h-px" style={{ backgroundColor: '#1a3d30' }} />
+          </div>
         </div>
-      </div>
-    </section>
+      </section>
+    </>
   )
 }
 
@@ -965,16 +1234,49 @@ function FinalCTA() {
   useEffect(() => {
     const ctx = gsap.context(() => {
       gsap.fromTo(
-        '.cta-content',
-        { y: 100, opacity: 0 },
+        '.cta-line',
+        { y: 100, opacity: 0, rotationX: 45 },
         {
           y: 0,
           opacity: 1,
-          duration: 1.4,
+          rotationX: 0,
+          duration: 1.2,
+          stagger: 0.15,
+          ease: 'power4.out',
+          scrollTrigger: {
+            trigger: sectionRef.current,
+            start: 'top 75%',
+          },
+        }
+      )
+
+      gsap.fromTo(
+        '.cta-sub',
+        { y: 50, opacity: 0 },
+        {
+          y: 0,
+          opacity: 1,
+          duration: 1,
           ease: 'power3.out',
           scrollTrigger: {
             trigger: sectionRef.current,
-            start: 'top 85%',
+            start: 'top 60%',
+          },
+        }
+      )
+
+      gsap.fromTo(
+        '.cta-btn',
+        { y: 40, opacity: 0 },
+        {
+          y: 0,
+          opacity: 1,
+          duration: 0.8,
+          stagger: 0.1,
+          ease: 'power3.out',
+          scrollTrigger: {
+            trigger: sectionRef.current,
+            start: 'top 55%',
           },
         }
       )
@@ -986,67 +1288,102 @@ function FinalCTA() {
   return (
     <section
       ref={sectionRef}
-      className="py-40 px-4 md:px-8 border-t border-neutral-800 relative overflow-hidden"
-      style={{ backgroundColor: '#0b0d0b' }}
+      className="py-40 px-4 md:px-8 border-t relative overflow-hidden"
+      style={{ backgroundColor: '#0b0d0b', borderColor: '#1a3d30' }}
     >
-      <div className="absolute inset-0 opacity-[0.02]">
+      {/* animated bg grid */}
+      <div className="absolute inset-0 opacity-[0.03]">
         <div
           className="absolute inset-0"
           style={{
             backgroundImage: `
-              linear-gradient(to right, white 1px, transparent 1px),
-              linear-gradient(to bottom, white 1px, transparent 1px)
+              linear-gradient(to right, #dcb865 1px, transparent 1px),
+              linear-gradient(to bottom, #dcb865 1px, transparent 1px)
             `,
-            backgroundSize: '50px 50px',
+            backgroundSize: '60px 60px',
           }}
         />
       </div>
 
-      <div className="cta-content mx-auto max-w-4xl text-center relative">
-        <span className="text-[10px] font-mono font-bold uppercase tracking-[0.4em] text-neutral-600 block mb-8">
-          [007] Ready?
+      {/* large bg text */}
+      <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 text-[30vw] font-black leading-none pointer-events-none select-none tracking-tighter opacity-[0.02] whitespace-nowrap">
+        HOUSE
+      </div>
+
+      {/* corner accents */}
+      <div className="absolute top-0 left-0 w-32 h-32 border-l-2 border-t-2" style={{ borderColor: '#1a3d30' }} />
+      <div className="absolute bottom-0 right-0 w-32 h-32 border-r-2 border-b-2" style={{ borderColor: '#1a3d30' }} />
+
+      <div className="mx-auto max-w-5xl text-center relative" style={{ perspective: '1000px' }}>
+        <span className="text-[10px] font-mono font-bold uppercase tracking-[0.4em] text-neutral-500 block mb-12">
+          [007] The moment of truth
         </span>
 
-        <h2
-          className="font-black tracking-[-0.04em] text-neutral-100 mb-10 leading-[0.85]"
-          style={{ fontSize: 'clamp(2.5rem, 10vw, 8rem)' }}
-        >
-          READY TO BE
-          <br />
-          <span className="italic" style={{ color: '#dcb865' }}>THE HOUSE?</span>
-        </h2>
+        <div className="mb-12">
+          <div className="cta-line overflow-hidden opacity-0">
+            <h2
+              className="font-black tracking-[-0.04em] text-neutral-100 leading-[0.85]"
+              style={{ fontSize: 'clamp(3rem, 12vw, 10rem)' }}
+            >
+              READY
+            </h2>
+          </div>
+          <div className="cta-line overflow-hidden opacity-0">
+            <h2
+              className="font-black tracking-[-0.04em] text-neutral-100 leading-[0.85]"
+              style={{ fontSize: 'clamp(3rem, 12vw, 10rem)', paddingLeft: 'clamp(1rem, 6vw, 6rem)' }}
+            >
+              TO BE
+            </h2>
+          </div>
+          <div className="cta-line overflow-hidden opacity-0">
+            <h2
+              className="font-black tracking-[-0.04em] italic leading-[0.85]"
+              style={{ fontSize: 'clamp(3rem, 12vw, 10rem)', color: '#dcb865', paddingLeft: 'clamp(2rem, 12vw, 12rem)' }}
+            >
+              THE HOUSE?
+            </h2>
+          </div>
+        </div>
 
-        <p className="max-w-md mx-auto text-neutral-500 font-mono text-sm mb-14 leading-relaxed">
+        <p className="cta-sub max-w-md mx-auto text-neutral-400 font-mono text-sm mb-14 leading-relaxed opacity-0">
           Earn yield. Play games. Build casinos.
           <br />
-          Pick one. Or all three.
+          <span className="text-neutral-300">Pick one. Or all three.</span>
         </p>
 
         <div className="flex flex-col sm:flex-row gap-4 justify-center">
           <Link
             to="/explore/app/stake"
-            className="group relative px-14 py-6 text-sm font-black uppercase tracking-[0.2em] overflow-hidden"
+            className="cta-btn group relative px-16 py-7 text-sm font-black uppercase tracking-[0.2em] overflow-hidden opacity-0"
             style={{ backgroundColor: '#dcb865', color: '#0b0d0b' }}
           >
-            <span className="relative z-10 group-hover:text-neutral-100 transition-colors duration-300">
+            <span className="relative z-10 group-hover:text-[#dcb865] transition-colors duration-300">
               Launch App
             </span>
-            <div className="absolute inset-0 translate-y-full group-hover:translate-y-0 transition-transform duration-300 ease-out" style={{ backgroundColor: '#1a3d30' }} />
+            <div className="absolute inset-0 translate-y-full group-hover:translate-y-0 transition-transform duration-300 ease-out" style={{ backgroundColor: '#0b0d0b' }} />
           </Link>
           <a
             href="https://github.com"
             target="_blank"
             rel="noopener noreferrer"
-            className="px-14 py-6 border-2 text-neutral-100 text-sm font-black uppercase tracking-[0.2em] transition-colors"
+            className="cta-btn group relative px-16 py-7 border-2 text-neutral-100 text-sm font-black uppercase tracking-[0.2em] transition-colors overflow-hidden opacity-0"
             style={{ borderColor: '#1a3d30' }}
           >
-            View Docs
+            <span className="relative z-10 group-hover:text-[#0b0d0b] transition-colors duration-300">
+              View Docs
+            </span>
+            <div className="absolute inset-0 translate-y-full group-hover:translate-y-0 transition-transform duration-300 ease-out" style={{ backgroundColor: '#dcb865' }} />
           </a>
         </div>
 
-        <p className="mt-20 text-[10px] font-mono text-neutral-700 tracking-[0.3em]">
-          HOUSE//PROTOCOL — EVERYONE CAN BE THE HOUSE
-        </p>
+        {/* closing badge */}
+        <div className="mt-24 inline-flex items-center gap-4 px-6 py-3 border" style={{ borderColor: '#1a3d30' }}>
+          <div className="w-2 h-2 rounded-full animate-pulse" style={{ backgroundColor: '#dcb865' }} />
+          <p className="text-[10px] font-mono text-neutral-500 tracking-[0.3em]">
+            HOUSE//PROTOCOL — EVERYONE CAN BE THE HOUSE
+          </p>
+        </div>
       </div>
     </section>
   )
