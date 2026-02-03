@@ -27,6 +27,7 @@ plans/
 
 # OS
 .DS_Store
+/CLAUDE.md
 Thumbs.db
 
 # Logs
