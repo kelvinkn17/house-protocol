@@ -9,38 +9,180 @@
 // Additionally, you should also exclude this file from your linter and/or formatter to prevent it from being checked or modified.
 
 import { Route as rootRouteImport } from './routes/__root'
+import { Route as ExploreRouteImport } from './routes/explore'
 import { Route as IndexRouteImport } from './routes/index'
+import { Route as ExploreIndexRouteImport } from './routes/explore/index'
+import { Route as ExploreBuildRouteImport } from './routes/explore/build'
+import { Route as ExploreAppRouteImport } from './routes/explore/app'
+import { Route as ExploreBuildKeysRouteImport } from './routes/explore/build/keys'
+import { Route as ExploreBuildGamesRouteImport } from './routes/explore/build/games'
+import { Route as ExploreBuildAnalyticsRouteImport } from './routes/explore/build/analytics'
+import { Route as ExploreAppStakeRouteImport } from './routes/explore/app/stake'
+import { Route as ExploreAppPlayRouteImport } from './routes/explore/app/play'
+import { Route as ExploreBuildGamesIdRouteImport } from './routes/explore/build/games.$id'
+import { Route as ExploreAppPlaySlugRouteImport } from './routes/explore/app/play.$slug'
 
+const ExploreRoute = ExploreRouteImport.update({
+  id: '/explore',
+  path: '/explore',
+  getParentRoute: () => rootRouteImport,
+} as any)
 const IndexRoute = IndexRouteImport.update({
   id: '/',
   path: '/',
   getParentRoute: () => rootRouteImport,
 } as any)
+const ExploreIndexRoute = ExploreIndexRouteImport.update({
+  id: '/',
+  path: '/',
+  getParentRoute: () => ExploreRoute,
+} as any)
+const ExploreBuildRoute = ExploreBuildRouteImport.update({
+  id: '/build',
+  path: '/build',
+  getParentRoute: () => ExploreRoute,
+} as any)
+const ExploreAppRoute = ExploreAppRouteImport.update({
+  id: '/app',
+  path: '/app',
+  getParentRoute: () => ExploreRoute,
+} as any)
+const ExploreBuildKeysRoute = ExploreBuildKeysRouteImport.update({
+  id: '/keys',
+  path: '/keys',
+  getParentRoute: () => ExploreBuildRoute,
+} as any)
+const ExploreBuildGamesRoute = ExploreBuildGamesRouteImport.update({
+  id: '/games',
+  path: '/games',
+  getParentRoute: () => ExploreBuildRoute,
+} as any)
+const ExploreBuildAnalyticsRoute = ExploreBuildAnalyticsRouteImport.update({
+  id: '/analytics',
+  path: '/analytics',
+  getParentRoute: () => ExploreBuildRoute,
+} as any)
+const ExploreAppStakeRoute = ExploreAppStakeRouteImport.update({
+  id: '/stake',
+  path: '/stake',
+  getParentRoute: () => ExploreAppRoute,
+} as any)
+const ExploreAppPlayRoute = ExploreAppPlayRouteImport.update({
+  id: '/play',
+  path: '/play',
+  getParentRoute: () => ExploreAppRoute,
+} as any)
+const ExploreBuildGamesIdRoute = ExploreBuildGamesIdRouteImport.update({
+  id: '/$id',
+  path: '/$id',
+  getParentRoute: () => ExploreBuildGamesRoute,
+} as any)
+const ExploreAppPlaySlugRoute = ExploreAppPlaySlugRouteImport.update({
+  id: '/$slug',
+  path: '/$slug',
+  getParentRoute: () => ExploreAppPlayRoute,
+} as any)
 
 export interface FileRoutesByFullPath {
   '/': typeof IndexRoute
+  '/explore': typeof ExploreRouteWithChildren
+  '/explore/app': typeof ExploreAppRouteWithChildren
+  '/explore/build': typeof ExploreBuildRouteWithChildren
+  '/explore/': typeof ExploreIndexRoute
+  '/explore/app/play': typeof ExploreAppPlayRouteWithChildren
+  '/explore/app/stake': typeof ExploreAppStakeRoute
+  '/explore/build/analytics': typeof ExploreBuildAnalyticsRoute
+  '/explore/build/games': typeof ExploreBuildGamesRouteWithChildren
+  '/explore/build/keys': typeof ExploreBuildKeysRoute
+  '/explore/app/play/$slug': typeof ExploreAppPlaySlugRoute
+  '/explore/build/games/$id': typeof ExploreBuildGamesIdRoute
 }
 export interface FileRoutesByTo {
   '/': typeof IndexRoute
+  '/explore/app': typeof ExploreAppRouteWithChildren
+  '/explore/build': typeof ExploreBuildRouteWithChildren
+  '/explore': typeof ExploreIndexRoute
+  '/explore/app/play': typeof ExploreAppPlayRouteWithChildren
+  '/explore/app/stake': typeof ExploreAppStakeRoute
+  '/explore/build/analytics': typeof ExploreBuildAnalyticsRoute
+  '/explore/build/games': typeof ExploreBuildGamesRouteWithChildren
+  '/explore/build/keys': typeof ExploreBuildKeysRoute
+  '/explore/app/play/$slug': typeof ExploreAppPlaySlugRoute
+  '/explore/build/games/$id': typeof ExploreBuildGamesIdRoute
 }
 export interface FileRoutesById {
   __root__: typeof rootRouteImport
   '/': typeof IndexRoute
+  '/explore': typeof ExploreRouteWithChildren
+  '/explore/app': typeof ExploreAppRouteWithChildren
+  '/explore/build': typeof ExploreBuildRouteWithChildren
+  '/explore/': typeof ExploreIndexRoute
+  '/explore/app/play': typeof ExploreAppPlayRouteWithChildren
+  '/explore/app/stake': typeof ExploreAppStakeRoute
+  '/explore/build/analytics': typeof ExploreBuildAnalyticsRoute
+  '/explore/build/games': typeof ExploreBuildGamesRouteWithChildren
+  '/explore/build/keys': typeof ExploreBuildKeysRoute
+  '/explore/app/play/$slug': typeof ExploreAppPlaySlugRoute
+  '/explore/build/games/$id': typeof ExploreBuildGamesIdRoute
 }
 export interface FileRouteTypes {
   fileRoutesByFullPath: FileRoutesByFullPath
-  fullPaths: '/'
+  fullPaths:
+    | '/'
+    | '/explore'
+    | '/explore/app'
+    | '/explore/build'
+    | '/explore/'
+    | '/explore/app/play'
+    | '/explore/app/stake'
+    | '/explore/build/analytics'
+    | '/explore/build/games'
+    | '/explore/build/keys'
+    | '/explore/app/play/$slug'
+    | '/explore/build/games/$id'
   fileRoutesByTo: FileRoutesByTo
-  to: '/'
-  id: '__root__' | '/'
+  to:
+    | '/'
+    | '/explore/app'
+    | '/explore/build'
+    | '/explore'
+    | '/explore/app/play'
+    | '/explore/app/stake'
+    | '/explore/build/analytics'
+    | '/explore/build/games'
+    | '/explore/build/keys'
+    | '/explore/app/play/$slug'
+    | '/explore/build/games/$id'
+  id:
+    | '__root__'
+    | '/'
+    | '/explore'
+    | '/explore/app'
+    | '/explore/build'
+    | '/explore/'
+    | '/explore/app/play'
+    | '/explore/app/stake'
+    | '/explore/build/analytics'
+    | '/explore/build/games'
+    | '/explore/build/keys'
+    | '/explore/app/play/$slug'
+    | '/explore/build/games/$id'
   fileRoutesById: FileRoutesById
 }
 export interface RootRouteChildren {
   IndexRoute: typeof IndexRoute
+  ExploreRoute: typeof ExploreRouteWithChildren
 }
 
 declare module '@tanstack/react-router' {
   interface FileRoutesByPath {
+    '/explore': {
+      id: '/explore'
+      path: '/explore'
+      fullPath: '/explore'
+      preLoaderRoute: typeof ExploreRouteImport
+      parentRoute: typeof rootRouteImport
+    }
     '/': {
       id: '/'
       path: '/'
@@ -48,11 +190,150 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof IndexRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/explore/': {
+      id: '/explore/'
+      path: '/'
+      fullPath: '/explore/'
+      preLoaderRoute: typeof ExploreIndexRouteImport
+      parentRoute: typeof ExploreRoute
+    }
+    '/explore/build': {
+      id: '/explore/build'
+      path: '/build'
+      fullPath: '/explore/build'
+      preLoaderRoute: typeof ExploreBuildRouteImport
+      parentRoute: typeof ExploreRoute
+    }
+    '/explore/app': {
+      id: '/explore/app'
+      path: '/app'
+      fullPath: '/explore/app'
+      preLoaderRoute: typeof ExploreAppRouteImport
+      parentRoute: typeof ExploreRoute
+    }
+    '/explore/build/keys': {
+      id: '/explore/build/keys'
+      path: '/keys'
+      fullPath: '/explore/build/keys'
+      preLoaderRoute: typeof ExploreBuildKeysRouteImport
+      parentRoute: typeof ExploreBuildRoute
+    }
+    '/explore/build/games': {
+      id: '/explore/build/games'
+      path: '/games'
+      fullPath: '/explore/build/games'
+      preLoaderRoute: typeof ExploreBuildGamesRouteImport
+      parentRoute: typeof ExploreBuildRoute
+    }
+    '/explore/build/analytics': {
+      id: '/explore/build/analytics'
+      path: '/analytics'
+      fullPath: '/explore/build/analytics'
+      preLoaderRoute: typeof ExploreBuildAnalyticsRouteImport
+      parentRoute: typeof ExploreBuildRoute
+    }
+    '/explore/app/stake': {
+      id: '/explore/app/stake'
+      path: '/stake'
+      fullPath: '/explore/app/stake'
+      preLoaderRoute: typeof ExploreAppStakeRouteImport
+      parentRoute: typeof ExploreAppRoute
+    }
+    '/explore/app/play': {
+      id: '/explore/app/play'
+      path: '/play'
+      fullPath: '/explore/app/play'
+      preLoaderRoute: typeof ExploreAppPlayRouteImport
+      parentRoute: typeof ExploreAppRoute
+    }
+    '/explore/build/games/$id': {
+      id: '/explore/build/games/$id'
+      path: '/$id'
+      fullPath: '/explore/build/games/$id'
+      preLoaderRoute: typeof ExploreBuildGamesIdRouteImport
+      parentRoute: typeof ExploreBuildGamesRoute
+    }
+    '/explore/app/play/$slug': {
+      id: '/explore/app/play/$slug'
+      path: '/$slug'
+      fullPath: '/explore/app/play/$slug'
+      preLoaderRoute: typeof ExploreAppPlaySlugRouteImport
+      parentRoute: typeof ExploreAppPlayRoute
+    }
   }
 }
 
+interface ExploreAppPlayRouteChildren {
+  ExploreAppPlaySlugRoute: typeof ExploreAppPlaySlugRoute
+}
+
+const ExploreAppPlayRouteChildren: ExploreAppPlayRouteChildren = {
+  ExploreAppPlaySlugRoute: ExploreAppPlaySlugRoute,
+}
+
+const ExploreAppPlayRouteWithChildren = ExploreAppPlayRoute._addFileChildren(
+  ExploreAppPlayRouteChildren,
+)
+
+interface ExploreAppRouteChildren {
+  ExploreAppPlayRoute: typeof ExploreAppPlayRouteWithChildren
+  ExploreAppStakeRoute: typeof ExploreAppStakeRoute
+}
+
+const ExploreAppRouteChildren: ExploreAppRouteChildren = {
+  ExploreAppPlayRoute: ExploreAppPlayRouteWithChildren,
+  ExploreAppStakeRoute: ExploreAppStakeRoute,
+}
+
+const ExploreAppRouteWithChildren = ExploreAppRoute._addFileChildren(
+  ExploreAppRouteChildren,
+)
+
+interface ExploreBuildGamesRouteChildren {
+  ExploreBuildGamesIdRoute: typeof ExploreBuildGamesIdRoute
+}
+
+const ExploreBuildGamesRouteChildren: ExploreBuildGamesRouteChildren = {
+  ExploreBuildGamesIdRoute: ExploreBuildGamesIdRoute,
+}
+
+const ExploreBuildGamesRouteWithChildren =
+  ExploreBuildGamesRoute._addFileChildren(ExploreBuildGamesRouteChildren)
+
+interface ExploreBuildRouteChildren {
+  ExploreBuildAnalyticsRoute: typeof ExploreBuildAnalyticsRoute
+  ExploreBuildGamesRoute: typeof ExploreBuildGamesRouteWithChildren
+  ExploreBuildKeysRoute: typeof ExploreBuildKeysRoute
+}
+
+const ExploreBuildRouteChildren: ExploreBuildRouteChildren = {
+  ExploreBuildAnalyticsRoute: ExploreBuildAnalyticsRoute,
+  ExploreBuildGamesRoute: ExploreBuildGamesRouteWithChildren,
+  ExploreBuildKeysRoute: ExploreBuildKeysRoute,
+}
+
+const ExploreBuildRouteWithChildren = ExploreBuildRoute._addFileChildren(
+  ExploreBuildRouteChildren,
+)
+
+interface ExploreRouteChildren {
+  ExploreAppRoute: typeof ExploreAppRouteWithChildren
+  ExploreBuildRoute: typeof ExploreBuildRouteWithChildren
+  ExploreIndexRoute: typeof ExploreIndexRoute
+}
+
+const ExploreRouteChildren: ExploreRouteChildren = {
+  ExploreAppRoute: ExploreAppRouteWithChildren,
+  ExploreBuildRoute: ExploreBuildRouteWithChildren,
+  ExploreIndexRoute: ExploreIndexRoute,
+}
+
+const ExploreRouteWithChildren =
+  ExploreRoute._addFileChildren(ExploreRouteChildren)
+
 const rootRouteChildren: RootRouteChildren = {
   IndexRoute: IndexRoute,
+  ExploreRoute: ExploreRouteWithChildren,
 }
 export const routeTree = rootRouteImport
   ._addFileChildren(rootRouteChildren)

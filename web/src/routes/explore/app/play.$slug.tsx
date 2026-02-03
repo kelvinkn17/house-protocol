@@ -1,6 +1,6 @@
 import { createFileRoute } from '@tanstack/react-router'
 
-export const Route = createFileRoute('/_explore/app/play/$slug')({
+export const Route = createFileRoute('/explore/app/play/$slug')({
   component: GamePage,
 })
 

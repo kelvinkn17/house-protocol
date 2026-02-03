@@ -33,11 +33,11 @@ export const Route = createRootRouteWithContext<MyRouterContext>()({
         content: 'width=device-width, initial-scale=1',
       },
       {
-        title: 'Kwek Labs Web Starter',
+        title: 'House Protocol',
       },
       {
         name: 'description',
-        content: 'A modern web starter template by Kwek Labs',
+        content: 'Everyone can be the house. Shared liquidity for on-chain gambling.',
       },
     ],
     links: [

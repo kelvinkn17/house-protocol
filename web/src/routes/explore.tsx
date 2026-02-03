@@ -1,7 +1,7 @@
 import { createFileRoute, Outlet, Link, useLocation } from '@tanstack/react-router'
 import { cnm } from '@/utils/style'
 
-export const Route = createFileRoute('/_explore')({
+export const Route = createFileRoute('/explore')({
   component: ExploreLayout,
 })
 
@@ -9,25 +9,25 @@ export const Route = createFileRoute('/_explore')({
 function ExploreLayout() {
   const location = useLocation()
   const path = location.pathname
-  const isBuild = path.startsWith('/_explore/build')
+  const isBuild = path.startsWith('/explore/build')
 
   return (
     <div className="min-h-screen bg-neutral-950">
       {/* nav */}
       <nav className="fixed top-0 left-0 right-0 z-50 border-b border-neutral-800 bg-neutral-950/80 backdrop-blur-sm">
         <div className="mx-auto flex h-14 max-w-6xl items-center justify-between px-4">
-          <Link to="/_explore" className="text-lg font-semibold tracking-tight text-neutral-100">
+          <Link to="/explore" className="text-lg font-semibold tracking-tight text-neutral-100">
             House Protocol
           </Link>
 
           <div className="flex items-center gap-1">
-            <NavLink to="/_explore/app/stake" active={path.includes('/stake')}>
+            <NavLink to="/explore/app/stake" active={path.includes('/stake')}>
               Stake
             </NavLink>
-            <NavLink to="/_explore/app/play" active={path.includes('/play')}>
+            <NavLink to="/explore/app/play" active={path.includes('/play')}>
               Play
             </NavLink>
-            <NavLink to="/_explore/build" active={isBuild}>
+            <NavLink to="/explore/build" active={isBuild}>
               Build
             </NavLink>
           </div>

@@ -1,7 +1,7 @@
 import { createFileRoute, Link, Outlet, useLocation } from '@tanstack/react-router'
 import { cnm } from '@/utils/style'
 
-export const Route = createFileRoute('/_explore/build')({
+export const Route = createFileRoute('/explore/build')({
   component: BuildLayout,
 })
 
@@ -10,7 +10,7 @@ function BuildLayout() {
   const path = location.pathname
 
   // check if we're on a sub-route or the main build page
-  const isIndex = path === '/_explore/build' || path === '/_explore/build/'
+  const isIndex = path === '/explore/build' || path === '/explore/build/'
 
   if (isIndex) {
     return <BuildIndexPage />
@@ -21,13 +21,13 @@ function BuildLayout() {
       {/* sub nav */}
       <div className="border-b border-neutral-800 bg-neutral-900/50">
         <div className="mx-auto flex max-w-6xl gap-6 px-4">
-          <SubNavLink to="/_explore/build/games" active={path.includes('/games')}>
+          <SubNavLink to="/explore/build/games" active={path.includes('/games')}>
             My Games
           </SubNavLink>
-          <SubNavLink to="/_explore/build/keys" active={path.includes('/keys')}>
+          <SubNavLink to="/explore/build/keys" active={path.includes('/keys')}>
             API Keys
           </SubNavLink>
-          <SubNavLink to="/_explore/build/analytics" active={path.includes('/analytics')}>
+          <SubNavLink to="/explore/build/analytics" active={path.includes('/analytics')}>
             Analytics
           </SubNavLink>
         </div>
@@ -67,7 +67,7 @@ function BuildIndexPage() {
           </p>
           <div className="mt-8 flex justify-center gap-4">
             <Link
-              to="/_explore/build/games"
+              to="/explore/build/games"
               className="rounded-lg bg-neutral-100 px-6 py-3 text-sm font-medium text-neutral-900 transition-colors hover:bg-neutral-200"
             >
               Create Your First Game
@@ -199,7 +199,7 @@ function MyDiceGame() {
             Create your first game in minutes. No smart contracts to write, no servers to run.
           </p>
           <Link
-            to="/_explore/build/games"
+            to="/explore/build/games"
             className="inline-block rounded-lg bg-neutral-100 px-8 py-3 text-sm font-medium text-neutral-900 transition-colors hover:bg-neutral-200"
           >
             Get Started
