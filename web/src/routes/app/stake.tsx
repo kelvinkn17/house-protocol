@@ -2,7 +2,7 @@ import { createFileRoute } from '@tanstack/react-router'
 import { useState } from 'react'
 import { cnm } from '@/utils/style'
 
-export const Route = createFileRoute('/explore/app/stake')({
+export const Route = createFileRoute('/app/stake')({
   component: StakePage,
 })
 

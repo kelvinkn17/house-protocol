@@ -17,45 +17,51 @@ export default function HeroSection() {
     const ctx = gsap.context(() => {
       const tl = gsap.timeline({
         defaults: { ease: 'power4.out' },
-        delay: 0.3,
+        delay: 0.2,
       })
 
-      // title lines stagger reveal
+      // title lines stagger reveal, faster
       const titleLines = leftRef.current?.querySelectorAll('.title-line')
       if (titleLines) {
-        gsap.set(titleLines, { y: 120, opacity: 0, rotationX: 50 })
+        gsap.set(titleLines, { y: 80, opacity: 0, rotationX: 30 })
         tl.to(titleLines, {
           y: 0,
           opacity: 1,
           rotationX: 0,
-          duration: 1.4,
-          stagger: 0.1,
+          duration: 0.8,
+          stagger: 0.08,
           ease: 'power4.out',
         })
       }
 
-      gsap.set('.hero-sub', { y: 50, opacity: 0 })
-      gsap.set('.hero-cta', { y: 40, opacity: 0 })
+      gsap.set('.hero-sub', { y: 30, opacity: 0 })
+      gsap.set('.hero-cta', { y: 25, opacity: 0 })
 
-      tl.to('.hero-sub', { y: 0, opacity: 1, duration: 1 }, '-=0.8').to(
+      tl.to('.hero-sub', { y: 0, opacity: 1, duration: 0.6 }, '-=0.4').to(
         '.hero-cta',
-        { y: 0, opacity: 1, duration: 0.8 },
-        '-=0.6'
+        { y: 0, opacity: 1, duration: 0.5 },
+        '-=0.3'
       )
 
-      // role cards cascade in
-      gsap.set('.hero-role-card', { x: 80, opacity: 0, scale: 0.9 })
+      // choose your path label and line animation
+      gsap.set('.path-label', { x: -30, opacity: 0 })
+      gsap.set('.path-line', { scaleX: 0, transformOrigin: 'left' })
+      tl.to('.path-label', { x: 0, opacity: 1, duration: 0.5 }, '-=0.2')
+        .to('.path-line', { scaleX: 1, duration: 0.6, ease: 'power2.out' }, '-=0.3')
+
+      // role cards cascade in, faster
+      gsap.set('.hero-role-card', { y: 40, opacity: 0, scale: 0.95 })
       tl.to(
         '.hero-role-card',
         {
-          x: 0,
+          y: 0,
           opacity: 1,
           scale: 1,
-          duration: 1,
-          stagger: 0.12,
+          duration: 0.6,
+          stagger: 0.08,
           ease: 'power3.out',
         },
-        '-=1'
+        '-=0.4'
       )
 
       // parallax grid
@@ -78,7 +84,7 @@ export default function HeroSection() {
     {
       title: 'STAKERS',
       tagline: 'be the house',
-      desc: 'Deposit USDC/ETH, earn yield',
+      desc: 'Deposit USDC/ETH, earn yield from every bet placed on the protocol',
       to: '/app/stake',
       icon: '◆',
       num: '01',
@@ -87,7 +93,7 @@ export default function HeroSection() {
     {
       title: 'PLAYERS',
       tagline: 'beat the house',
-      desc: 'Play gasless, instant settlement',
+      desc: 'Play gasless with instant settlement via state channels',
       to: '/app/play',
       icon: '◇',
       num: '02',
@@ -96,7 +102,7 @@ export default function HeroSection() {
     {
       title: 'BUILDERS',
       tagline: 'become the house',
-      desc: 'Deploy games, earn 25%',
+      desc: 'Deploy games with no code, earn 25% of house edge',
       to: '/build',
       icon: '○',
       num: '03',
@@ -105,7 +111,7 @@ export default function HeroSection() {
   ]
 
   return (
-    <section ref={containerRef} className="relative min-h-screen flex flex-col px-4 md:px-8 pt-24 pb-8 overflow-hidden">
+    <section ref={containerRef} className="relative min-h-screen flex flex-col px-4 md:px-8 pt-16 pb-8 overflow-hidden">
       {/* grid bg */}
       <div ref={gridRef} className="absolute inset-0 overflow-hidden pointer-events-none">
         <div
@@ -194,42 +200,44 @@ export default function HeroSection() {
         {/* role cards */}
         <div>
           <div className="text-[10px] font-mono text-neutral-500 uppercase tracking-[0.3em] mb-4 flex items-center gap-4">
-            <span>CHOOSE YOUR PATH</span>
-            <div className="flex-1 h-px bg-neutral-700" />
+            <span className="path-label opacity-0">CHOOSE YOUR PATH</span>
+            <div className="path-line flex-1 h-px bg-neutral-700 scale-x-0" />
           </div>
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
             {heroRoles.map((role) => (
               <Link
                 key={role.title}
                 to={role.to}
-                className="hero-role-card group relative border border-neutral-800 p-4 lg:p-5 hover:border-neutral-600 transition-all duration-300 bg-neutral-900/50 opacity-0 overflow-hidden"
+                className="hero-role-card group relative border border-neutral-800 p-6 lg:p-8 hover:border-neutral-600 transition-all duration-300 bg-neutral-900/50 opacity-0 overflow-hidden min-h-[180px] md:min-h-[200px]"
               >
-                <div className="flex items-start gap-4 relative z-10">
-                  <div className="flex flex-col items-center shrink-0">
-                    <span className="text-2xl text-neutral-700 group-hover:text-[#dcb865] transition-colors duration-300">
-                      {role.icon}
-                    </span>
-                    <span className="text-[9px] font-mono text-neutral-700 mt-1">{role.num}</span>
+                <div className="flex flex-col h-full relative z-10">
+                  <div className="flex items-start justify-between mb-4">
+                    <div className="flex flex-col items-center">
+                      <span className="text-3xl text-neutral-700 group-hover:text-[#dcb865] transition-colors duration-300">
+                        {role.icon}
+                      </span>
+                      <span className="text-[9px] font-mono text-neutral-700 mt-1">{role.num}</span>
+                    </div>
+                    <div className="flex items-center opacity-0 -translate-x-2 group-hover:opacity-100 group-hover:translate-x-0 transition-all duration-300">
+                      <span className="text-xl text-[#dcb865]">→</span>
+                    </div>
                   </div>
-                  <div className="flex-1 min-w-0">
-                    <h3 className="text-lg font-black tracking-tight text-neutral-100 mb-0.5 group-hover:text-white transition-colors">
+                  <div className="flex-1">
+                    <h3 className="text-xl lg:text-2xl font-black tracking-tight text-neutral-100 mb-1 group-hover:text-white transition-colors">
                       {role.title}
                     </h3>
-                    <p className="text-[10px] font-mono italic text-neutral-400 mb-1">{role.tagline}</p>
-                    <p className="text-sm text-neutral-300 group-hover:text-neutral-200 transition-colors">
+                    <p className="text-xs font-mono italic text-neutral-400 mb-2">{role.tagline}</p>
+                    <p className="text-sm text-neutral-300 group-hover:text-neutral-200 transition-colors leading-relaxed">
                       {role.desc}
                     </p>
                   </div>
-                  <div className="flex items-center opacity-0 -translate-x-2 group-hover:opacity-100 group-hover:translate-x-0 transition-all duration-300 shrink-0">
-                    <span className="text-lg text-[#dcb865]">→</span>
-                  </div>
                 </div>
-                {/* 3d model accent, more visible and less cropped */}
-                <div className="absolute -bottom-4 -right-4 opacity-70 group-hover:opacity-90 transition-opacity duration-500 pointer-events-none">
+                {/* 3d model accent, bigger and more visible */}
+                <div className="absolute -bottom-2 -right-2 opacity-75 group-hover:opacity-100 transition-opacity duration-500 pointer-events-none scale-125">
                   <role.Model />
                 </div>
                 <div
-                  className="absolute bottom-0 left-0 w-0 h-0.5 group-hover:w-full transition-all duration-500"
+                  className="absolute bottom-0 left-0 w-0 h-1 group-hover:w-full transition-all duration-500"
                   style={{ backgroundColor: '#dcb865' }}
                 />
               </Link>

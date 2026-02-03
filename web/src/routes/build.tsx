@@ -1,7 +1,8 @@
 import { createFileRoute, Link, Outlet, useLocation } from '@tanstack/react-router'
 import { cnm } from '@/utils/style'
+import AppLayout from '@/components/layout/AppLayout'
 
-export const Route = createFileRoute('/explore/build')({
+export const Route = createFileRoute('/build')({
   component: BuildLayout,
 })
 
@@ -9,30 +10,36 @@ function BuildLayout() {
   const location = useLocation()
   const path = location.pathname
 
-  const isIndex = path === '/explore/build' || path === '/explore/build/'
+  const isIndex = path === '/build' || path === '/build/'
 
   if (isIndex) {
-    return <BuildIndexPage />
+    return (
+      <AppLayout>
+        <BuildIndexPage />
+      </AppLayout>
+    )
   }
 
   return (
-    <div className="min-h-screen">
-      {/* sub nav */}
-      <div className="border-b border-neutral-800 bg-neutral-900/50">
-        <div className="mx-auto flex max-w-6xl gap-6 px-4">
-          <SubNavLink to="/explore/build/games" active={path.includes('/games')}>
-            My Games
-          </SubNavLink>
-          <SubNavLink to="/explore/build/keys" active={path.includes('/keys')}>
-            API Keys
-          </SubNavLink>
-          <SubNavLink to="/explore/build/analytics" active={path.includes('/analytics')}>
-            Analytics
-          </SubNavLink>
+    <AppLayout>
+      <div className="min-h-screen">
+        {/* sub nav */}
+        <div className="border-b border-neutral-800 bg-neutral-900/50">
+          <div className="mx-auto flex max-w-6xl gap-6 px-4">
+            <SubNavLink to="/build/games" active={path.includes('/games')}>
+              My Games
+            </SubNavLink>
+            <SubNavLink to="/build/keys" active={path.includes('/keys')}>
+              API Keys
+            </SubNavLink>
+            <SubNavLink to="/build/analytics" active={path.includes('/analytics')}>
+              Analytics
+            </SubNavLink>
+          </div>
         </div>
+        <Outlet />
       </div>
-      <Outlet />
-    </div>
+    </AppLayout>
   )
 }
 
@@ -42,9 +49,7 @@ function SubNavLink({ to, active, children }: { to: string; active: boolean; chi
       to={to}
       className={cnm(
         'border-b-2 py-3 text-sm font-medium transition-colors',
-        active
-          ? 'border-neutral-100 text-neutral-100'
-          : 'border-transparent text-neutral-500 hover:text-neutral-300'
+        active ? 'border-neutral-100 text-neutral-100' : 'border-transparent text-neutral-500 hover:text-neutral-300'
       )}
     >
       {children}
@@ -64,13 +69,13 @@ function BuildIndexPage() {
           </p>
           <div className="mt-8 flex justify-center gap-4">
             <Link
-              to="/explore/build/games/new"
+              to="/build/games/new"
               className="rounded-lg bg-neutral-100 px-6 py-3 text-sm font-medium text-neutral-900 transition-colors hover:bg-neutral-200"
             >
               Create Game
             </Link>
             <Link
-              to="/explore/build/games"
+              to="/build/games"
               className="rounded-lg border border-neutral-700 px-6 py-3 text-sm font-medium text-neutral-100 transition-colors hover:border-neutral-500 hover:bg-neutral-800"
             >
               My Games
@@ -92,9 +97,7 @@ function BuildIndexPage() {
         {/* revenue */}
         <div className="mb-16 rounded-xl border border-neutral-800 bg-neutral-900/50 p-6">
           <h2 className="mb-6 text-center text-xl font-semibold text-neutral-100">Revenue Split</h2>
-          <p className="mb-4 text-center text-sm text-neutral-500">
-            $100 bet, 2% house edge = $2.00 total
-          </p>
+          <p className="mb-4 text-center text-sm text-neutral-500">$100 bet, 2% house edge = $2.00 total</p>
           <div className="mx-auto max-w-xs space-y-2">
             <Row label="Stakers" value="$1.40" sub="70%" />
             <Row label="You" value="$0.50" sub="25%" highlight />
@@ -130,7 +133,7 @@ function MyGame() {
         {/* cta */}
         <div className="text-center">
           <Link
-            to="/explore/build/games/new"
+            to="/build/games/new"
             className="inline-block rounded-lg bg-neutral-100 px-8 py-3 text-sm font-medium text-neutral-900 transition-colors hover:bg-neutral-200"
           >
             Create Your First Game
@@ -158,9 +161,7 @@ function Row({ label, value, sub, highlight }: { label: string; value: string; s
     <div className="flex items-center justify-between">
       <span className="text-sm text-neutral-400">{label}</span>
       <div className="flex items-center gap-2">
-        <span className={cnm('font-medium', highlight ? 'text-green-400' : 'text-neutral-100')}>
-          {value}
-        </span>
+        <span className={cnm('font-medium', highlight ? 'text-green-400' : 'text-neutral-100')}>{value}</span>
         <span className="text-xs text-neutral-500">{sub}</span>
       </div>
     </div>
