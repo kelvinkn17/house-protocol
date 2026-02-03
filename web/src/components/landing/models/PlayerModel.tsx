@@ -11,8 +11,8 @@ export default function PlayerModel() {
     if (!containerRef.current) return
 
     const container = containerRef.current
-    const w = 160
-    const h = 160
+    const w = 280
+    const h = 280
 
     const renderer = new THREE.WebGLRenderer({ antialias: true, alpha: true })
     renderer.setSize(w, h)
@@ -41,9 +41,9 @@ export default function PlayerModel() {
     const mainMat = new THREE.MeshPhongMaterial({
       color: 0x1a1a1a,
       emissive: DARK_GOLD,
-      emissiveIntensity: 0.2,
+      emissiveIntensity: 0.25,
       flatShading: true,
-      shininess: 80,
+      shininess: 100,
       specular: new THREE.Color(GOLD),
     })
     const main = new THREE.Mesh(mainGeo, mainMat)
@@ -55,7 +55,7 @@ export default function PlayerModel() {
       color: GOLD,
       wireframe: true,
       transparent: true,
-      opacity: 0.2,
+      opacity: 0.3,
     })
     const wire = new THREE.Mesh(wireGeo, wireMat)
     scene.add(wire)
@@ -63,11 +63,11 @@ export default function PlayerModel() {
     // orbiting rings
     const rings: THREE.Mesh[] = []
     for (let i = 0; i < 3; i++) {
-      const ringGeo = new THREE.TorusGeometry(1.5 + i * 0.15, 0.008, 8, 64)
+      const ringGeo = new THREE.TorusGeometry(1.5 + i * 0.15, 0.01, 8, 64)
       const ringMat = new THREE.MeshBasicMaterial({
         color: GOLD,
         transparent: true,
-        opacity: 0.15 - i * 0.03,
+        opacity: 0.25 - i * 0.05,
       })
       const ring = new THREE.Mesh(ringGeo, ringMat)
       ring.rotation.x = Math.PI / 2 + (i - 1) * 0.3
@@ -88,7 +88,7 @@ export default function PlayerModel() {
       tPos[i * 3 + 2] = Math.sin(angle) * r * (0.8 + Math.random() * 0.4)
     }
     trailGeo.setAttribute('position', new THREE.BufferAttribute(tPos, 3))
-    const trailMat = new THREE.PointsMaterial({ color: GOLD, size: 0.025, transparent: true, opacity: 0.35 })
+    const trailMat = new THREE.PointsMaterial({ color: GOLD, size: 0.03, transparent: true, opacity: 0.45 })
     const trail = new THREE.Points(trailGeo, trailMat)
     scene.add(trail)
 
@@ -120,5 +120,5 @@ export default function PlayerModel() {
     }
   }, [])
 
-  return <div ref={containerRef} className="w-[160px] h-[160px]" />
+  return <div ref={containerRef} className="w-[280px] h-[280px]" />
 }
