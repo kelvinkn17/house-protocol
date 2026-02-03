@@ -1,6 +1,6 @@
 import { createFileRoute, Link } from '@tanstack/react-router'
 
-export const Route = createFileRoute('/_explore/')({
+export const Route = createFileRoute('/explore/')({
   component: LandingPage,
 })
 
@@ -23,13 +23,13 @@ function LandingPage() {
         </p>
         <div className="flex gap-4">
           <Link
-            to="/_explore/app/stake"
+            to="/explore/app/stake"
             className="rounded-lg bg-neutral-100 px-6 py-3 text-sm font-medium text-neutral-900 transition-colors hover:bg-neutral-200"
           >
             Start Staking
           </Link>
           <Link
-            to="/_explore/build"
+            to="/explore/build"
             className="rounded-lg border border-neutral-700 px-6 py-3 text-sm font-medium text-neutral-100 transition-colors hover:border-neutral-500 hover:bg-neutral-800"
           >
             Build a Game
@@ -63,21 +63,21 @@ function LandingPage() {
               description="Deposit USDC into the House Vault, receive yield bearing hUSDC. Earn from house edge when players lose."
               items={['Deposit USDC, get hUSDC', 'Earn from house edge', 'Withdraw anytime']}
               cta="Start Earning"
-              to="/_explore/app/stake"
+              to="/explore/app/stake"
             />
             <RoleCard
               title="Players"
               description="Open a betting session with one transaction, play unlimited games gasless, close and settle."
               items={['1 tx to open session', 'Gasless betting', '1 tx to close']}
               cta="Start Playing"
-              to="/_explore/app/play"
+              to="/explore/app/play"
             />
             <RoleCard
               title="Builders"
               description="Pick game types, configure parameters, host on your own site. Keep your brand, skip the infra."
               items={['No code required', '25% of house edge', 'Your domain']}
               cta="Start Building"
-              to="/_explore/build"
+              to="/explore/build"
             />
           </div>
         </div>
@@ -157,7 +157,7 @@ function LandingPage() {
           </p>
           <div className="flex justify-center gap-4">
             <Link
-              to="/_explore/app/stake"
+              to="/explore/app/stake"
               className="rounded-lg bg-neutral-100 px-6 py-3 text-sm font-medium text-neutral-900 transition-colors hover:bg-neutral-200"
             >
               Launch App

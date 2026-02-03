@@ -1,8 +1,8 @@
-import { createFileRoute } from '@tanstack/react-router'
-import WebstarterOnboarding from '@/components/WebstarterOnboarding'
+import { createFileRoute, redirect } from '@tanstack/react-router'
 
-export const Route = createFileRoute('/')({ component: IndexPage })
-
-function IndexPage() {
-  return <WebstarterOnboarding />
-}
+export const Route = createFileRoute('/')({
+  beforeLoad: () => {
+    throw redirect({ to: '/explore' })
+  },
+  component: () => null,
+})
