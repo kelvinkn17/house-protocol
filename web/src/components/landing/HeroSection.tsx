@@ -2,16 +2,12 @@ import { Link } from '@tanstack/react-router'
 import { useEffect, useRef } from 'react'
 import { gsap } from 'gsap'
 import { ScrollTrigger } from 'gsap/ScrollTrigger'
-import StakerModel from './models/StakerModel'
-import PlayerModel from './models/PlayerModel'
-import BuilderModel from './models/BuilderModel'
 
 gsap.registerPlugin(ScrollTrigger)
 
 export default function HeroSection() {
   const containerRef = useRef<HTMLDivElement>(null)
   const leftRef = useRef<HTMLDivElement>(null)
-  const gridRef = useRef<HTMLDivElement>(null)
 
   useEffect(() => {
     const ctx = gsap.context(() => {
@@ -36,17 +32,16 @@ export default function HeroSection() {
 
       gsap.set('.hero-sub', { y: 25, opacity: 0 })
       gsap.set('.hero-cta', { y: 20, opacity: 0 })
+      gsap.set('.hero-badge', { scale: 0, rotation: -15 })
 
-      tl.to('.hero-sub', { y: 0, opacity: 1, duration: 0.8 }, '-=0.6').to(
-        '.hero-cta',
-        { y: 0, opacity: 1, duration: 0.7 },
-        '-=0.5'
-      )
+      tl.to('.hero-sub', { y: 0, opacity: 1, duration: 0.8 }, '-=0.6')
+        .to('.hero-cta', { y: 0, opacity: 1, duration: 0.7 }, '-=0.5')
+        .to('.hero-badge', { scale: 1, rotation: 0, duration: 0.5, ease: 'back.out(1.7)' }, '-=0.3')
 
       // choose your path label, line, and cards together
       gsap.set('.path-label', { x: -20, opacity: 0 })
       gsap.set('.path-line', { scaleX: 0, transformOrigin: 'left' })
-      gsap.set('.hero-role-card', { x: '15vw', opacity: 0 })
+      gsap.set('.hero-role-card', { y: 40, opacity: 0 })
 
       const cardsStart = tl.duration() - 0.4
       tl.to('.path-label', { x: 0, opacity: 1, duration: 0.5 }, cardsStart)
@@ -54,26 +49,14 @@ export default function HeroSection() {
         .to(
           '.hero-role-card',
           {
-            x: 0,
+            y: 0,
             opacity: 1,
             duration: 0.5,
             stagger: 0.1,
-            ease: 'power2.inOut',
+            ease: 'power2.out',
           },
           cardsStart + 0.1
         )
-
-      // parallax grid
-      gsap.to(gridRef.current, {
-        y: 150,
-        ease: 'none',
-        scrollTrigger: {
-          trigger: containerRef.current,
-          start: 'top top',
-          end: 'bottom top',
-          scrub: 1.5,
-        },
-      })
     }, containerRef)
 
     return () => ctx.revert()
@@ -85,112 +68,111 @@ export default function HeroSection() {
       tagline: 'be the house',
       desc: 'Deposit USDC/ETH, earn yield from every bet placed on the protocol',
       to: '/app/stake',
-      icon: '◆',
       num: '01',
-      Model: StakerModel,
+      color: 'bg-[#CDFF57]',
+      textColor: 'text-black',
     },
     {
       title: 'PLAYERS',
       tagline: 'beat the house',
       desc: 'Play gasless with instant settlement via state channels',
       to: '/app/play',
-      icon: '◇',
       num: '02',
-      Model: PlayerModel,
+      color: 'bg-[#FF6B9D]',
+      textColor: 'text-black',
     },
     {
       title: 'BUILDERS',
       tagline: 'become the house',
       desc: 'Deploy games with no code, earn 25% of house edge',
       to: '/build',
-      icon: '○',
       num: '03',
-      Model: BuilderModel,
+      color: 'bg-white',
+      textColor: 'text-black',
     },
   ]
 
   return (
-    <section ref={containerRef} className="relative min-h-screen flex flex-col px-4 md:px-8 pt-16 pb-8 overflow-hidden">
-      {/* grid bg */}
-      <div ref={gridRef} className="absolute inset-0 overflow-hidden pointer-events-none">
-        <div
-          className="absolute inset-0 opacity-[0.03]"
-          style={{
-            backgroundImage: `
-              linear-gradient(to right, white 1px, transparent 1px),
-              linear-gradient(to bottom, white 1px, transparent 1px)
-            `,
-            backgroundSize: '80px 80px',
-          }}
-        />
+    <section ref={containerRef} className="relative min-h-screen flex flex-col px-4 md:px-8 pt-20 pb-16 overflow-hidden bg-[#EDEBE6]">
+      {/* pink starburst badge */}
+      <div className="hero-badge absolute top-24 right-8 md:right-16 lg:right-24 opacity-0">
+        <div className="relative">
+          <svg viewBox="0 0 100 100" className="w-24 h-24 md:w-32 md:h-32">
+            <polygon
+              points="50,0 61,35 97,35 68,57 79,91 50,70 21,91 32,57 3,35 39,35"
+              fill="#FF6B9D"
+            />
+          </svg>
+          <span className="absolute inset-0 flex items-center justify-center text-[10px] md:text-xs font-black text-black leading-tight text-center">
+            HOUSE<br />ALWAYS<br />WINS
+          </span>
+        </div>
       </div>
 
-      <FloatingBlocks />
-      <SpinningGeo />
-
       <div className="mx-auto max-w-7xl w-full relative">
-        {/* top bar decoration */}
-        <div className="flex justify-between items-center text-[10px] font-mono text-neutral-600 tracking-[0.3em] mb-8">
-          <span>[001]</span>
-          <span className="hidden md:block">HOUSE//PROTOCOL</span>
-          <span>2025</span>
-        </div>
-
         {/* main hero content */}
-        <div ref={leftRef} className="relative mb-10">
+        <div ref={leftRef} className="relative mb-16">
           {/* staggered artistic title */}
           <h1
-            className="font-black tracking-[-0.05em] text-neutral-100 leading-[0.85] mb-6"
-            style={{ fontSize: 'clamp(2.5rem, 8vw, 7rem)', perspective: '1000px' }}
+            className="font-black tracking-[-0.04em] text-black leading-[0.9] mb-8"
+            style={{ fontSize: 'clamp(3rem, 10vw, 9rem)', perspective: '1000px' }}
           >
             <span className="title-line block overflow-hidden opacity-0">
               <span className="inline-block">EVERYONE</span>
             </span>
-            <span
-              className="title-line block overflow-hidden opacity-0"
-              style={{ paddingLeft: 'clamp(1rem, 4vw, 4rem)' }}
-            >
-              <span className="inline-block">CAN BE</span>
+            <span className="title-line block overflow-hidden opacity-0">
+              <span className="inline-block">CAN BE THE</span>
             </span>
-            <span
-              className="title-line block overflow-hidden italic opacity-0"
-              style={{ paddingLeft: 'clamp(2rem, 8vw, 8rem)', color: '#dcb865' }}
-            >
-              <span className="inline-block">THE HOUSE.</span>
+            <span className="title-line block overflow-hidden opacity-0">
+              {/* white text with comic shadow effect */}
+              <span
+                className="inline-block relative"
+                style={{
+                  color: 'white',
+                  WebkitTextStroke: '3px black',
+                  textShadow: '6px 6px 0px black',
+                }}
+              >
+                HOUSE.
+              </span>
             </span>
           </h1>
 
-          <div className="flex flex-col lg:flex-row lg:items-end lg:justify-between gap-6 lg:gap-12">
-            <p className="hero-sub max-w-md text-base md:text-lg text-neutral-400 font-mono leading-relaxed opacity-0">
-              Shared liquidity for on-chain gambling.
-              <br />
-              <span className="text-neutral-100">Stake. Play. Build.</span>
-              <span className="text-xs text-neutral-500 ml-2">(yes, really)</span>
-            </p>
+          <div className="flex flex-col lg:flex-row lg:items-end lg:justify-between gap-8 lg:gap-12">
+            <div className="flex flex-col gap-4">
+              <p className="hero-sub max-w-md text-base md:text-lg text-black/70 font-mono leading-relaxed opacity-0">
+                ** Yield from real probability, not inflation.
+              </p>
+              <div className="hero-cta opacity-0">
+                {/* tilted pill with shadow */}
+                <Link
+                  to="/app/stake"
+                  className="inline-flex items-center gap-2 px-6 py-3 bg-[#CDFF57] text-black text-sm font-black uppercase tracking-wide rounded-full hover:scale-105 transition-transform duration-200 border-2 border-black"
+                  style={{
+                    transform: 'rotate(-2deg)',
+                    boxShadow: '4px 4px 0px black',
+                  }}
+                >
+                  ETHGlobal 2025
+                  <span className="w-2 h-2 rounded-full bg-black" />
+                </Link>
+              </div>
+            </div>
 
             <div className="hero-cta flex flex-col sm:flex-row gap-3 opacity-0">
               <Link
                 to="/app/stake"
-                className="group relative px-8 py-4 text-sm font-black uppercase tracking-[0.15em] overflow-hidden"
-                style={{ backgroundColor: '#dcb865', color: '#0b0d0b' }}
+                className="group px-8 py-4 bg-black text-white text-sm font-black uppercase tracking-wide rounded-full hover:translate-x-1 hover:translate-y-1 transition-transform duration-200"
+                style={{ boxShadow: '4px 4px 0px #FF6B9D' }}
               >
-                <span className="relative z-10 group-hover:text-neutral-100 transition-colors duration-300">
-                  Start Staking
-                </span>
-                <div
-                  className="absolute inset-0 translate-y-full group-hover:translate-y-0 transition-transform duration-300 ease-out"
-                  style={{ backgroundColor: '#0b0d0b' }}
-                />
+                Start Staking
               </Link>
               <Link
                 to="/build"
-                className="group px-8 py-4 border text-neutral-100 text-sm font-black uppercase tracking-[0.15em] transition-colors duration-300 relative overflow-hidden border-neutral-700 hover:border-neutral-500"
+                className="group px-8 py-4 border-2 border-black bg-white text-black text-sm font-black uppercase tracking-wide rounded-full hover:translate-x-1 hover:translate-y-1 transition-transform duration-200"
+                style={{ boxShadow: '4px 4px 0px black' }}
               >
-                <span className="relative z-10">Build a Game</span>
-                <div
-                  className="absolute bottom-0 left-0 w-full h-0.5 scale-x-0 group-hover:scale-x-100 transition-transform duration-300 origin-left"
-                  style={{ backgroundColor: '#dcb865' }}
-                />
+                Build a Game
               </Link>
             </div>
           </div>
@@ -198,145 +180,44 @@ export default function HeroSection() {
 
         {/* role cards */}
         <div>
-          <div className="text-[10px] font-mono text-neutral-500 uppercase tracking-[0.3em] mb-4 flex items-center gap-4">
+          <div className="text-xs font-mono text-black/50 uppercase tracking-widest mb-6 flex items-center gap-4">
             <span className="path-label opacity-0">CHOOSE YOUR PATH</span>
-            <div className="path-line flex-1 h-px bg-neutral-700 scale-x-0" />
+            <div className="path-line flex-1 h-px bg-black/20 scale-x-0" />
           </div>
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
             {heroRoles.map((role) => (
               <Link
                 key={role.title}
                 to={role.to}
-                className="hero-role-card group relative border border-neutral-800 p-6 lg:p-8 hover:border-neutral-600 transition-all duration-300 bg-neutral-900/50 opacity-0 overflow-hidden min-h-[180px] md:min-h-[220px]"
+                className={`hero-role-card group relative ${role.color} ${role.textColor} p-6 lg:p-8 rounded-2xl border-2 border-black hover:translate-x-1 hover:translate-y-1 transition-transform duration-200 opacity-0 min-h-[180px] md:min-h-[200px]`}
+                style={{ boxShadow: '6px 6px 0px black' }}
               >
-                <div className="flex flex-col h-full relative z-10">
-                  {/* header row: icon+num with title+tagline beside it */}
+                <div className="flex flex-col h-full relative">
+                  {/* header row */}
                   <div className="flex items-start justify-between mb-4">
-                    <div className="flex items-start gap-4">
-                      <div className="flex flex-col items-center shrink-0">
-                        <span className="text-3xl text-neutral-700 group-hover:text-[#dcb865] transition-colors duration-300">
-                          {role.icon}
-                        </span>
-                        <span className="text-[9px] font-mono text-neutral-700 mt-1">{role.num}</span>
-                      </div>
-                      <div>
-                        <h3 className="text-xl lg:text-2xl font-black tracking-tight text-neutral-100 group-hover:text-white transition-colors">
-                          {role.title}
-                        </h3>
-                        <p className="text-xs font-mono italic text-neutral-400">{role.tagline}</p>
-                      </div>
+                    <div>
+                      <span className="text-xs font-mono opacity-60">{role.num}</span>
+                      <h3 className="text-2xl lg:text-3xl font-black tracking-tight">
+                        {role.title}
+                      </h3>
+                      <p className="text-sm font-mono opacity-70">{role.tagline}</p>
                     </div>
-                    <div className="flex items-center opacity-0 -translate-x-2 group-hover:opacity-100 group-hover:translate-x-0 transition-all duration-300">
-                      <span className="text-xl text-[#dcb865]">→</span>
+                    <div className="flex items-center opacity-0 group-hover:opacity-100 transition-opacity duration-200">
+                      <span className="text-2xl">→</span>
                     </div>
                   </div>
                   <div className="flex-1">
-                    <p className="text-sm text-neutral-300 group-hover:text-neutral-200 transition-colors leading-relaxed">
+                    <p className="text-sm opacity-80 leading-relaxed">
                       {role.desc}
                     </p>
                   </div>
                 </div>
-                {/* 3d model accent */}
-                <div className="absolute -bottom-16 -right-24 transition-opacity duration-500 pointer-events-none">
-                  <role.Model />
-                </div>
-                <div
-                  className="absolute bottom-0 left-0 w-0 h-1 group-hover:w-full transition-all duration-500"
-                  style={{ backgroundColor: '#dcb865' }}
-                />
               </Link>
             ))}
           </div>
         </div>
       </div>
 
-      {/* scroll indicator */}
-      <div className="absolute bottom-4 left-1/2 -translate-x-1/2 flex flex-col items-center gap-1">
-        <span className="text-[8px] font-mono text-neutral-600 uppercase tracking-[0.4em]">scroll</span>
-        <div className="relative w-px h-8">
-          <div className="absolute inset-0 bg-linear-to-b from-neutral-500 to-transparent" />
-          <div className="absolute top-0 w-full h-2 animate-scroll-down" style={{ backgroundColor: '#dcb865' }} />
-        </div>
-      </div>
     </section>
-  )
-}
-
-// floating blocks decoration
-function FloatingBlocks() {
-  const blocksRef = useRef<HTMLDivElement>(null)
-
-  useEffect(() => {
-    if (!blocksRef.current) return
-
-    const blocks = blocksRef.current.querySelectorAll('.float-block')
-    blocks.forEach((block, i) => {
-      gsap.to(block, {
-        y: `random(-25, 25)`,
-        x: `random(-15, 15)`,
-        rotation: `random(-8, 8)`,
-        duration: `random(4, 7)`,
-        repeat: -1,
-        yoyo: true,
-        ease: 'sine.inOut',
-        delay: i * 0.3,
-      })
-    })
-  }, [])
-
-  return (
-    <div ref={blocksRef} className="absolute inset-0 pointer-events-none overflow-hidden">
-      <div className="float-block absolute top-[12%] left-[8%] w-16 h-16 border border-neutral-800/50 opacity-20" />
-      <div className="float-block absolute top-[22%] right-[12%] w-10 h-10 bg-neutral-800/30 opacity-15" />
-      <div className="float-block absolute bottom-[35%] left-[15%] w-8 h-8 border border-neutral-700/50 opacity-20 rotate-45" />
-      <div className="float-block absolute bottom-[25%] right-[8%] w-20 h-20 border border-neutral-800/30 opacity-10" />
-      <div className="float-block absolute top-[45%] left-[3%] w-6 h-6 bg-neutral-700/30 opacity-25" />
-    </div>
-  )
-}
-
-// spinning geometric element
-function SpinningGeo() {
-  const geoRef = useRef<HTMLDivElement>(null)
-
-  useEffect(() => {
-    if (!geoRef.current) return
-
-    gsap.to(geoRef.current, {
-      rotation: 360,
-      duration: 30,
-      repeat: -1,
-      ease: 'none',
-    })
-
-    gsap.to('.geo-inner', {
-      rotation: -360,
-      duration: 20,
-      repeat: -1,
-      ease: 'none',
-    })
-  }, [])
-
-  return (
-    <div
-      ref={geoRef}
-      className="absolute right-[5%] top-1/2 -translate-y-1/2 w-[280px] h-[280px] lg:w-[380px] lg:h-[380px] opacity-10 pointer-events-none hidden lg:block"
-    >
-      <div
-        className="absolute inset-0 border border-neutral-700"
-        style={{ clipPath: 'polygon(50% 0%, 100% 50%, 50% 100%, 0% 50%)' }}
-      />
-      <div
-        className="geo-inner absolute inset-8 border border-neutral-600"
-        style={{ clipPath: 'polygon(50% 0%, 100% 50%, 50% 100%, 0% 50%)' }}
-      />
-      <div
-        className="absolute inset-16 border border-neutral-500"
-        style={{ clipPath: 'polygon(50% 0%, 100% 50%, 50% 100%, 0% 50%)' }}
-      />
-      <div className="absolute inset-0 flex items-center justify-center">
-        <div className="w-2 h-2 rounded-full" style={{ backgroundColor: '#dcb865' }} />
-      </div>
-    </div>
   )
 }

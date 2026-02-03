@@ -1,9 +1,29 @@
 import { useEffect, useRef } from 'react'
 import { gsap } from 'gsap'
 import { ScrollTrigger } from 'gsap/ScrollTrigger'
-import SectionDivider from './SectionDivider'
+import { Link } from '@tanstack/react-router'
 
 gsap.registerPlugin(ScrollTrigger)
+
+function DiagonalMarquee({ label, direction = 'left' }: { label: string; direction?: 'left' | 'right' }) {
+  const items = Array.from({ length: 30 }).map((_, i) => (
+    <span
+      key={i}
+      className="shrink-0 mx-10 text-lg font-black uppercase tracking-widest text-[#CDFF57] whitespace-nowrap"
+    >
+      {label}
+      <span className="ml-10 text-[#FF6B9D]">✦</span>
+    </span>
+  ))
+
+  return (
+    <div className="py-4 bg-black">
+      <div className={`flex ${direction === 'left' ? 'animate-marquee' : 'animate-marquee-reverse'}`}>
+        {items}
+      </div>
+    </div>
+  )
+}
 
 export default function HowItWorksSection() {
   const sectionRef = useRef<HTMLElement>(null)
@@ -17,25 +37,11 @@ export default function HowItWorksSection() {
           y: 0,
           opacity: 1,
           duration: 1,
-          stagger: 0.12,
+          stagger: 0.15,
           ease: 'power3.out',
           scrollTrigger: {
             trigger: '.steps-container',
             start: 'top 80%',
-          },
-        }
-      )
-
-      gsap.fromTo(
-        '.step-line',
-        { scaleX: 0 },
-        {
-          scaleX: 1,
-          duration: 2,
-          ease: 'power2.out',
-          scrollTrigger: {
-            trigger: '.steps-container',
-            start: 'top 75%',
           },
         }
       )
@@ -60,80 +66,108 @@ export default function HowItWorksSection() {
   }, [])
 
   const steps = [
-    { num: '1', title: 'Connect', desc: 'Link wallet', icon: '○' },
-    { num: '2', title: 'Open', desc: '1 transaction', icon: '◇' },
-    { num: '3', title: 'Play', desc: 'Zero gas', icon: '△' },
-    { num: '4', title: 'Close', desc: 'Withdraw', icon: '□' },
+    {
+      num: '1.',
+      title: 'STAKE & EARN LIKE THE HOUSE',
+      desc: 'Deposit USDC into the House Vault. Your money becomes the casino\'s bankroll. When players lose (and statistically, they do), you earn.',
+      cta: 'View Vaults',
+      to: '/app/stake',
+    },
+    {
+      num: '2.',
+      title: 'BUILD WITHOUT THE BANK',
+      desc: 'Connect to House Protocol\'s shared liquidity. No need to fund your own bankroll. Just build the game, plug into the vault, and launch.',
+      cta: 'Start Building',
+      to: '/build',
+    },
   ]
 
   return (
     <>
-      <SectionDivider label="HOW IT WORKS" />
-      <section ref={sectionRef} className="py-32 px-4 md:px-8 relative" style={{ backgroundColor: '#0b0d0b' }}>
-        {/* asymmetric bg element */}
-        <div className="absolute top-20 right-0 w-1/3 h-[80%] opacity-[0.02]" style={{ backgroundColor: '#dcb865' }} />
+      {/* diagonal transition with integrated marquee */}
+      <div className="relative h-40 md:h-48 overflow-hidden">
+        {/* cream background */}
+        <div className="absolute inset-0 bg-[#EDEBE6]" />
+        {/* diagonal dark background */}
+        <div
+          className="absolute inset-0 bg-[#1A1A1A]"
+          style={{
+            clipPath: 'polygon(0 100%, 100% 0%, 100% 100%, 0% 100%)',
+          }}
+        />
+        {/* diagonal marquee strip */}
+        <div className="absolute inset-0 flex items-center pointer-events-none" style={{ transform: 'translateY(-5%)' }}>
+          <div
+            className="w-[200vw] -ml-[50vw]"
+            style={{
+              transform: 'skewY(-6deg)',
+            }}
+          >
+            <DiagonalMarquee label="HOW IT WORKS" direction="left" />
+          </div>
+        </div>
+      </div>
 
+      <section ref={sectionRef} className="py-24 px-4 md:px-8 relative bg-[#1A1A1A] -mt-px">
         <div className="mx-auto max-w-6xl relative">
-          <div className="how-title mb-20 flex flex-col md:flex-row md:items-end md:justify-between gap-8 opacity-0">
-            <div>
-              <span className="text-[10px] font-mono font-bold uppercase tracking-[0.4em] text-neutral-500 block mb-4">
-                [003] How it works
-              </span>
-              <h2 className="text-5xl md:text-7xl lg:text-8xl font-black tracking-[-0.03em] text-neutral-100">
-                4 steps.
-              </h2>
-              <h2
-                className="text-5xl md:text-7xl lg:text-8xl font-black tracking-[-0.03em] italic"
-                style={{ color: '#dcb865', opacity: 0.5 }}
-              >
-                That is it.
-              </h2>
-            </div>
-            <p className="max-w-sm text-sm text-neutral-400 font-mono leading-relaxed md:text-right">
-              State channels let you play unlimited rounds with just 2 on-chain transactions.
-            </p>
+          <div className="how-title mb-16 opacity-0">
+            <span className="text-xs font-black uppercase tracking-widest text-white/40 block mb-4">
+              THE SOLUTION: HOUSE PROTOCOL
+            </span>
+            <p className="text-[#FF6B9D] font-mono text-sm">// FLIP THE SCRIPT</p>
           </div>
 
-          <div className="steps-container relative">
-            <div
-              className="step-line absolute top-[72px] left-[10%] right-[10%] h-px origin-left hidden md:block scale-x-0"
-              style={{ backgroundColor: '#1a3d30' }}
-            />
-
-            <div className="grid grid-cols-2 md:grid-cols-4 gap-10 md:gap-6">
+          <div className="border-t border-white/20 pt-16">
+            <div className="steps-container grid md:grid-cols-2 gap-px bg-white/10">
               {steps.map((step, i) => (
                 <div
                   key={step.num}
-                  className="step-item relative group opacity-0"
-                  style={{ marginTop: i % 2 === 1 ? '2rem' : '0' }}
+                  className={`step-item bg-[#1A1A1A] p-8 md:p-12 flex flex-col opacity-0 ${i === 0 ? '' : 'md:border-l border-white/10'}`}
                 >
-                  <div
-                    className="w-36 h-36 border bg-neutral-950 flex flex-col items-center justify-center mb-8 relative z-10 transition-all duration-300 group-hover:border-neutral-500"
-                    style={{ borderColor: '#1a3d30' }}
+                  <span className="text-[8rem] md:text-[10rem] font-black leading-none text-[#FF6B9D] mb-4">
+                    {step.num}
+                  </span>
+                  <h3 className="text-xl font-black text-white mb-4 tracking-tight uppercase">
+                    {step.title}
+                  </h3>
+                  <p className="text-white/60 text-sm leading-relaxed mb-8 flex-1">{step.desc}</p>
+                  <Link
+                    to={step.to}
+                    className="inline-flex self-start px-8 py-4 bg-[#CDFF57] text-black text-sm font-black uppercase tracking-wide rounded-full border-2 border-black hover:translate-x-1 hover:translate-y-1 transition-transform duration-200"
+                    style={{ boxShadow: '4px 4px 0px black' }}
                   >
-                    <span className="text-2xl text-neutral-600 mb-2 group-hover:text-[#dcb865] transition-colors">
-                      {step.icon}
-                    </span>
-                    <span className="text-4xl font-black" style={{ color: '#dcb865' }}>
-                      {step.num}
-                    </span>
-                  </div>
-                  <h3 className="text-xl font-black text-neutral-100 mb-2 tracking-tight">{step.title}</h3>
-                  <p className="text-sm text-neutral-400 font-mono">{step.desc}</p>
+                    {step.cta}
+                  </Link>
                 </div>
               ))}
             </div>
           </div>
-
-          {/* decorative arrow */}
-          <div
-            className="hidden md:block absolute -bottom-8 left-1/2 -translate-x-1/2 text-4xl"
-            style={{ color: '#1a3d30' }}
-          >
-            ↓
-          </div>
         </div>
       </section>
+
+      {/* diagonal dark-to-cream transition at bottom with GAME PRIMITIVES marquee */}
+      <div className="relative h-40 md:h-48 overflow-hidden">
+        {/* dark background */}
+        <div className="absolute inset-0 bg-[#1A1A1A]" />
+        {/* diagonal cream background */}
+        <div
+          className="absolute inset-0 bg-[#EDEBE6]"
+          style={{
+            clipPath: 'polygon(0 100%, 100% 0%, 100% 100%, 0% 100%)',
+          }}
+        />
+        {/* diagonal marquee strip */}
+        <div className="absolute inset-0 flex items-center pointer-events-none" style={{ transform: 'translateY(-5%)' }}>
+          <div
+            className="w-[200vw] -ml-[50vw]"
+            style={{
+              transform: 'skewY(-6deg)',
+            }}
+          >
+            <DiagonalMarquee label="GAME PRIMITIVES" direction="right" />
+          </div>
+        </div>
+      </div>
     </>
   )
 }
