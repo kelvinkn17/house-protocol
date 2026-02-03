@@ -109,7 +109,7 @@ export default function InfraSection() {
       </section>
 
       {/* diagonal cream-to-dark transition with marquee */}
-      <div className="relative h-40 md:h-48">
+      <div className="relative h-52 md:h-60">
         {/* cream background */}
         <div className="absolute inset-0 bg-[#EDEBE6]" />
         {/* diagonal dark background */}
@@ -120,7 +120,7 @@ export default function InfraSection() {
           }}
         />
         {/* diagonal marquee strip */}
-        <div className="absolute inset-0 flex items-center pointer-events-none" style={{ transform: 'translateY(-10%)' }}>
+        <div className="absolute inset-0 flex items-center pointer-events-none">
           <div
             className="w-[200vw] -ml-[50vw]"
             style={{
