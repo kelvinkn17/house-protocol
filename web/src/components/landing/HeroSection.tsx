@@ -16,53 +16,52 @@ export default function HeroSection() {
   useEffect(() => {
     const ctx = gsap.context(() => {
       const tl = gsap.timeline({
-        defaults: { ease: 'power4.out' },
-        delay: 0.2,
+        defaults: { ease: 'power2.out' },
+        delay: 0.15,
       })
 
-      // title lines stagger reveal, faster
+      // title lines stagger reveal
       const titleLines = leftRef.current?.querySelectorAll('.title-line')
       if (titleLines) {
-        gsap.set(titleLines, { y: 80, opacity: 0, rotationX: 30 })
+        gsap.set(titleLines, { y: 60, opacity: 0, rotationX: 20 })
         tl.to(titleLines, {
           y: 0,
           opacity: 1,
           rotationX: 0,
-          duration: 0.8,
-          stagger: 0.08,
-          ease: 'power4.out',
+          duration: 1,
+          stagger: 0.04,
+          ease: 'power2.out',
         })
       }
 
-      gsap.set('.hero-sub', { y: 30, opacity: 0 })
-      gsap.set('.hero-cta', { y: 25, opacity: 0 })
+      gsap.set('.hero-sub', { y: 25, opacity: 0 })
+      gsap.set('.hero-cta', { y: 20, opacity: 0 })
 
-      tl.to('.hero-sub', { y: 0, opacity: 1, duration: 0.6 }, '-=0.4').to(
+      tl.to('.hero-sub', { y: 0, opacity: 1, duration: 0.8 }, '-=0.6').to(
         '.hero-cta',
-        { y: 0, opacity: 1, duration: 0.5 },
-        '-=0.3'
+        { y: 0, opacity: 1, duration: 0.7 },
+        '-=0.5'
       )
 
-      // choose your path label and line animation
-      gsap.set('.path-label', { x: -30, opacity: 0 })
+      // choose your path label, line, and cards together
+      gsap.set('.path-label', { x: -20, opacity: 0 })
       gsap.set('.path-line', { scaleX: 0, transformOrigin: 'left' })
-      tl.to('.path-label', { x: 0, opacity: 1, duration: 0.5 }, '-=0.2')
-        .to('.path-line', { scaleX: 1, duration: 0.6, ease: 'power2.out' }, '-=0.3')
+      gsap.set('.hero-role-card', { x: '15vw', opacity: 0 })
 
-      // role cards cascade in, faster
-      gsap.set('.hero-role-card', { y: 40, opacity: 0, scale: 0.95 })
-      tl.to(
-        '.hero-role-card',
-        {
-          y: 0,
-          opacity: 1,
-          scale: 1,
-          duration: 0.6,
-          stagger: 0.08,
-          ease: 'power3.out',
-        },
-        '-=0.4'
-      )
+      const cardsStart = tl.duration() - 0.4
+      tl.to('.path-label', { x: 0, opacity: 1, duration: 0.5 }, cardsStart)
+        .to('.path-line', { scaleX: 1, duration: 0.6, ease: 'power1.out' }, cardsStart)
+        .to(
+          '.hero-role-card',
+          {
+            x: 0,
+            opacity: 1,
+            duration: 0.5,
+            stagger: 0.1,
+            ease: 'power2.inOut',
+          },
+          cardsStart + 0.1
+        )
 
       // parallax grid
       gsap.to(gridRef.current, {
@@ -162,7 +161,7 @@ export default function HeroSection() {
           </h1>
 
           <div className="flex flex-col lg:flex-row lg:items-end lg:justify-between gap-6 lg:gap-12">
-            <p className="hero-sub max-w-sm text-base md:text-lg text-neutral-400 font-mono leading-relaxed opacity-0">
+            <p className="hero-sub max-w-md text-base md:text-lg text-neutral-400 font-mono leading-relaxed opacity-0">
               Shared liquidity for on-chain gambling.
               <br />
               <span className="text-neutral-100">Stake. Play. Build.</span>
@@ -208,32 +207,37 @@ export default function HeroSection() {
               <Link
                 key={role.title}
                 to={role.to}
-                className="hero-role-card group relative border border-neutral-800 p-6 lg:p-8 hover:border-neutral-600 transition-all duration-300 bg-neutral-900/50 opacity-0 overflow-hidden min-h-[180px] md:min-h-[200px]"
+                className="hero-role-card group relative border border-neutral-800 p-6 lg:p-8 hover:border-neutral-600 transition-all duration-300 bg-neutral-900/50 opacity-0 overflow-hidden min-h-[180px] md:min-h-[220px]"
               >
                 <div className="flex flex-col h-full relative z-10">
+                  {/* header row: icon+num with title+tagline beside it */}
                   <div className="flex items-start justify-between mb-4">
-                    <div className="flex flex-col items-center">
-                      <span className="text-3xl text-neutral-700 group-hover:text-[#dcb865] transition-colors duration-300">
-                        {role.icon}
-                      </span>
-                      <span className="text-[9px] font-mono text-neutral-700 mt-1">{role.num}</span>
+                    <div className="flex items-start gap-4">
+                      <div className="flex flex-col items-center shrink-0">
+                        <span className="text-3xl text-neutral-700 group-hover:text-[#dcb865] transition-colors duration-300">
+                          {role.icon}
+                        </span>
+                        <span className="text-[9px] font-mono text-neutral-700 mt-1">{role.num}</span>
+                      </div>
+                      <div>
+                        <h3 className="text-xl lg:text-2xl font-black tracking-tight text-neutral-100 group-hover:text-white transition-colors">
+                          {role.title}
+                        </h3>
+                        <p className="text-xs font-mono italic text-neutral-400">{role.tagline}</p>
+                      </div>
                     </div>
                     <div className="flex items-center opacity-0 -translate-x-2 group-hover:opacity-100 group-hover:translate-x-0 transition-all duration-300">
                       <span className="text-xl text-[#dcb865]">→</span>
                     </div>
                   </div>
                   <div className="flex-1">
-                    <h3 className="text-xl lg:text-2xl font-black tracking-tight text-neutral-100 mb-1 group-hover:text-white transition-colors">
-                      {role.title}
-                    </h3>
-                    <p className="text-xs font-mono italic text-neutral-400 mb-2">{role.tagline}</p>
                     <p className="text-sm text-neutral-300 group-hover:text-neutral-200 transition-colors leading-relaxed">
                       {role.desc}
                     </p>
                   </div>
                 </div>
-                {/* 3d model accent, bigger and more visible */}
-                <div className="absolute -bottom-2 -right-2 opacity-75 group-hover:opacity-100 transition-opacity duration-500 pointer-events-none scale-125">
+                {/* 3d model accent */}
+                <div className="absolute -bottom-16 -right-24 transition-opacity duration-500 pointer-events-none">
                   <role.Model />
                 </div>
                 <div

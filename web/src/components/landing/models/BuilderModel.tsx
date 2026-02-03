@@ -11,8 +11,8 @@ export default function BuilderModel() {
     if (!containerRef.current) return
 
     const container = containerRef.current
-    const w = 160
-    const h = 160
+    const w = 280
+    const h = 280
 
     const renderer = new THREE.WebGLRenderer({ antialias: true, alpha: true })
     renderer.setSize(w, h)
@@ -22,7 +22,7 @@ export default function BuilderModel() {
 
     const scene = new THREE.Scene()
     const camera = new THREE.PerspectiveCamera(40, 1, 0.1, 100)
-    camera.position.set(0, 0.8, 5.5)
+    camera.position.set(0, 0.2, 5.5)
 
     // lighting
     scene.add(new THREE.AmbientLight(0xffffff, 0.3))
@@ -41,14 +41,14 @@ export default function BuilderModel() {
 
     // block positions
     const positions = [
-      { x: 0, y: -0.7, z: 0, s: 0.45 },
-      { x: 0.55, y: -0.7, z: 0, s: 0.35 },
-      { x: -0.55, y: -0.7, z: 0, s: 0.35 },
-      { x: 0.15, y: -0.1, z: 0.1, s: 0.38 },
-      { x: -0.3, y: -0.1, z: -0.1, s: 0.32 },
-      { x: 0, y: 0.5, z: 0, s: 0.3 },
-      { x: 0.7, y: 0.4, z: 0.3, s: 0.18 },
-      { x: -0.65, y: 0.6, z: -0.2, s: 0.15 },
+      { x: 0, y: -0.5, z: 0, s: 0.45 },
+      { x: 0.55, y: -0.5, z: 0, s: 0.35 },
+      { x: -0.55, y: -0.5, z: 0, s: 0.35 },
+      { x: 0.15, y: 0.1, z: 0.1, s: 0.38 },
+      { x: -0.3, y: 0.1, z: -0.1, s: 0.32 },
+      { x: 0, y: 0.7, z: 0, s: 0.3 },
+      { x: 0.7, y: 0.6, z: 0.3, s: 0.18 },
+      { x: -0.65, y: 0.8, z: -0.2, s: 0.15 },
     ]
 
     const blocks: { mesh: THREE.Mesh; orig: (typeof positions)[0]; phase: number }[] = []
@@ -61,16 +61,16 @@ export default function BuilderModel() {
         ? new THREE.MeshPhongMaterial({
             color: GOLD,
             emissive: DARK_GOLD,
-            emissiveIntensity: 0.3,
-            shininess: 150,
+            emissiveIntensity: 0.35,
+            shininess: 180,
             specular: new THREE.Color(0xffffff),
           })
         : new THREE.MeshPhongMaterial({
             color: 0x1a1a1a,
             emissive: DARK_GOLD,
-            emissiveIntensity: i < 3 ? 0.05 : 0.12,
+            emissiveIntensity: i < 3 ? 0.08 : 0.15,
             flatShading: true,
-            shininess: 60,
+            shininess: 80,
             specular: new THREE.Color(GOLD),
           })
 
@@ -83,7 +83,7 @@ export default function BuilderModel() {
         new THREE.LineBasicMaterial({
           color: GOLD,
           transparent: true,
-          opacity: isAccent ? 0.5 : 0.12,
+          opacity: isAccent ? 0.55 : 0.18,
         })
       )
       mesh.add(line)
@@ -109,7 +109,7 @@ export default function BuilderModel() {
       )
     })
     const lineGeo = new THREE.BufferGeometry().setFromPoints(linePoints)
-    const lineMat = new THREE.LineBasicMaterial({ color: GOLD, transparent: true, opacity: 0.08 })
+    const lineMat = new THREE.LineBasicMaterial({ color: GOLD, transparent: true, opacity: 0.12 })
     const connectionLines = new THREE.LineSegments(lineGeo, lineMat)
     group.add(connectionLines)
 
@@ -155,5 +155,5 @@ export default function BuilderModel() {
     }
   }, [])
 
-  return <div ref={containerRef} className="w-[160px] h-[160px]" />
+  return <div ref={containerRef} className="w-[280px] h-[280px]" />
 }

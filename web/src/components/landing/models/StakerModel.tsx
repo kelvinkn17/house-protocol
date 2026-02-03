@@ -11,8 +11,8 @@ export default function StakerModel() {
     if (!containerRef.current) return
 
     const container = containerRef.current
-    const w = 160
-    const h = 160
+    const w = 280
+    const h = 280
 
     const renderer = new THREE.WebGLRenderer({ antialias: true, alpha: true })
     renderer.setSize(w, h)
@@ -42,7 +42,7 @@ export default function StakerModel() {
       color: GOLD,
       wireframe: true,
       transparent: true,
-      opacity: 0.35,
+      opacity: 0.45,
     })
     const outer = new THREE.Mesh(outerGeo, outerMat)
     scene.add(outer)
@@ -52,10 +52,10 @@ export default function StakerModel() {
     const midMat = new THREE.MeshPhongMaterial({
       color: 0x1a1a1a,
       emissive: DARK_GOLD,
-      emissiveIntensity: 0.15,
+      emissiveIntensity: 0.2,
       transparent: true,
-      opacity: 0.6,
-      shininess: 120,
+      opacity: 0.7,
+      shininess: 150,
       specular: new THREE.Color(GOLD),
     })
     const mid = new THREE.Mesh(midGeo, midMat)
@@ -66,7 +66,7 @@ export default function StakerModel() {
     const innerMat = new THREE.MeshPhongMaterial({
       color: GOLD,
       emissive: DARK_GOLD,
-      emissiveIntensity: 0.3,
+      emissiveIntensity: 0.35,
       shininess: 200,
       specular: new THREE.Color(0xffffff),
     })
@@ -86,7 +86,7 @@ export default function StakerModel() {
       pPos[i * 3 + 2] = r * Math.cos(phi)
     }
     particleGeo.setAttribute('position', new THREE.BufferAttribute(pPos, 3))
-    const particleMat = new THREE.PointsMaterial({ color: GOLD, size: 0.03, transparent: true, opacity: 0.5 })
+    const particleMat = new THREE.PointsMaterial({ color: GOLD, size: 0.035, transparent: true, opacity: 0.55 })
     const particles = new THREE.Points(particleGeo, particleMat)
     scene.add(particles)
 
@@ -114,5 +114,5 @@ export default function StakerModel() {
     }
   }, [])
 
-  return <div ref={containerRef} className="w-[160px] h-[160px]" />
+  return <div ref={containerRef} className="w-[280px] h-[280px]" />
 }
