@@ -99,21 +99,15 @@ export default function GamePrimitivesSection() {
                   </div>
                 </div>
 
-                {/* hover overlay */}
+                {/* hover right bar */}
                 <div
-                  className="absolute inset-0 flex items-center justify-center translate-y-full group-hover:translate-y-0 transition-transform duration-300 ease-out"
+                  className="absolute top-0 right-0 bottom-0 w-10 flex items-center justify-center translate-x-full group-hover:translate-x-0 transition-transform duration-300 ease-out"
                   style={{ backgroundColor: '#dcb865' }}
                 >
-                  <span className="text-sm font-black uppercase tracking-[0.15em]" style={{ color: '#0b0d0b' }}>
+                  <span className="text-xs font-black uppercase tracking-[0.15em] -rotate-90 whitespace-nowrap" style={{ color: '#0b0d0b' }}>
                     Use this →
                   </span>
                 </div>
-
-                {/* bottom accent */}
-                <div
-                  className="absolute bottom-0 left-0 right-0 h-0.5 scale-x-0 group-hover:scale-x-100 transition-transform duration-500 origin-left"
-                  style={{ backgroundColor: '#dcb865' }}
-                />
               </div>
             ))}
           </div>
