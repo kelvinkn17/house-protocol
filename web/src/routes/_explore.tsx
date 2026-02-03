@@ -9,8 +9,6 @@ export const Route = createFileRoute('/_explore')({
 function ExploreLayout() {
   const location = useLocation()
   const path = location.pathname
-
-  const isApp = path.startsWith('/_explore/app')
   const isBuild = path.startsWith('/_explore/build')
 
   return (
