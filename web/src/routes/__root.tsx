@@ -45,6 +45,11 @@ export const Route = createRootRouteWithContext<MyRouterContext>()({
         rel: 'stylesheet',
         href: appCss,
       },
+      {
+        rel: 'icon',
+        type: 'image/png',
+        href: '/assets/logos/the-house-protocol-favicon.png',
+      },
     ],
   }),
 
