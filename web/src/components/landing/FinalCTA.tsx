@@ -30,7 +30,7 @@ export default function FinalCTA() {
   }, [])
 
   return (
-    <section ref={sectionRef} className="py-24 px-4 md:px-8 bg-[#1A1A1A]">
+    <section ref={sectionRef} className="py-24 px-4 md:px-8 bg-[#1A1A1A] -mt-px">
       <div className="mx-auto max-w-5xl">
         {/* main cta card */}
         <div

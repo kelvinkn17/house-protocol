@@ -85,7 +85,7 @@ export default function HowItWorksSection() {
   return (
     <>
       {/* diagonal transition with integrated marquee */}
-      <div className="relative h-40 md:h-48 overflow-hidden">
+      <div className="relative h-52 md:h-60">
         {/* cream background */}
         <div className="absolute inset-0 bg-[#EDEBE6]" />
         {/* diagonal dark background */}
@@ -96,7 +96,7 @@ export default function HowItWorksSection() {
           }}
         />
         {/* diagonal marquee strip */}
-        <div className="absolute inset-0 flex items-center pointer-events-none" style={{ transform: 'translateY(-5%)' }}>
+        <div className="absolute inset-0 flex items-center pointer-events-none">
           <div
             className="w-[200vw] -ml-[50vw]"
             style={{
@@ -146,7 +146,7 @@ export default function HowItWorksSection() {
       </section>
 
       {/* diagonal dark-to-cream transition at bottom with GAME PRIMITIVES marquee */}
-      <div className="relative h-40 md:h-48 overflow-hidden">
+      <div className="relative h-52 md:h-60">
         {/* dark background */}
         <div className="absolute inset-0 bg-[#1A1A1A]" />
         {/* diagonal cream background */}
@@ -157,7 +157,7 @@ export default function HowItWorksSection() {
           }}
         />
         {/* diagonal marquee strip */}
-        <div className="absolute inset-0 flex items-center pointer-events-none" style={{ transform: 'translateY(-5%)' }}>
+        <div className="absolute inset-0 flex items-center pointer-events-none">
           <div
             className="w-[200vw] -ml-[50vw]"
             style={{
