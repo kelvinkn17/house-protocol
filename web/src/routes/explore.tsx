@@ -12,12 +12,16 @@ function ExploreLayout() {
   const isBuild = path.startsWith('/explore/build')
 
   return (
-    <div className="min-h-screen bg-neutral-950">
+    <div className="min-h-screen" style={{ backgroundColor: '#0b0d0b' }}>
       {/* nav */}
-      <nav className="fixed top-0 left-0 right-0 z-50 border-b border-neutral-800 bg-neutral-950/80 backdrop-blur-sm">
+      <nav className="fixed top-0 left-0 right-0 z-50 border-b backdrop-blur-sm" style={{ borderColor: '#1a3d30', backgroundColor: 'rgba(11, 13, 11, 0.9)' }}>
         <div className="mx-auto flex h-14 max-w-6xl items-center justify-between px-4">
-          <Link to="/explore" className="text-lg font-semibold tracking-tight text-neutral-100">
-            House Protocol
+          <Link to="/explore" className="flex items-center">
+            <img
+              src="/assets/logos/the-house-protocol-horizontal-logo.svg"
+              alt="House Protocol"
+              className="h-7"
+            />
           </Link>
 
           <div className="flex items-center gap-1">
@@ -32,7 +36,10 @@ function ExploreLayout() {
             </NavLink>
           </div>
 
-          <button className="rounded-lg bg-neutral-100 px-4 py-2 text-sm font-medium text-neutral-900 transition-colors hover:bg-neutral-200">
+          <button
+            className="px-4 py-2 text-sm font-bold transition-colors"
+            style={{ backgroundColor: '#dcb865', color: '#0b0d0b' }}
+          >
             Connect Wallet
           </button>
         </div>
@@ -44,9 +51,9 @@ function ExploreLayout() {
       </main>
 
       {/* footer */}
-      <footer className="border-t border-neutral-800 py-8">
-        <div className="mx-auto max-w-6xl px-4 text-center text-sm text-neutral-500">
-          House Protocol, Everyone can be the house.
+      <footer className="border-t py-8" style={{ borderColor: '#1a3d30' }}>
+        <div className="mx-auto max-w-6xl px-4 text-center text-sm text-neutral-600 font-mono tracking-wider">
+          HOUSE//PROTOCOL — EVERYONE CAN BE THE HOUSE
         </div>
       </footer>
     </div>
@@ -58,8 +65,8 @@ function NavLink({ to, active, children }: { to: string; active: boolean; childr
     <Link
       to={to}
       className={cnm(
-        'rounded-lg px-3 py-2 text-sm font-medium transition-colors',
-        active ? 'bg-neutral-800 text-neutral-100' : 'text-neutral-400 hover:text-neutral-100'
+        'px-3 py-2 text-sm font-bold uppercase tracking-wider transition-colors',
+        active ? 'text-[#dcb865]' : 'text-neutral-500 hover:text-neutral-100'
       )}
     >
       {children}
