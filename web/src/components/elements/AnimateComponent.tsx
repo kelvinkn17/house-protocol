@@ -52,8 +52,8 @@ export default function AnimateComponent({
   trigger,
 }: AnimateComponentProps) {
   const ref = useRef<HTMLDivElement>(null)
-  // trigger when element enters bottom 35% of viewport
-  const isInView = useInView(ref, { once, margin: '0px 0px -30% 0px' })
+  // trigger when element enters bottom 15% of viewport
+  const isInView = useInView(ref, { once, margin: '0px 0px -15% 0px' })
 
   // memoize so rotation stays consistent across re-renders
   const randomRotation = useMemo(() => getRandomRotation(), [])

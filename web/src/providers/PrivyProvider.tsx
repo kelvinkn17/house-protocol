@@ -16,7 +16,7 @@ export default function PrivyProvider({ children }: PrivyProviderProps) {
         appearance: {
           theme: 'light',
           accentColor: '#000000',
-          logo: '/assets/logos/the-house-protocol-favicon.png',
+          logo: '/assets/logos/hp-favicon.png',
           showWalletLoginFirst: false,
         },
         embeddedWallets: {

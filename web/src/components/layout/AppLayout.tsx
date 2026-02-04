@@ -18,9 +18,11 @@ export default function AppLayout({ children, noPadding }: AppLayoutProps) {
       <header className="sticky top-0 z-40 h-20 bg-[#cdff57] px-4 sm:px-6">
         <nav className="mx-auto flex h-full max-w-7xl items-center justify-between">
           <Link to="/" className="flex items-center">
-            <div className="px-3 py-1.5 bg-black text-[#CDFF57] font-black text-lg tracking-tight">
-              HOUSE PROTOCOL
-            </div>
+            <img
+              src="/assets/logos/house-protocol-horizontal-logo.svg"
+              alt="House Protocol"
+              className="h-16"
+            />
           </Link>
 
           <div className="hidden md:flex items-center gap-6">

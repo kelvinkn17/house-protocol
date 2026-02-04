@@ -1,9 +1,34 @@
 import { Link } from '@tanstack/react-router'
+import { useState, useEffect } from 'react'
 import AnimateComponent from '@/components/elements/AnimateComponent'
 import AnimatedText from '@/components/elements/AnimatedText'
 import { cssTransition } from '@/lib/styling'
 
+const mascotQuotes = [
+  'The House always wins!',
+  'Stake it, build it, play it, own it',
+  'Real Yield, Real Bets',
+  'Everyone eats here',
+  'No rug, just rugs',
+  'Provably fair, actually fun',
+]
+
 export default function HeroSection() {
+  const [quoteIndex, setQuoteIndex] = useState(0)
+  const [isVisible, setIsVisible] = useState(true)
+
+  useEffect(() => {
+    const interval = setInterval(() => {
+      // scale down
+      setIsVisible(false)
+      // after scale down, change text and pop back up
+      setTimeout(() => {
+        setQuoteIndex((prev) => (prev + 1) % mascotQuotes.length)
+        setIsVisible(true)
+      }, 300)
+    }, 3500)
+    return () => clearInterval(interval)
+  }, [])
   const heroRoles = [
     {
       title: 'STAKERS',
@@ -13,6 +38,7 @@ export default function HeroSection() {
       num: '01',
       color: 'bg-[#CDFF57]',
       textColor: 'text-black',
+      hoverCta: "Let's Earn",
     },
     {
       title: 'PLAYERS',
@@ -22,6 +48,7 @@ export default function HeroSection() {
       num: '02',
       color: 'bg-[#FF6B9D]',
       textColor: 'text-black',
+      hoverCta: "Let's get rekt",
     },
     {
       title: 'BUILDERS',
@@ -31,6 +58,7 @@ export default function HeroSection() {
       num: '03',
       color: 'bg-white',
       textColor: 'text-black',
+      hoverCta: "Let's Buidl!",
     },
   ]
 
@@ -63,6 +91,34 @@ export default function HeroSection() {
               />
             </span>
           </h1>
+
+          {/* mascot with speech bubble */}
+          <div className="absolute -right-8 xl:right-4 top-12 hidden lg:flex flex-col items-center">
+            {/* speech bubble - pops in/out */}
+            <AnimateComponent variant="fadeInUp" delay={750}>
+              <div
+                className={`relative bg-[#CDFF57] px-5 py-4 rounded-2xl border-3 border-black w-[220px] xl:w-[240px] mb-3 ml-8 transition-all duration-300 ease-out origin-bottom ${
+                  isVisible ? 'scale-100 opacity-100 rotate-[5deg]' : 'scale-75 opacity-0 rotate-0'
+                }`}
+                style={{ boxShadow: '5px 5px 0px black' }}
+              >
+                <p className="text-sm xl:text-base font-black text-black text-center">
+                  "{mascotQuotes[quoteIndex]}"
+                </p>
+                {/* speech bubble tail pointing down */}
+                <div className="absolute -bottom-3 left-1/2 -translate-x-1/2 w-0 h-0 border-l-12 border-l-transparent border-r-12 border-r-transparent border-t-14 border-t-black" />
+                <div className="absolute -bottom-2 left-1/2 -translate-x-1/2 w-0 h-0 border-l-10 border-l-transparent border-r-10 border-r-transparent border-t-12 border-t-[#CDFF57]" />
+              </div>
+            </AnimateComponent>
+            {/* mascot face */}
+            <AnimateComponent variant="fadeInUp" delay={600}>
+              <img
+                src="/assets/images/hp-face.svg"
+                alt="House Protocol Mascot"
+                className="w-44 h-44 xl:w-64 xl:h-64 animate-mascot-sway drop-shadow-[6px_6px_0px_rgba(0,0,0,0.3)]"
+              />
+            </AnimateComponent>
+          </div>
 
           <div className="flex flex-col lg:flex-row lg:items-end lg:justify-between gap-8 lg:gap-12">
             <div className="flex flex-col gap-4">
@@ -118,10 +174,10 @@ export default function HeroSection() {
               <AnimateComponent key={role.title} delay={920 + i * 100}>
                 <Link
                   to={role.to}
-                  className={`group relative ${role.color} ${role.textColor} p-6 lg:p-8 rounded-2xl border-2 border-black hover:translate-x-1 hover:translate-y-1 transition-transform duration-200 min-h-[180px] md:min-h-[200px] block`}
+                  className={`group relative ${role.color} ${role.textColor} p-6 lg:p-8 rounded-2xl border-2 border-black hover:translate-x-1 hover:translate-y-1 transition-transform duration-200 min-h-[180px] md:min-h-[200px] block overflow-hidden`}
                   style={{ boxShadow: '6px 6px 0px black' }}
                 >
-                  <div className="flex flex-col h-full relative">
+                  <div className="flex flex-col h-full relative z-10">
                     {/* header row */}
                     <div className="flex items-start justify-between mb-4">
                       <div>
@@ -131,15 +187,19 @@ export default function HeroSection() {
                         </h3>
                         <p className="text-sm font-mono opacity-70">{role.tagline}</p>
                       </div>
-                      <div className="flex items-center opacity-0 group-hover:opacity-100 transition-opacity duration-200">
-                        <span className="text-2xl">→</span>
-                      </div>
                     </div>
                     <div className="flex-1">
                       <p className="text-sm opacity-80 leading-relaxed">
                         {role.desc}
                       </p>
                     </div>
+                  </div>
+
+                  {/* hover right bar */}
+                  <div className="absolute top-0 right-0 bottom-0 w-14 flex items-center justify-center translate-x-full group-hover:translate-x-0 transition-transform duration-300 ease-out bg-white border-l-2 border-black">
+                    <span className="text-xs font-black uppercase tracking-wider -rotate-90 whitespace-nowrap text-black">
+                      {role.hoverCta} →
+                    </span>
                   </div>
                 </Link>
               </AnimateComponent>

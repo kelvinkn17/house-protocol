@@ -31,7 +31,7 @@ export default function FinalCTA() {
           </div>
         </AnimateComponent>
 
-        <AnimateComponent onScroll variant="fadeInUp" delay={200}>
+        <AnimateComponent variant="fadeInUp" delay={700}>
           <div className="mt-16 py-12 md:py-16 px-6 md:px-10 border-t border-white/10 relative rounded-2xl overflow-hidden">
             <div
               className="absolute inset-0 pointer-events-none"

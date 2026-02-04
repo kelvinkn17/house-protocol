@@ -1,67 +1,98 @@
-import { useEffect, useRef, useState } from 'react'
 import { Link } from '@tanstack/react-router'
 import AnimateComponent from '@/components/elements/AnimateComponent'
 
-function DiagonalMarquee({ label, direction = 'left' }: { label: string; direction?: 'left' | 'right' }) {
-  const items = Array.from({ length: 30 }).map((_, i) => (
-    <span
-      key={i}
-      className="shrink-0 mx-10 text-lg font-black uppercase tracking-widest text-[#CDFF57] whitespace-nowrap"
-    >
-      {label}
-      <span className="ml-10 text-[#FF6B9D]">✦</span>
-    </span>
-  ))
+const DIAGONAL_ANGLE = -7
 
+// polkadot pattern for section dividers
+function PolkaDots({ className = '' }: { className?: string }) {
   return (
-    <div className="py-4 bg-black">
-      <div className={`flex ${direction === 'left' ? 'animate-marquee' : 'animate-marquee-reverse'}`}>
-        {items}
+    <div className={`absolute inset-0 overflow-hidden pointer-events-none ${className}`}>
+      <div
+        className="absolute inset-0 opacity-[0.15]"
+        style={{
+          backgroundImage: `radial-gradient(circle, currentColor 2px, transparent 2px)`,
+          backgroundSize: '24px 24px',
+        }}
+      />
+    </div>
+  )
+}
+
+// diagonal section divider with title badge
+function DiagonalDivider({
+  title,
+  fromColor,
+  toColor,
+  titleColor = 'bg-black',
+  textColor = 'text-[#CDFF57]',
+}: {
+  title: string
+  fromColor: string
+  toColor: string
+  titleColor?: string
+  textColor?: string
+}) {
+  return (
+    <div className="relative h-40 md:h-52 overflow-hidden">
+      {/* base color */}
+      <div className={`absolute inset-0 ${fromColor}`} />
+      {/* diagonal overlay */}
+      <div
+        className={`absolute ${toColor}`}
+        style={{
+          left: '-25%',
+          right: '-25%',
+          top: '50%',
+          height: '150%',
+          transformOrigin: 'center top',
+          transform: `rotate(${DIAGONAL_ANGLE}deg)`,
+        }}
+      />
+      {/* polkadots on the diagonal strip */}
+      <div
+        className="absolute"
+        style={{
+          left: '-25%',
+          right: '-25%',
+          top: '50%',
+          height: '60px',
+          transformOrigin: 'center top',
+          transform: `rotate(${DIAGONAL_ANGLE}deg) translateY(-50%)`,
+        }}
+      >
+        <PolkaDots className="text-white" />
+      </div>
+      {/* centered title badge */}
+      <div className="absolute inset-0 flex items-center justify-center">
+        <AnimateComponent onScroll variant="fadeInUp">
+          <div
+            className={`${titleColor} ${textColor} px-12 md:px-16 py-5 md:py-6 rounded-full border-3 border-black font-black text-2xl md:text-4xl uppercase tracking-tight`}
+            style={{
+              boxShadow: '6px 6px 0px rgba(0,0,0,0.4)',
+              transform: `rotate(${DIAGONAL_ANGLE}deg)`,
+            }}
+          >
+            {title}
+          </div>
+        </AnimateComponent>
       </div>
     </div>
   )
 }
 
-// calculates the angle for the diagonal based on container dimensions
-function useDiagonalAngle(containerRef: React.RefObject<HTMLDivElement | null>) {
-  const [angle, setAngle] = useState(-6)
-
-  useEffect(() => {
-    const updateAngle = () => {
-      if (!containerRef.current) return
-      const rect = containerRef.current.getBoundingClientRect()
-      // atan(height/width) gives us the angle of the diagonal
-      const radians = Math.atan(rect.height / rect.width)
-      const degrees = (radians * 180) / Math.PI
-      setAngle(-degrees)
-    }
-
-    updateAngle()
-    window.addEventListener('resize', updateAngle)
-    return () => window.removeEventListener('resize', updateAngle)
-  }, [containerRef])
-
-  return angle
-}
-
 export default function HowItWorksSection() {
-  const topTransitionRef = useRef<HTMLDivElement>(null)
-  const bottomTransitionRef = useRef<HTMLDivElement>(null)
-  const topAngle = useDiagonalAngle(topTransitionRef)
-  const bottomAngle = useDiagonalAngle(bottomTransitionRef)
-
   const steps = [
     {
       num: '1.',
       title: 'STAKE & EARN LIKE THE HOUSE',
-      desc: 'Deposit USDC into the House Vault. Your money becomes the casino\'s bankroll. When players lose (and statistically, they do), you earn.',
+      desc: "Deposit USDC into the House Vault. Your money becomes the casino's bankroll. When players lose (and statistically, they do), you earn.",
       cta: 'View Vaults',
       to: '/app/stake',
     },
     {
       num: '2.',
       title: 'BUILD WITHOUT THE BANK',
-      desc: 'Connect to House Protocol\'s shared liquidity. No need to fund your own bankroll. Just build the game, plug into the vault, and launch.',
+      desc: "Connect to House Protocol's shared liquidity. No need to fund your own bankroll. Just build the game, plug into the vault, and launch.",
       cta: 'Start Building',
       to: '/build',
     },
@@ -69,34 +100,14 @@ export default function HowItWorksSection() {
 
   return (
     <>
-      {/* diagonal transition with integrated marquee */}
-      <div ref={topTransitionRef} className="relative h-52 md:h-60" style={{ clipPath: 'inset(0)' }}>
-        {/* cream background */}
-        <div className="absolute inset-0 bg-[#EDEBE6]" />
-        {/* diagonal dark background */}
-        <div
-          className="absolute inset-0 bg-[#1A1A1A]"
-          style={{
-            clipPath: 'polygon(0 100%, 100% 0%, 100% 100%, 0% 100%)',
-          }}
-        />
-        {/* diagonal marquee strip, pivot from left, crop right */}
-        <div
-          className="absolute pointer-events-none"
-          style={{
-            left: 0,
-            bottom: 0,
-            width: '200vw',
-            transformOrigin: 'bottom left',
-            transform: `rotate(${topAngle}deg)`,
-          }}
-        >
-          {/* shift up 50% so marquee center sits on the diagonal line */}
-          <div style={{ transform: 'translateY(-50%)' }}>
-            <DiagonalMarquee label="HOW IT WORKS" direction="left" />
-          </div>
-        </div>
-      </div>
+      {/* cream to dark transition */}
+      <DiagonalDivider
+        title="How It Works"
+        fromColor="bg-[#EDEBE6]"
+        toColor="bg-[#1A1A1A]"
+        titleColor="bg-[#CDFF57]"
+        textColor="text-black"
+      />
 
       <section className="py-24 px-4 md:px-8 relative bg-[#1A1A1A] -mt-px">
         <div className="mx-auto max-w-6xl relative">
@@ -138,33 +149,14 @@ export default function HowItWorksSection() {
         </div>
       </section>
 
-      {/* diagonal dark-to-cream transition at bottom with GAME PRIMITIVES marquee */}
-      <div ref={bottomTransitionRef} className="relative h-52 md:h-60" style={{ clipPath: 'inset(0)' }}>
-        {/* dark background */}
-        <div className="absolute inset-0 bg-[#1A1A1A]" />
-        {/* diagonal cream background */}
-        <div
-          className="absolute inset-0 bg-[#EDEBE6]"
-          style={{
-            clipPath: 'polygon(0 100%, 100% 0%, 100% 100%, 0% 100%)',
-          }}
-        />
-        {/* diagonal marquee strip, pivot from left, crop right */}
-        <div
-          className="absolute pointer-events-none"
-          style={{
-            left: 0,
-            bottom: 0,
-            width: '200vw',
-            transformOrigin: 'bottom left',
-            transform: `rotate(${bottomAngle}deg)`,
-          }}
-        >
-          <div style={{ transform: 'translateY(-50%)' }}>
-            <DiagonalMarquee label="GAME PRIMITIVES" direction="right" />
-          </div>
-        </div>
-      </div>
+      {/* dark to cream transition */}
+      <DiagonalDivider
+        title="Game Primitives"
+        fromColor="bg-[#1A1A1A]"
+        toColor="bg-[#EDEBE6]"
+        titleColor="bg-[#FF6B9D]"
+        textColor="text-black"
+      />
     </>
   )
 }

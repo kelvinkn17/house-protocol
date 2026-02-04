@@ -1,22 +1,19 @@
 import AnimateComponent from '@/components/elements/AnimateComponent'
 import AnimatedText from '@/components/elements/AnimatedText'
 
-function DiagonalMarquee({ label, direction = 'left' }: { label: string; direction?: 'left' | 'right' }) {
-  const items = Array.from({ length: 30 }).map((_, i) => (
-    <span
-      key={i}
-      className="shrink-0 mx-10 text-lg font-black uppercase tracking-widest text-[#CDFF57] whitespace-nowrap"
-    >
-      {label}
-      <span className="ml-10 text-[#FF6B9D]">✦</span>
-    </span>
-  ))
+const DIAGONAL_ANGLE = -7
 
+// polkadot pattern for section dividers
+function PolkaDots({ className = '' }: { className?: string }) {
   return (
-    <div className="py-4 bg-black">
-      <div className={`flex ${direction === 'left' ? 'animate-marquee' : 'animate-marquee-reverse'}`}>
-        {items}
-      </div>
+    <div className={`absolute inset-0 overflow-hidden pointer-events-none ${className}`}>
+      <div
+        className="absolute inset-0 opacity-[0.15]"
+        style={{
+          backgroundImage: `radial-gradient(circle, currentColor 2px, transparent 2px)`,
+          backgroundSize: '24px 24px',
+        }}
+      />
     </div>
   )
 }
@@ -72,27 +69,49 @@ export default function InfraSection() {
         </div>
       </section>
 
-      {/* diagonal cream-to-dark transition with marquee */}
-      <div className="relative h-52 md:h-60">
+      {/* diagonal cream-to-dark transition */}
+      <div className="relative h-40 md:h-52 overflow-hidden">
         {/* cream background */}
         <div className="absolute inset-0 bg-[#EDEBE6]" />
         {/* diagonal dark background */}
         <div
-          className="absolute inset-0 bg-[#1A1A1A]"
+          className="absolute bg-[#1A1A1A]"
           style={{
-            clipPath: 'polygon(0 100%, 100% 0%, 100% 100%, 0% 100%)',
+            left: '-25%',
+            right: '-25%',
+            top: '50%',
+            height: '150%',
+            transformOrigin: 'center top',
+            transform: `rotate(${DIAGONAL_ANGLE}deg)`,
           }}
         />
-        {/* diagonal marquee strip */}
-        <div className="absolute inset-0 flex items-center pointer-events-none">
-          <div
-            className="w-[200vw] -ml-[50vw]"
-            style={{
-              transform: 'skewY(-6deg)',
-            }}
-          >
-            <DiagonalMarquee label="THE PITCH" direction="right" />
-          </div>
+        {/* polkadots on the diagonal strip */}
+        <div
+          className="absolute"
+          style={{
+            left: '-25%',
+            right: '-25%',
+            top: '50%',
+            height: '60px',
+            transformOrigin: 'center top',
+            transform: `rotate(${DIAGONAL_ANGLE}deg) translateY(-50%)`,
+          }}
+        >
+          <PolkaDots className="text-white" />
+        </div>
+        {/* centered title badge */}
+        <div className="absolute inset-0 flex items-center justify-center">
+          <AnimateComponent onScroll variant="fadeInUp">
+            <div
+              className="bg-white text-black px-12 md:px-16 py-5 md:py-6 rounded-full border-3 border-black font-black text-2xl md:text-4xl uppercase tracking-tight"
+              style={{
+                boxShadow: '6px 6px 0px rgba(0,0,0,0.4)',
+                transform: `rotate(${DIAGONAL_ANGLE}deg)`,
+              }}
+            >
+              The Pitch
+            </div>
+          </AnimateComponent>
         </div>
       </div>
     </>

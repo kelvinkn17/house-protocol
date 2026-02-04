@@ -4,7 +4,7 @@ import AnimateComponent from '@/components/elements/AnimateComponent'
 
 export default function StatsSection() {
   const sectionRef = useRef<HTMLDivElement>(null)
-  const isInView = useInView(sectionRef, { once: true, margin: '0px 0px -30% 0px' })
+  const isInView = useInView(sectionRef, { once: true, margin: '0px 0px -15% 0px' })
   const [hasAnimated, setHasAnimated] = useState(false)
 
   useEffect(() => {

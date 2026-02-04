@@ -28,8 +28,8 @@ export default function AnimatedText({
   onScroll = false,
 }: AnimatedTextProps) {
   const ref = useRef<HTMLSpanElement>(null)
-  // trigger when element enters bottom 35% of viewport
-  const isInView = useInView(ref, { once: true, margin: '0px 0px -30% 0px' })
+  // trigger when element enters bottom 15% of viewport
+  const isInView = useInView(ref, { once: true, margin: '0px 0px -15% 0px' })
 
   const letters = text.split('')
   const delayInSec = delay / 1000

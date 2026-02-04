@@ -170,3 +170,25 @@ html.dark ::selection {
     transform: translateX(100%);
   }
 }
+
+/* Mascot sway animation */
+@keyframes mascot-sway {
+  0%, 100% {
+    transform: rotate(-6deg) translateY(0px);
+  }
+  25% {
+    transform: rotate(0deg) translateY(-4px);
+  }
+  50% {
+    transform: rotate(6deg) translateY(0px);
+  }
+  75% {
+    transform: rotate(0deg) translateY(-4px);
+  }
+}
+
+.animate-mascot-sway {
+  animation: mascot-sway 4s ease-in-out infinite;
+  transform-origin: center center;
+}
+
