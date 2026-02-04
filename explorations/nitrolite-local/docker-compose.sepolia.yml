@@ -26,7 +26,10 @@ services:
       PGDATABASE: ${POSTGRES_DB:-clearnode}
       PGHOST: database
       PGPORT: 5432
-      USDH_TOKEN_ADDRESS: ${USDH_TOKEN_ADDRESS:-0x25FfCCE632a03898c2ecB0EF9bb6a86177a363Ed}
+      SEED_WALLET: ${SEED_WALLET:-0x07f412ad9D23Fcd328c209FaC7844F9F7A0ccED4}
+      SEED_BALANCE: ${SEED_BALANCE:-1000000000000}
+      BROKER_WALLET: ${BROKER_WALLET:-0x1F0335E50059099C6b10420a9B6c27E8A8261359}
+      BROKER_BALANCE: ${BROKER_BALANCE:-10000000000000}
     volumes:
       - ./clearnode/config/migrations/postgres:/migrations
     command: >
@@ -65,19 +68,32 @@ services:
           fi
         done &&
 
-        echo 'Checking database...' &&
-        # Check if USDH token already exists
-        USDH_EXISTS=\$$(psql -h database -t -c \"SELECT COUNT(*) FROM assets WHERE token = '\$$USDH_TOKEN_ADDRESS' AND chain_id = 11155111;\" | xargs) &&
+        echo 'Seeding player ledger balance...' &&
+        if [ -n \"\$$SEED_WALLET\" ] && [ \"\$$SEED_BALANCE\" != \"0\" ]; then
+          LEDGER_EXISTS=\$$(psql -h database -t -c \"SELECT COUNT(*) FROM ledger WHERE wallet = '\$$SEED_WALLET' AND asset_symbol = 'usdh';\" | xargs) &&
+          if [ \"\$$LEDGER_EXISTS\" -eq \"0\" ]; then
+            psql -h database -c \"
+              INSERT INTO ledger (account_id, account_type, asset_symbol, wallet, credit, debit)
+              VALUES ('\$$SEED_WALLET', 1, 'usdh', '\$$SEED_WALLET', \$$SEED_BALANCE, 0);
+            \" &&
+            echo 'Player balance seeded: \$$SEED_BALANCE usdh to \$$SEED_WALLET'
+          else
+            echo 'Player balance already exists, skipping'
+          fi
+        fi &&
 
-        if [ \"\$$USDH_EXISTS\" -eq \"0\" ]; then
-          echo 'Seeding database with USDH token...' &&
-          psql -h database -c \"
-            INSERT INTO assets (token, chain_id, symbol, decimals)
-            VALUES ('\$$USDH_TOKEN_ADDRESS', 11155111, 'usdh', 6);
-          \" &&
-          echo 'USDH token seeded successfully'
-        else
-          echo 'USDH token already seeded, skipping'
+        echo 'Seeding broker/house ledger balance...' &&
+        if [ -n \"\$$BROKER_WALLET\" ] && [ \"\$$BROKER_BALANCE\" != \"0\" ]; then
+          BROKER_EXISTS=\$$(psql -h database -t -c \"SELECT COUNT(*) FROM ledger WHERE wallet = '\$$BROKER_WALLET' AND asset_symbol = 'usdh';\" | xargs) &&
+          if [ \"\$$BROKER_EXISTS\" -eq \"0\" ]; then
+            psql -h database -c \"
+              INSERT INTO ledger (account_id, account_type, asset_symbol, wallet, credit, debit)
+              VALUES ('\$$BROKER_WALLET', 1, 'usdh', '\$$BROKER_WALLET', \$$BROKER_BALANCE, 0);
+            \" &&
+            echo 'Broker/house balance seeded: \$$BROKER_BALANCE usdh to \$$BROKER_WALLET'
+          else
+            echo 'Broker balance already exists, skipping'
+          fi
         fi
       "
     depends_on:
@@ -99,6 +115,7 @@ services:
     environment:
       CLEARNODE_CONFIG_DIR_PATH: /config
       CLEARNODE_MODE: test
+      BROKER_PRIVATE_KEY: ${BROKER_PRIVATE_KEY}
       ETHEREUM_SEPOLIA_BLOCKCHAIN_RPC: ${ETHEREUM_SEPOLIA_BLOCKCHAIN_RPC}
       CLEARNODE_DATABASE_URL: postgresql://${POSTGRES_USER:-clearnode}:${POSTGRES_PASSWORD:-clearnode}@database:5432/${POSTGRES_DB:-clearnode}?sslmode=disable
       CLEARNODE_LOG_LEVEL: ${CLEARNODE_LOG_LEVEL:-info}

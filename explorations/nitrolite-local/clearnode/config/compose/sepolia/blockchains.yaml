@@ -9,3 +9,4 @@ blockchains:
   contract_addresses:
     custody: "0xEC94b4039237ac9490377FDB8A65e884eD6154A0"
     adjudicator: "0x27f6C661929E4BF44455eEE2A7fc3C61E5AE768d"
+    balance_checker: "0xd34eB26B1Df1F65Ce3318eB3872fa33BB86aa0e3"
