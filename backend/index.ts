@@ -1,13 +1,10 @@
-import './dotenv.ts';
-
+import 'dotenv/config';
 import Fastify, { type FastifyReply, type FastifyRequest } from 'fastify';
 import FastifyCors from '@fastify/cors';
+import FastifyWebsocket from '@fastify/websocket';
 import { APP_PORT } from './src/config/main-config.ts';
-
-// Routes
 import { exampletRoute } from './src/routes/exampleRoutes.ts';
-
-// Workers
+import { registerGameHandler } from './src/handlers/game.handler.ts';
 import { startErrorLogCleanupWorker } from './src/workers/errorLogCleanup.ts';
 
 console.log(
@@ -21,10 +18,14 @@ const fastify = Fastify({
 fastify.register(FastifyCors, {
   origin: '*',
   methods: ['GET', 'POST', 'PUT', 'DELETE'],
-  allowedHeaders: ['Content-Type', 'Authorization', 'token'],
+  allowedHeaders: ['Content-Type', 'Authorization', 'token', 'x-player-address'],
 });
 
-// Health check endpoint
+fastify.register(FastifyWebsocket);
+fastify.register(async (app) => {
+  registerGameHandler(app);
+});
+
 fastify.get('/', async (_request: FastifyRequest, reply: FastifyReply) => {
   return reply.status(200).send({
     success: true,
@@ -34,14 +35,11 @@ fastify.get('/', async (_request: FastifyRequest, reply: FastifyReply) => {
   });
 });
 
-// Register routes with prefixes
-// Example: fastify.register(adminRoutes, { prefix: '/admin' })
-// Example: fastify.register(userRoutes, { prefix: '/user' })
+
 fastify.register(exampletRoute, { prefix: '/example' });
 
 const start = async (): Promise<void> => {
   try {
-    // Start workers
     startErrorLogCleanupWorker();
 
     await fastify.listen({

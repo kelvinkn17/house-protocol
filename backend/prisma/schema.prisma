@@ -11,12 +11,98 @@ datasource db {
 }
 
 model User {
+  id            String    @id @default(cuid())
+  walletAddress String    @unique
+  nonce         String?   // For signature verification
+  lastSignIn    DateTime?
+  createdAt     DateTime  @default(now())
+  updatedAt     DateTime  @updatedAt
+
+  sessions Session[]
+  stakes   Stake[]
+}
+
+// Staker deposits/withdrawals
+model Stake {
+  id        String   @id @default(cuid())
+  userId    String
+  user      User     @relation(fields: [userId], references: [id])
+  amount    Decimal  @db.Decimal(78, 0) // wei amount
+  shares    Decimal  @db.Decimal(78, 0) // vault shares
+  action    String   // 'deposit' or 'withdraw'
+  txHash    String
+  createdAt DateTime @default(now())
+
+  @@index([userId])
+}
+
+// Betting session (state channel)
+model Session {
+  id            String        @id @default(cuid())
+  playerId      String
+  player        User          @relation(fields: [playerId], references: [id])
+  channelId     String        @unique
+  playerDeposit Decimal       @db.Decimal(78, 0)
+  houseDeposit  Decimal       @db.Decimal(78, 0)
+  status        SessionStatus @default(ACTIVE)
+  createdAt     DateTime      @default(now())
+  closedAt      DateTime?
+
+  rounds Round[]
+  states ChannelState[]
+
+  @@index([playerId])
+  @@index([status])
+}
+
+enum SessionStatus {
+  PENDING   // waiting for channel creation
+  ACTIVE    // ready for betting
+  CLOSING   // close in progress
+  CLOSED    // settled on chain
+  DISPUTED  // in dispute
+}
+
+// Individual betting round
+model Round {
+  id               String    @id @default(cuid())
+  sessionId        String
+  session          Session   @relation(fields: [sessionId], references: [id])
+  roundNumber      Int
+  betAmount        Decimal   @db.Decimal(78, 0)
+  betChoice        String    // 'heads' or 'tails'
+  playerCommitment String
+  houseCommitment  String?
+  playerNonce      String?
+  houseNonce       String?
+  result           String?   // 'heads' or 'tails'
+  playerWon        Boolean?
+  playerCommitAt   DateTime
+  houseCommitAt    DateTime?
+  playerRevealAt   DateTime?
+  houseRevealAt    DateTime?
+  createdAt        DateTime  @default(now())
+
+  @@unique([sessionId, roundNumber])
+  @@index([sessionId])
+}
+
+// Signed channel states for dispute resolution
+model ChannelState {
   id            String   @id @default(cuid())
-  walletAddress String   @unique
-  nonce        String?   // For signature verification
-  lastSignIn   DateTime?
-  createdAt    DateTime @default(now())
-  updatedAt    DateTime @updatedAt
+  sessionId     String
+  session       Session  @relation(fields: [sessionId], references: [id])
+  version       Int
+  intent        String   // 'initialize', 'operate', 'resize', 'finalize'
+  playerBalance Decimal  @db.Decimal(78, 0)
+  houseBalance  Decimal  @db.Decimal(78, 0)
+  data          String   @db.Text // hex encoded state data
+  playerSig     String
+  houseSig      String
+  createdAt     DateTime @default(now())
+
+  @@unique([sessionId, version])
+  @@index([sessionId])
 }
 
 model ErrorLog {
