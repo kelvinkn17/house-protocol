@@ -10,6 +10,8 @@
     "deploy:localhost": "hardhat run scripts/hardhat-deploy.ts --network localhost",
     "deploy:sepolia": "hardhat run scripts/hardhat-deploy.ts --network sepolia",
     "deploy:mainnet": "hardhat run scripts/hardhat-deploy.ts --network mainnet",
+    "deploy:vault:sepolia": "hardhat run scripts/deploy-vault.ts --network sepolia",
+    "deploy:vault:mainnet": "hardhat run scripts/deploy-vault.ts --network mainnet",
     "verify": "hardhat verify --network",
     "node": "hardhat node",
     "clean": "hardhat clean"

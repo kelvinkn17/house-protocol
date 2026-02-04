@@ -18,7 +18,12 @@ const config: HardhatUserConfig = {
     },
   },
   networks: {
-    hardhat: {},
+    hardhat: {
+      // fork Sepolia for tests with real USDC
+      forking: process.env.SEPOLIA_RPC_URL ? {
+        url: process.env.SEPOLIA_RPC_URL,
+      } : undefined,
+    },
     localhost: {
       url: "http://127.0.0.1:8545",
     },
