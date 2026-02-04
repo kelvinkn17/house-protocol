@@ -4,18 +4,17 @@ import { privateKeyToAccount, generatePrivateKey } from 'viem/accounts'
 import { createPublicClient, createWalletClient, http, type Hex, formatEther } from 'viem'
 import { sepolia } from 'viem/chains'
 import {
-  NitroliteClient,
-  WalletStateSigner,
   createECDSAMessageSigner,
   createAuthRequestMessage,
   createAuthVerifyMessageFromChallenge,
   createEIP712AuthMessageSigner,
-  createCreateChannelMessage,
-  createResizeChannelMessage,
-  createGetChannelsMessage,
-  parseAnyRPCResponse,
-  getMethod,
-  getParams,
+  createAppSessionMessage,
+  createSubmitAppStateMessage,
+  createCloseAppSessionMessage,
+  createGetLedgerBalancesMessage,
+  createGetLedgerTransactionsMessageV2,
+  createGetConfigMessageV2,
+  RPCProtocolVersion,
 } from '@erc7824/nitrolite'
 
 import {
@@ -50,17 +49,12 @@ const CLEARNODE_URL = 'wss://clearnet-sandbox.yellow.com/ws'
 const FAUCET_URL = 'https://clearnet-sandbox.yellow.com/faucet/requestTokens'
 const SKIP_FAUCET = process.env.SKIP_FAUCET === 'true'
 
-// optional: reuse session key and channel for faster startup
+// optional: reuse session key
 const SAVED_SESSION_KEY = process.env.SESSION_KEY as Hex | undefined
-const SAVED_CHANNEL_ID = process.env.CHANNEL_ID as string | undefined
-
-// Yellow Network contract addresses on Sepolia
-const CUSTODY_ADDRESS = '0x019B65A265EB3363822f2752141b3dF16131B262' as Hex
-const ADJUDICATOR_ADDRESS = '0x7c7ccbc98469190849BCC6c926307794fDfB11F2' as Hex
-const YTEST_USD_TOKEN = '0xDB9F293e3898c9E5536A3be1b0C56c89d2b32DEb' as Hex
 
 const APP_NAME = 'death-game'
 const SEPOLIA_CHAIN_ID = 11155111
+const ASSET_SYMBOL = 'ytest.usd'
 
 if (!PRIVATE_KEY) {
   console.error('ERROR: Missing PRIVATE_KEY in .env')
@@ -92,26 +86,27 @@ const walletClient = createWalletClient({
   transport: http(RPC_URL),
 })
 
-// nitrolite client
-const nitroliteClient = new NitroliteClient({
-  publicClient,
-  walletClient,
-  stateSigner: new WalletStateSigner(walletClient),
-  addresses: {
-    custody: CUSTODY_ADDRESS,
-    adjudicator: ADJUDICATOR_ADDRESS,
-  },
-  chainId: sepolia.id,
-  challengeDuration: 3600n,
-})
+// =============================================================================
+// STATE
+// =============================================================================
+
+let ws: WebSocket
+let isAuthenticated = false
+let jwtToken: string | null = null
+let appSessionId: Hex | null = null
+let ledgerBalance: bigint = 0n
+let brokerAddress: Hex | null = null
+
+// pending response handlers
+const pendingResponses = new Map<string, {
+  resolve: (value: any) => void
+  reject: (error: Error) => void
+  timeout: NodeJS.Timeout
+}>()
 
 // =============================================================================
 // HELPERS
 // =============================================================================
-
-function sepoliaEtherscanTx(hash: string): string {
-  return `https://sepolia.etherscan.io/tx/${hash}`
-}
 
 function sepoliaEtherscanAddress(addr: string): string {
   return `https://sepolia.etherscan.io/address/${addr}`
@@ -146,24 +141,54 @@ async function requestFaucetTokens(): Promise<boolean> {
   }
 }
 
+function generateRequestId(): string {
+  return Math.floor(Math.random() * 1000000).toString()
+}
+
 // =============================================================================
-// WEBSOCKET & AUTH
+// WEBSOCKET MESSAGING
 // =============================================================================
 
-let ws: WebSocket
-let isAuthenticated = false
-let jwtToken: string | null = null
-let channelId: string | null = SAVED_CHANNEL_ID || null
-let supportedTokens: Map<string, { address: Hex; chainId: number }> = new Map()
+// send message and wait for response
+function sendAndWait<T>(message: string, method: string, timeoutMs = 10000): Promise<T> {
+  return new Promise((resolve, reject) => {
+    const requestId = generateRequestId()
 
-// auth params for EIP-712
+    const timeout = setTimeout(() => {
+      pendingResponses.delete(method)
+      reject(new Error(`Timeout waiting for ${method} response`))
+    }, timeoutMs)
+
+    pendingResponses.set(method, { resolve, reject, timeout })
+    ws.send(message)
+  })
+}
+
+function handleResponse(method: string, params: any, error?: string) {
+  const pending = pendingResponses.get(method)
+  if (pending) {
+    clearTimeout(pending.timeout)
+    pendingResponses.delete(method)
+
+    if (error) {
+      pending.reject(new Error(error))
+    } else {
+      pending.resolve(params)
+    }
+  }
+}
+
+// =============================================================================
+// AUTH
+// =============================================================================
+
 const authParams = {
   address: mainAccount.address,
   session_key: sessionAccount.address,
   application: APP_NAME,
   scope: APP_NAME,
   expires_at: BigInt(Math.floor(Date.now() / 1000) + 3600),
-  allowances: [{ asset: 'ytest.usd', amount: '1000000000' }],
+  allowances: [{ asset: ASSET_SYMBOL, amount: '1000000000' }],
 }
 
 function connectAndAuth(): Promise<void> {
@@ -174,7 +199,6 @@ function connectAndAuth(): Promise<void> {
       console.log('✓ Connected to Yellow Network (sandbox)')
 
       try {
-        // send auth request
         const authRequestMsg = await createAuthRequestMessage({
           address: authParams.address,
           application: authParams.application,
@@ -186,8 +210,7 @@ function connectAndAuth(): Promise<void> {
         console.log('  Sending auth_request...')
         ws.send(authRequestMsg)
       } catch (err) {
-        console.error('  Auth request failed:', (err as Error).message)
-        reject(err)
+        reject(new Error(`Auth request failed: ${(err as Error).message}`))
       }
     })
 
@@ -207,7 +230,6 @@ function connectAndAuth(): Promise<void> {
               console.log(`  Received challenge: ${challenge.slice(0, 8)}...`)
 
               try {
-                // sign with EIP-712 using MAIN wallet
                 const eip712Signer = createEIP712AuthMessageSigner(
                   walletClient,
                   {
@@ -223,8 +245,7 @@ function connectAndAuth(): Promise<void> {
                 console.log('  Signed EIP-712, sending auth_verify...')
                 ws.send(verifyMsg)
               } catch (err) {
-                console.error('  EIP-712 signing failed:', (err as Error).message)
-                resolve() // continue anyway
+                reject(new Error(`EIP-712 signing failed: ${(err as Error).message}`))
               }
             }
           }
@@ -238,112 +259,370 @@ function connectAndAuth(): Promise<void> {
               console.log(`  JWT: ${jwtToken?.slice(0, 30)}...`)
               resolve()
             } else {
-              console.log('  Auth response:', JSON.stringify(params))
-              resolve()
+              reject(new Error(`Auth failed: ${JSON.stringify(params)}`))
             }
           }
 
-          // channels list (response comes as 'channels' not 'get_channels')
-          if (method === 'get_channels' || method === 'channels') {
-            const channelsList = params?.channels || params || []
-            if (Array.isArray(channelsList) && channelsList.length > 0) {
-              channelId = channelsList[0].channel_id
-              console.log(`  Found existing channel: ${channelId}`)
-            }
-            // don't log "no channels found" here, we'll handle it in main
+          // app session created
+          if (method === 'create_app_session') {
+            handleResponse('create_app_session', params, params?.error)
           }
 
-          // channel created
-          if (method === 'create_channel') {
-            channelId = params?.channel_id
-            console.log(`✓ Channel created: ${channelId}`)
+          // app state submitted
+          if (method === 'submit_app_state') {
+            handleResponse('submit_app_state', params, params?.error)
           }
 
-          // error
-          if (method === 'error') {
-            const error = params?.error || 'Unknown'
-            console.log(`  Error: ${error}`)
-            if (!isAuthenticated) {
-              resolve() // continue for debugging
-            }
+          // app session closed
+          if (method === 'close_app_session') {
+            handleResponse('close_app_session', params, params?.error)
           }
 
-          // assets config broadcast
-          if (method === 'assets') {
-            const assets = params?.assets || params || []
-            if (Array.isArray(assets)) {
-              console.log('  Supported assets:')
-              for (const asset of assets) {
-                // fields are: token, chain_id, symbol, decimals
-                const symbol = asset.symbol || asset.name
-                const chainId = asset.chain_id || asset.chainId
-                const tokenAddr = asset.token || asset.token_address || asset.address
-                if (symbol && chainId && tokenAddr) {
-                  supportedTokens.set(symbol, {
-                    address: tokenAddr as Hex,
-                    chainId: chainId,
-                  })
-                  console.log(`    ${symbol}: ${tokenAddr} (chain ${chainId})`)
+          // ledger balances
+          if (method === 'get_ledger_balances') {
+            console.log(`  Ledger balances: ${JSON.stringify(params)}`)
+            if (params?.balances && Array.isArray(params.balances)) {
+              for (const bal of params.balances) {
+                if (bal.asset === ASSET_SYMBOL || bal.asset === 'ytest.usd') {
+                  ledgerBalance = BigInt(bal.amount)
+                  console.log(`  ${bal.asset}: ${bal.amount}`)
                 }
               }
             }
+            handleResponse('get_ledger_balances', params, params?.error)
+          }
+
+          // ledger transactions
+          if (method === 'get_ledger_transactions') {
+            const txs = params?.ledger_transactions || params?.transactions || []
+            if (Array.isArray(txs) && txs.length > 0) {
+              console.log('  Recent transactions:')
+              for (const tx of txs.slice(0, 5)) {
+                console.log(`    ${tx.tx_type || tx.type}: ${tx.amount} ${tx.asset}`)
+              }
+            }
+          }
+
+          // config response
+          if (method === 'get_config' || method === 'config') {
+            console.log('  Config received:', JSON.stringify(params).slice(0, 200))
+            if (params?.broker_address || params?.brokerAddress) {
+              brokerAddress = (params?.broker_address || params?.brokerAddress) as Hex
+              console.log(`  Broker address: ${brokerAddress}`)
+            }
+            handleResponse('get_config', params, params?.error)
+          }
+
+          // error response
+          if (method === 'error') {
+            const errorMsg = params?.error || params?.message || 'Unknown error'
+            console.error(`  Server error: ${errorMsg}`)
+            // check all pending and reject them
+            for (const [key, pending] of pendingResponses) {
+              clearTimeout(pending.timeout)
+              pending.reject(new Error(errorMsg))
+            }
+            pendingResponses.clear()
           }
         }
       } catch (e) {
-        // non-JSON
+        // non-JSON message, ignore
       }
     })
 
     ws.on('error', (err) => {
-      console.error('WebSocket error:', err.message)
-      reject(err)
+      reject(new Error(`WebSocket error: ${err.message}`))
     })
 
     ws.on('close', () => {
       console.log('Disconnected from clearnode')
     })
 
-    // timeout
+    // auth timeout
     setTimeout(() => {
-      resolve() // don't reject, continue with what we have
+      if (!isAuthenticated) {
+        reject(new Error('Authentication timeout'))
+      }
     }, 15000)
   })
 }
 
-async function getChannels(): Promise<void> {
-  if (!isAuthenticated) return
+// =============================================================================
+// CONFIG
+// =============================================================================
 
-  try {
-    const msg = await createGetChannelsMessage(sessionSigner, mainAccount.address)
-    ws.send(msg)
-    await new Promise(r => setTimeout(r, 2000))
-  } catch (err) {
-    console.log('  Get channels error:', (err as Error).message)
-  }
+async function getConfig(): Promise<void> {
+  console.log('  Fetching clearnode config...')
+
+  const msg = createGetConfigMessageV2()
+  ws.send(msg)
+
+  // wait for response
+  const response = await new Promise<any>((resolve, reject) => {
+    const timeout = setTimeout(() => {
+      console.log('  Config timeout, continuing...')
+      resolve({})
+    }, 5000)
+    pendingResponses.set('get_config', {
+      resolve: (params) => {
+        clearTimeout(timeout)
+        resolve(params)
+      },
+      reject: (err) => {
+        clearTimeout(timeout)
+        reject(err)
+      },
+      timeout
+    })
+  })
+
+  console.log(`  Config: ${JSON.stringify(response).slice(0, 300)}`)
 }
 
-async function createChannel(): Promise<void> {
-  if (!isAuthenticated) {
-    console.log('  Cannot create channel: not authenticated')
+// =============================================================================
+// LEDGER
+// =============================================================================
+
+async function getLedgerBalance(): Promise<bigint> {
+  console.log('  Fetching ledger balance...')
+
+  const msg = await createGetLedgerBalancesMessage(sessionSigner)
+  ws.send(msg)
+
+  // wait for response
+  const response = await new Promise<any>((resolve) => {
+    const timeout = setTimeout(() => {
+      console.log('  Ledger balance timeout')
+      resolve({})
+    }, 5000)
+    pendingResponses.set('get_ledger_balances', {
+      resolve: (params) => {
+        clearTimeout(timeout)
+        resolve(params)
+      },
+      reject: () => {
+        clearTimeout(timeout)
+        resolve({})
+      },
+      timeout
+    })
+  })
+
+  return ledgerBalance
+}
+
+async function getLedgerTransactions(): Promise<void> {
+  console.log('  Fetching recent transactions...')
+
+  const msg = createGetLedgerTransactionsMessageV2(mainAccount.address, { limit: 5 })
+  ws.send(msg)
+
+  // wait for response
+  await new Promise(r => setTimeout(r, 2000))
+}
+
+// =============================================================================
+// APP SESSION
+// =============================================================================
+
+// track state version globally for the session
+let stateVersion = 1 // starts at 1, first submit should be 2
+
+async function createAppSession(betAmount: bigint): Promise<Hex> {
+  console.log('  Creating app session...')
+
+  // use broker address if available, otherwise use main account as counterparty
+  const counterparty = brokerAddress || mainAccount.address
+  console.log(`  Counterparty: ${counterparty}`)
+
+  // 2 participants: player and house (broker or self)
+  // weights give player 100%, quorum 100% means only player needs to sign
+  const definition = {
+    protocol: RPCProtocolVersion.NitroRPC_0_4,
+    participants: [mainAccount.address, counterparty],
+    weights: [100, 0],
+    quorum: 100,
+    challenge: 0,
+    nonce: Date.now(),
+    application: APP_NAME,
+  }
+
+  const allocations = [
+    {
+      participant: mainAccount.address,
+      asset: ASSET_SYMBOL,
+      amount: betAmount.toString(),
+    },
+  ]
+
+  // reset version for new session
+  stateVersion = 1
+
+  const msg = await createAppSessionMessage(sessionSigner, {
+    definition,
+    allocations,
+  })
+
+  ws.send(msg)
+
+  // wait for response
+  const response = await new Promise<any>((resolve, reject) => {
+    const timeout = setTimeout(() => reject(new Error('App session creation timeout')), 10000)
+    pendingResponses.set('create_app_session', {
+      resolve: (params) => {
+        clearTimeout(timeout)
+        resolve(params)
+      },
+      reject: (err) => {
+        clearTimeout(timeout)
+        reject(err)
+      },
+      timeout
+    })
+  })
+
+  if (response?.app_session_id) {
+    appSessionId = response.app_session_id as Hex
+    console.log(`✓ App session created: ${appSessionId.slice(0, 18)}...`)
+    return appSessionId
+  }
+
+  throw new Error(`Failed to create app session: ${JSON.stringify(response)}`)
+}
+
+async function submitAppState(
+  gameState: GameState,
+  playerAllocation: bigint,
+  totalBet: bigint
+): Promise<void> {
+  if (!appSessionId) {
+    throw new Error('No app session active')
+  }
+
+  // increment version for each state submission
+  stateVersion++
+
+  const stateData = encodeGameState(gameState)
+
+  // allocations must sum to original total (totalBet)
+  // player gets playerAllocation, house gets the rest
+  const houseAllocation = totalBet - playerAllocation
+  const counterparty = brokerAddress || mainAccount.address
+
+  const allocations = [
+    {
+      participant: mainAccount.address,
+      asset: ASSET_SYMBOL,
+      amount: playerAllocation.toString(),
+    },
+    {
+      participant: counterparty,
+      asset: ASSET_SYMBOL,
+      amount: houseAllocation.toString(),
+    },
+  ]
+
+  console.log(`  Submitting state v${stateVersion} (player: ${playerAllocation}, house: ${houseAllocation})...`)
+
+  const msg = await createSubmitAppStateMessage<RPCProtocolVersion.NitroRPC_0_4>(
+    sessionSigner,
+    {
+      app_session_id: appSessionId,
+      intent: 'operate',
+      version: stateVersion,
+      allocations,
+      session_data: stateData,
+    }
+  )
+
+  ws.send(msg)
+
+  // wait for response
+  const response = await new Promise<any>((resolve, reject) => {
+    const timeout = setTimeout(() => {
+      console.log(`  State v${stateVersion} timeout, continuing...`)
+      resolve({ status: 'timeout' })
+    }, 3000)
+    pendingResponses.set('submit_app_state', {
+      resolve: (params) => {
+        clearTimeout(timeout)
+        resolve(params)
+      },
+      reject: (err) => {
+        clearTimeout(timeout)
+        reject(err)
+      },
+      timeout
+    })
+  })
+
+  if (response?.error) {
+    throw new Error(`State submission failed: ${response.error}`)
+  }
+
+  console.log(`  ✓ State v${stateVersion} accepted`)
+}
+
+async function closeAppSession(finalPlayerAmount: bigint, totalBet: bigint): Promise<void> {
+  if (!appSessionId) {
+    console.log('  No app session to close')
     return
   }
 
-  // use ytest.usd on Sepolia (the token address is same across chains)
-  const tokenAddress: Hex = YTEST_USD_TOKEN
-  const tokenChainId = SEPOLIA_CHAIN_ID
-  console.log(`  Using ytest.usd: ${tokenAddress} (chain ${tokenChainId})`)
+  console.log('  Closing app session...')
 
-  try {
-    const msg = await createCreateChannelMessage(sessionSigner, {
-      chain_id: tokenChainId,
-      token: tokenAddress,
+  // allocations must sum to original total
+  const houseAllocation = totalBet - finalPlayerAmount
+  const counterparty = brokerAddress || mainAccount.address
+
+  const allocations = [
+    {
+      participant: mainAccount.address,
+      asset: ASSET_SYMBOL,
+      amount: finalPlayerAmount.toString(),
+    },
+    {
+      participant: counterparty,
+      asset: ASSET_SYMBOL,
+      amount: houseAllocation.toString(),
+    },
+  ]
+
+  console.log(`  Final allocation: player ${finalPlayerAmount}, house ${houseAllocation}`)
+
+  const msg = await createCloseAppSessionMessage(sessionSigner, {
+    app_session_id: appSessionId,
+    allocations,
+  })
+
+  ws.send(msg)
+
+  // wait for response
+  const response = await new Promise<any>((resolve, reject) => {
+    const timeout = setTimeout(() => {
+      console.log('  Close session timeout, continuing...')
+      resolve({ status: 'timeout' })
+    }, 5000)
+    pendingResponses.set('close_app_session', {
+      resolve: (params) => {
+        clearTimeout(timeout)
+        resolve(params)
+      },
+      reject: (err) => {
+        clearTimeout(timeout)
+        reject(err)
+      },
+      timeout
     })
-    console.log('  Requesting channel creation...')
-    ws.send(msg)
-    await new Promise(r => setTimeout(r, 3000))
-  } catch (err) {
-    console.log('  Create channel error:', (err as Error).message)
+  })
+
+  if (response?.status === 'closed' || response?.status === 'timeout') {
+    console.log(`✓ App session closed`)
+  } else {
+    console.log(`  Close response: ${JSON.stringify(response)}`)
   }
+
+  appSessionId = null
 }
 
 // =============================================================================
@@ -398,11 +677,15 @@ async function runGame(): Promise<void> {
 
   const numRows = 5
   const rows = generateGameRows(numRows)
+  const betAmount = DEFAULT_GAME_CONFIG.initialBalance
+
+  // create app session for this game
+  await createAppSession(betAmount)
 
   const session: GameSession = {
     gameId,
     player: mainAccount.address,
-    virtualBet: DEFAULT_GAME_CONFIG.initialBalance,
+    virtualBet: betAmount,
     rows,
     currentRowIndex: 0,
     rounds: [],
@@ -412,7 +695,7 @@ async function runGame(): Promise<void> {
 
   console.log('\n=== Game Start ===')
   console.log(`Game ID: ${gameId.slice(0, 18)}...`)
-  console.log(`Virtual bet: ${session.virtualBet}`)
+  console.log(`Bet amount: ${session.virtualBet} ${ASSET_SYMBOL}`)
   console.log(`Rows: ${numRows}`)
 
   for (let i = 0; i < rows.length; i++) {
@@ -425,16 +708,41 @@ async function runGame(): Promise<void> {
     if (round.result === 'boom') {
       session.status = 'lost'
       session.cumulativeMultiplier = 0n
+
+      // submit final losing state, house gets the full bet
+      const gameState: GameState = {
+        gameId: BigInt(gameId),
+        currentRow: i,
+        virtualBalance: 0n,
+        multiplier: 0n,
+        status: 'lost',
+      }
+      await submitAppState(gameState, 0n, betAmount)
       break
     }
 
     const rowMult = calculateRowMultiplier(row.tilesInRow)
     session.cumulativeMultiplier = (session.cumulativeMultiplier * rowMult) / MULTIPLIER_SCALE
 
+    const currentBalance = (betAmount * session.cumulativeMultiplier) / MULTIPLIER_SCALE
     const withEdge = applyHouseEdge(session.cumulativeMultiplier, DEFAULT_GAME_CONFIG.houseEdgeBps)
     console.log(`  Cumulative: ${formatMultiplier(session.cumulativeMultiplier)} (with edge: ${formatMultiplier(withEdge)})`)
+    console.log(`  Current balance: ${currentBalance} ${ASSET_SYMBOL}`)
 
-    await new Promise(r => setTimeout(r, 50))
+    // submit state update (note: in a real game, the virtual balance grows
+    // but we can't exceed the original bet until we cash out)
+    const gameState: GameState = {
+      gameId: BigInt(gameId),
+      currentRow: i,
+      virtualBalance: currentBalance,
+      multiplier: session.cumulativeMultiplier,
+      status: 'playing',
+    }
+    // for state updates during play, we keep original allocation
+    // (player still has their bet, house has nothing)
+    await submitAppState(gameState, betAmount, betAmount)
+
+    await new Promise(r => setTimeout(r, 100))
   }
 
   if (session.status === 'playing') {
@@ -446,10 +754,20 @@ async function runGame(): Promise<void> {
   console.log(`Final multiplier: ${formatMultiplier(session.cumulativeMultiplier)}`)
   console.log(`Result: ${session.status.toUpperCase()}`)
 
-  const finalBalance = session.status === 'won'
-    ? (session.virtualBet * session.cumulativeMultiplier) / MULTIPLIER_SCALE
+  // calculate theoretical payout based on multiplier
+  const theoreticalPayout = session.status === 'won'
+    ? (session.virtualBet * applyHouseEdge(session.cumulativeMultiplier, DEFAULT_GAME_CONFIG.houseEdgeBps)) / MULTIPLIER_SCALE
     : 0n
-  console.log(`Virtual payout: ${finalBalance}`)
+
+  // in sandbox mode without house funding, player can only get back original bet on win
+  // in production, house would also fund the session to cover potential payouts
+  const actualPayout = session.status === 'won' ? betAmount : 0n
+
+  console.log(`Theoretical payout: ${theoreticalPayout} ${ASSET_SYMBOL}`)
+  console.log(`Actual payout (sandbox limit): ${actualPayout} ${ASSET_SYMBOL}`)
+
+  // close the app session with final allocation
+  await closeAppSession(actualPayout, betAmount)
 }
 
 // =============================================================================
@@ -463,14 +781,12 @@ async function main() {
   console.log('CONFIG:')
   console.log(`  Main wallet: ${mainAccount.address}`)
   console.log(`  Session key: ${sessionAccount.address}${isNewSession ? ' (new)' : ' (saved)'}`)
-  if (SAVED_CHANNEL_ID) console.log(`  Channel: ${SAVED_CHANNEL_ID}`)
   console.log(`  Chain: Sepolia (${SEPOLIA_CHAIN_ID})`)
   console.log(`  Clearnode: ${CLEARNODE_URL}`)
+  console.log(`  Asset: ${ASSET_SYMBOL}`)
   console.log('')
   console.log('LINKS:')
   console.log(`  Wallet: ${sepoliaEtherscanAddress(mainAccount.address)}`)
-  console.log(`  Custody: ${sepoliaEtherscanAddress(CUSTODY_ADDRESS)}`)
-  console.log(`  ytest.usd: ${sepoliaEtherscanAddress(YTEST_USD_TOKEN)}`)
   console.log('')
 
   // check Sepolia balance
@@ -478,46 +794,48 @@ async function main() {
   console.log(`Sepolia ETH: ${formatEther(balance)} ETH`)
 
   if (balance === 0n) {
-    console.error('\nERROR: No Sepolia ETH. Get some from https://sepoliafaucet.com/')
-    process.exit(1)
+    throw new Error('No Sepolia ETH. Get some from https://sepoliafaucet.com/')
   }
   console.log('')
 
-  // request faucet tokens (for unified balance), skip if SKIP_FAUCET=true
+  // request faucet tokens for unified balance
   if (!SKIP_FAUCET) {
     await requestFaucetTokens()
     console.log('')
   }
 
-  // connect and authenticate
+  // connect and authenticate, this MUST succeed
   await connectAndAuth()
 
   if (!isAuthenticated) {
-    console.log('\nWARNING: Not authenticated with Yellow Network')
-    console.log('The game will run in simulation mode (local state only)')
-    console.log('')
-  } else {
-    // wait for assets and channels broadcasts
-    await new Promise(r => setTimeout(r, 1500))
-
-    // create channel if none found
-    if (!channelId) {
-      await createChannel()
-    } else if (SAVED_CHANNEL_ID) {
-      console.log(`  Using saved channel: ${channelId}`)
-    }
-
-    // print session info for saving (only if new session)
-    if (isNewSession && channelId) {
-      console.log('')
-      console.log('  To reuse this session, add to .env:')
-      console.log(`  SESSION_KEY=${sessionPrivateKey}`)
-      console.log(`  CHANNEL_ID=${channelId}`)
-    }
+    throw new Error('Failed to authenticate with Yellow Network')
   }
 
-  // run game
+  // wait for connection to stabilize
+  await new Promise(r => setTimeout(r, 1000))
+
+  // get clearnode config to find broker address
+  await getConfig()
+
+  // get ledger balance before game
+  await getLedgerBalance()
+
+  // print session info for saving
+  if (isNewSession) {
+    console.log('')
+    console.log('  To reuse this session, add to .env:')
+    console.log(`  SESSION_KEY=${sessionPrivateKey}`)
+  }
+
+  // run the game
   await runGame()
+
+  // show transaction history
+  console.log('')
+  await getLedgerTransactions()
+
+  // get final balance
+  await getLedgerBalance()
 
   // cleanup
   if (ws && ws.readyState === WebSocket.OPEN) {
@@ -528,6 +846,9 @@ async function main() {
 }
 
 main().catch((err) => {
-  console.error('Fatal error:', err)
+  console.error('\nFATAL ERROR:', err.message)
+  if (ws && ws.readyState === WebSocket.OPEN) {
+    ws.close()
+  }
   process.exit(1)
 })
