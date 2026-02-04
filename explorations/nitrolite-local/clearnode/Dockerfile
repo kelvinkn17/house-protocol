@@ -17,9 +17,12 @@ FROM alpine:3.23.3
 RUN addgroup -g 1001 -S clearnode
 RUN adduser -S clearnode -u 1001 -G clearnode
 
-USER clearnode
-
 COPY --from=builder /build/bin /bin
+
+# Bake in config files for Dokploy deployment
+COPY config/compose/sepolia /config
+
+USER clearnode
 
 EXPOSE 8000 4242
 

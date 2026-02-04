@@ -19,7 +19,9 @@ services:
       start_period: 10s
 
   db-init:
-    image: postgres:17.2
+    build:
+      context: ./db-init
+      dockerfile: Dockerfile
     environment:
       PGUSER: ${POSTGRES_USER:-clearnode}
       PGPASSWORD: ${POSTGRES_PASSWORD:-clearnode}
@@ -30,8 +32,6 @@ services:
       SEED_BALANCE: ${SEED_BALANCE:-1000000000000}
       BROKER_WALLET: ${BROKER_WALLET:-0x1F0335E50059099C6b10420a9B6c27E8A8261359}
       BROKER_BALANCE: ${BROKER_BALANCE:-10000000000000}
-    volumes:
-      - ./clearnode/config/migrations/postgres:/migrations
     command: >
       sh -c "
         echo 'Waiting for database to be ready...' &&
@@ -119,8 +119,6 @@ services:
       ETHEREUM_SEPOLIA_BLOCKCHAIN_RPC: ${ETHEREUM_SEPOLIA_BLOCKCHAIN_RPC}
       CLEARNODE_DATABASE_URL: postgresql://${POSTGRES_USER:-clearnode}:${POSTGRES_PASSWORD:-clearnode}@database:5432/${POSTGRES_DB:-clearnode}?sslmode=disable
       CLEARNODE_LOG_LEVEL: ${CLEARNODE_LOG_LEVEL:-info}
-    volumes:
-      - ./clearnode/config/compose/sepolia:/config:ro
     restart: unless-stopped
 
 volumes:
