@@ -1,5 +1,6 @@
 import { Link, useLocation } from '@tanstack/react-router'
 import { cnm } from '@/utils/style'
+import ConnectButton from '@/components/ConnectButton'
 
 interface AppLayoutProps {
   children: React.ReactNode
@@ -13,7 +14,7 @@ export default function AppLayout({ children, noPadding }: AppLayoutProps) {
 
   return (
     <div className="min-h-screen bg-[#cdff57]">
-      {/* Sticky navbar - no border, clean */}
+      {/* Sticky navbar */}
       <header className="sticky top-0 z-40 h-14 bg-[#cdff57] px-4 sm:px-6">
         <nav className="mx-auto flex h-full max-w-7xl items-center justify-between">
           <Link to="/" className="flex items-center">
@@ -34,12 +35,7 @@ export default function AppLayout({ children, noPadding }: AppLayoutProps) {
             </NavLink>
           </div>
 
-          <button
-            className="px-5 py-2.5 text-sm font-black uppercase tracking-wide rounded-full border-2 border-black bg-white text-black hover:translate-x-0.5 hover:translate-y-0.5 transition-transform duration-200"
-            style={{ boxShadow: '4px 4px 0px black' }}
-          >
-            Connect Wallet
-          </button>
+          <ConnectButton variant="compact" />
         </nav>
       </header>
 

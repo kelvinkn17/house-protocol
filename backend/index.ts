@@ -6,6 +6,7 @@ import { APP_PORT } from './src/config/main-config.ts';
 
 // Routes
 import { exampletRoute } from './src/routes/exampleRoutes.ts';
+import { authRoutes } from './src/routes/authRoutes.ts';
 
 // Workers
 import { startErrorLogCleanupWorker } from './src/workers/errorLogCleanup.ts';
@@ -35,8 +36,7 @@ fastify.get('/', async (_request: FastifyRequest, reply: FastifyReply) => {
 });
 
 // Register routes with prefixes
-// Example: fastify.register(adminRoutes, { prefix: '/admin' })
-// Example: fastify.register(userRoutes, { prefix: '/user' })
+fastify.register(authRoutes, { prefix: '/auth' });
 fastify.register(exampletRoute, { prefix: '/example' });
 
 const start = async (): Promise<void> => {

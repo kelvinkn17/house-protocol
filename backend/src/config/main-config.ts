@@ -4,7 +4,7 @@
  */
 
 // Validate required environment variables on startup
-const requiredEnvVars: string[] = ['DATABASE_URL', 'JWT_SECRET'];
+const requiredEnvVars: string[] = ['DATABASE_URL', 'JWT_SECRET', 'PRIVY_APP_ID', 'PRIVY_APP_SECRET'];
 
 for (const envVar of requiredEnvVars) {
   if (!process.env[envVar]) {
@@ -22,9 +22,13 @@ export const IS_PROD: boolean = NODE_ENV === 'production';
 // Database
 export const DATABASE_URL: string = process.env.DATABASE_URL as string;
 
-// Authentication
+// Authentication (legacy JWT, still used for internal tokens if needed)
 export const JWT_SECRET: string = process.env.JWT_SECRET as string;
 export const JWT_EXPIRES_IN: string = process.env.JWT_EXPIRES_IN || '7d';
+
+// Privy Configuration
+export const PRIVY_APP_ID: string = process.env.PRIVY_APP_ID as string;
+export const PRIVY_APP_SECRET: string = process.env.PRIVY_APP_SECRET as string;
 
 // Error Log Configuration
 export const ERROR_LOG_MAX_RECORDS: number = 10000;
@@ -39,6 +43,8 @@ export default {
   DATABASE_URL,
   JWT_SECRET,
   JWT_EXPIRES_IN,
+  PRIVY_APP_ID,
+  PRIVY_APP_SECRET,
   ERROR_LOG_MAX_RECORDS,
   ERROR_LOG_CLEANUP_INTERVAL,
 };

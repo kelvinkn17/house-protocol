@@ -9,6 +9,8 @@ import { TanStackDevtools } from '@tanstack/react-devtools'
 import HeroUIProvider from '../providers/HeroUIProvider'
 import LenisSmoothScrollProvider from '../providers/LenisSmoothScrollProvider'
 import { ThemeProvider } from '../providers/ThemeProvider'
+import PrivyProvider from '../providers/PrivyProvider'
+import { AuthProvider } from '../providers/AuthProvider'
 import ErrorPage from '../components/ErrorPage'
 
 import TanStackQueryDevtools from '../integrations/tanstack-query/devtools'
@@ -82,20 +84,24 @@ function RootDocument({ children }: { children: React.ReactNode }) {
       <body className="bg-neutral-50 text-neutral-900 dark:bg-neutral-900 dark:text-neutral-100 antialiased transition-colors duration-300">
         <ThemeProvider>
           <HeroUIProvider>
-            <LenisSmoothScrollProvider />
-            {children}
-            <TanStackDevtools
-              config={{
-                position: 'bottom-right',
-              }}
-              plugins={[
-                {
-                  name: 'Tanstack Router',
-                  render: <TanStackRouterDevtoolsPanel />,
-                },
-                TanStackQueryDevtools,
-              ]}
-            />
+            <PrivyProvider>
+              <AuthProvider>
+                <LenisSmoothScrollProvider />
+                {children}
+                <TanStackDevtools
+                  config={{
+                    position: 'bottom-right',
+                  }}
+                  plugins={[
+                    {
+                      name: 'Tanstack Router',
+                      render: <TanStackRouterDevtoolsPanel />,
+                    },
+                    TanStackQueryDevtools,
+                  ]}
+                />
+              </AuthProvider>
+            </PrivyProvider>
           </HeroUIProvider>
         </ThemeProvider>
         <Scripts />

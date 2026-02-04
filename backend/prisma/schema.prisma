@@ -11,12 +11,16 @@ datasource db {
 }
 
 model User {
-  id            String   @id @default(cuid())
-  walletAddress String   @unique
-  nonce        String?   // For signature verification
-  lastSignIn   DateTime?
-  createdAt    DateTime @default(now())
-  updatedAt    DateTime @updatedAt
+  id            String    @id @default(cuid())
+  privyId       String    @unique // privy user id (did:privy:xxx)
+  walletAddress String?   // linked wallet address, can be null for email only users
+  email         String?   // email from privy (gmail or email login)
+  lastSignIn    DateTime?
+  createdAt     DateTime  @default(now())
+  updatedAt     DateTime  @updatedAt
+
+  @@index([walletAddress])
+  @@index([email])
 }
 
 model ErrorLog {
