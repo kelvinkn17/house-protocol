@@ -102,7 +102,7 @@ function StakePage() {
                   i < 3 && 'lg:border-r-2 lg:border-black/10'
                 )}
               >
-                <p className="text-xs font-mono text-black/50 uppercase mb-1">{stat.label}</p>
+                <p className="text-xs font-mono text-black/50 mb-1">{stat.label}</p>
                 <p className="text-2xl font-black text-black">{stat.value}</p>
               </div>
             ))}
@@ -119,7 +119,7 @@ function StakePage() {
               style={{ boxShadow: '6px 6px 0px black' }}
             >
               <div className="flex items-center justify-between mb-4">
-                <p className="text-xs font-mono text-black/50 uppercase tracking-wider">hUSDC Price History</p>
+                <p className="text-xs font-mono text-black/50 tracking-wider">hUSDC Price History</p>
                 <span
                   className={cnm(
                     'px-3 py-1 text-xs font-black rounded-full border-2 border-black',
