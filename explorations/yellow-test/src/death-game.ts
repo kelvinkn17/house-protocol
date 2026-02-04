@@ -15,6 +15,7 @@ import {
   createGetLedgerTransactionsMessageV2,
   createGetConfigMessageV2,
   RPCProtocolVersion,
+  RPCAppStateIntent,
 } from '@erc7824/nitrolite'
 
 import {
@@ -558,7 +559,7 @@ async function submitAppState(
     sessionSigner,
     {
       app_session_id: appSessionId,
-      intent: 'operate',
+      intent: RPCAppStateIntent.Operate,
       version: stateVersion,
       allocations,
       session_data: stateData,
@@ -811,12 +812,19 @@ async function main() {
   console.log('Death Game - Yellow Network State Channels')
   console.log('==========================================')
   console.log('')
+  console.log('MODE:', USE_PRODUCTION ? 'PRODUCTION (real USDH)' : 'SANDBOX (test tokens)')
+  console.log('')
   console.log('CONFIG:')
   console.log(`  Main wallet: ${mainAccount.address}`)
   console.log(`  Session key: ${sessionAccount.address}${isNewSession ? ' (new)' : ' (saved)'}`)
   console.log(`  Chain: Sepolia (${SEPOLIA_CHAIN_ID})`)
   console.log(`  Clearnode: ${CLEARNODE_URL}`)
   console.log(`  Asset: ${ASSET_SYMBOL}`)
+  if (USE_PRODUCTION) {
+    console.log(`  Broker: ${BROKER_ADDRESS}`)
+    console.log(`  USDH: ${USDH_ADDRESS}`)
+    console.log(`  Custody: ${CUSTODY_ADDRESS}`)
+  }
   console.log('')
   console.log('LINKS:')
   console.log(`  Wallet: ${sepoliaEtherscanAddress(mainAccount.address)}`)

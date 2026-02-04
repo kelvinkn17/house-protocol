@@ -125,3 +125,32 @@ export function expectedValue(bet: number, multiplier: bigint, winProb: number):
   const mult = Number(multiplier) / Number(MULTIPLIER_SCALE)
   return bet * mult * winProb
 }
+
+// calculate max payout for a game
+// for N rows with 2 tiles each: max multiplier = 2^N
+// (since each row has 1 bomb out of 2 tiles, survival gives 2x)
+// max payout = bet * maxMultiplier * (1 - houseEdge)
+export function calculateMaxPayout(
+  bet: bigint,
+  numRows: number,
+  houseEdgeBps: bigint
+): bigint {
+  // max multiplier for 2-tile rows: 2^numRows
+  // we use 2n for all rows since that's the minimum tiles config
+  const maxMultiplier = 2n ** BigInt(numRows)
+  const maxMultiplierScaled = maxMultiplier * MULTIPLIER_SCALE
+
+  // apply house edge
+  const withEdge = applyHouseEdge(maxMultiplierScaled, houseEdgeBps)
+
+  // max payout = bet * multiplier / SCALE
+  return (bet * withEdge) / MULTIPLIER_SCALE
+}
+
+// calculate max multiplier for a set of rows
+export function calculateMaxMultiplier(rows: RowConfig[]): bigint {
+  return rows.reduce((mult, row) => {
+    const rowMult = calculateRowMultiplier(row.tilesInRow)
+    return (mult * rowMult) / MULTIPLIER_SCALE
+  }, MULTIPLIER_SCALE)
+}

@@ -28,13 +28,21 @@ contract DeployScript is Script {
             usdc.balanceOf(deployer)
         );
 
-        // Deploy HouseVault first with zero escrow (will set after)
+        // Nitrolite addresses on Sepolia
+        address custody = 0xEC94b4039237ac9490377FDB8A65e884eD6154A0;
+        address broker = 0x1F0335E50059099C6b10420a9B6c27E8A8261359;
+
+        // Deploy HouseVault with zero escrow (will set after), with custody and broker
         HouseVault vault = new HouseVault(
             IERC20(address(usdc)),
             deployer,
-            address(0)
+            address(0), // escrow, set after
+            custody,
+            broker
         );
         console.log("HouseVault deployed to:", address(vault));
+        console.log("Custody:", custody);
+        console.log("Broker:", broker);
 
         // Deploy HouseEscrow with vault address
         HouseEscrow escrow = new HouseEscrow(

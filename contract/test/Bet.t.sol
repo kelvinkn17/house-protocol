@@ -62,8 +62,17 @@ contract BetTest is Test {
         owner = address(this);
 
         // Deploy contracts
+        // Using dummy addresses for custody/broker since these tests focus on escrow flow
+        address dummyCustody = address(0xdead);
+        address dummyBroker = address(0xbeef);
         usdc = new MintableERC20("USD Coin", "USDC", 6);
-        vault = new HouseVault(IERC20(address(usdc)), owner, address(0));
+        vault = new HouseVault(
+            IERC20(address(usdc)),
+            owner,
+            address(0), // escrow set after
+            dummyCustody,
+            dummyBroker
+        );
         escrow = new HouseEscrow(address(usdc), address(vault), owner);
         vault.setEscrow(address(escrow));
 
