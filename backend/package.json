@@ -22,7 +22,7 @@
     "@fastify/cors": "^11.0.0",
     "@fastify/websocket": "^11.2.0",
     "@prisma/adapter-pg": "^7.0.0",
-    "@prisma/client": "^7.0.0",
+    "@prisma/client": "^7.3.0",
     "axios": "^1.7.9",
     "bs58": "^6.0.0",
     "dotenv": "^16.4.7",
@@ -44,7 +44,7 @@
     "@types/ws": "^8.18.1",
     "bun-types": "latest",
     "eslint": "^8.57.0",
-    "prisma": "^7.0.0",
+    "prisma": "^7.3.0",
     "typescript": "^5.7.3"
   }
 }
