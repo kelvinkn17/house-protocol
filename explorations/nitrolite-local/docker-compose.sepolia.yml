@@ -121,6 +121,16 @@ services:
       CLEARNODE_LOG_LEVEL: ${CLEARNODE_LOG_LEVEL:-info}
     restart: unless-stopped
 
+  scanner:
+    build:
+      context: ./scanner
+      dockerfile: Dockerfile
+      args:
+        VITE_CLEARNODE_URL: ${VITE_CLEARNODE_URL:-wss://nitrolite.kwek.dev/ws}
+    ports:
+      - "5200:5200"
+    restart: unless-stopped
+
 volumes:
   postgres_data:
     driver: local
