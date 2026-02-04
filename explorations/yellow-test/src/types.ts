@@ -1,5 +1,29 @@
 import type { Hex, Address } from 'viem'
 
+// =============================================================================
+// NETWORK CONFIG
+// =============================================================================
+
+// clearnode endpoints
+export const CLEARNODE_SANDBOX_URL = 'wss://clearnet-sandbox.yellow.com/ws'
+export const CLEARNODE_URL = 'wss://nitrolite.kwek.dev/ws'
+
+// faucet (sandbox only)
+export const FAUCET_URL = 'https://clearnet-sandbox.yellow.com/faucet/requestTokens'
+
+// asset symbols
+export const ASSET_SYMBOL_SANDBOX = 'ytest.usd'
+export const ASSET_SYMBOL = 'USDH'
+
+// contract addresses (Sepolia)
+export const USDH_ADDRESS = '0x25FfCCE632a03898c2ecB0EF9bb6a86177a363Ed' as Address
+export const CUSTODY_ADDRESS = '0xEC94b4039237ac9490377FDB8A65e884eD6154A0' as Address
+export const BROKER_ADDRESS = '0x1F0335E50059099C6b10420a9B6c27E8A8261359' as Address
+
+// =============================================================================
+// GAME TYPES
+// =============================================================================
+
 // game state tracked in state channel
 export interface GameState {
   gameId: bigint

@@ -28,6 +28,7 @@ import {
   randomTileChoice,
   formatMultiplier,
   encodeGameState,
+  calculateMaxPayout,
 } from './game-logic'
 
 import {
@@ -37,6 +38,14 @@ import {
   type RowConfig,
   MULTIPLIER_SCALE,
   DEFAULT_GAME_CONFIG,
+  CLEARNODE_URL as PROD_CLEARNODE_URL,
+  CLEARNODE_SANDBOX_URL,
+  FAUCET_URL as SANDBOX_FAUCET_URL,
+  ASSET_SYMBOL as PROD_ASSET_SYMBOL,
+  ASSET_SYMBOL_SANDBOX,
+  BROKER_ADDRESS,
+  USDH_ADDRESS,
+  CUSTODY_ADDRESS,
 } from './types'
 
 // =============================================================================
@@ -45,16 +54,19 @@ import {
 
 const PRIVATE_KEY = process.env.PRIVATE_KEY as Hex
 const RPC_URL = process.env.RPC_URL || 'https://ethereum-sepolia-rpc.publicnode.com'
-const CLEARNODE_URL = 'wss://clearnet-sandbox.yellow.com/ws'
-const FAUCET_URL = 'https://clearnet-sandbox.yellow.com/faucet/requestTokens'
-const SKIP_FAUCET = process.env.SKIP_FAUCET === 'true'
+
+// toggle between sandbox (no real funds) and production (real USDH)
+const USE_PRODUCTION = process.env.USE_PRODUCTION === 'true'
+const CLEARNODE_URL = USE_PRODUCTION ? PROD_CLEARNODE_URL : CLEARNODE_SANDBOX_URL
+const FAUCET_URL = SANDBOX_FAUCET_URL
+const SKIP_FAUCET = process.env.SKIP_FAUCET === 'true' || USE_PRODUCTION
+const ASSET_SYMBOL = USE_PRODUCTION ? PROD_ASSET_SYMBOL : ASSET_SYMBOL_SANDBOX
 
 // optional: reuse session key
 const SAVED_SESSION_KEY = process.env.SESSION_KEY as Hex | undefined
 
 const APP_NAME = 'death-game'
 const SEPOLIA_CHAIN_ID = 11155111
-const ASSET_SYMBOL = 'ytest.usd'
 
 if (!PRIVATE_KEY) {
   console.error('ERROR: Missing PRIVATE_KEY in .env')
@@ -427,15 +439,27 @@ async function getLedgerTransactions(): Promise<void> {
 
 // track state version globally for the session
 let stateVersion = 1 // starts at 1, first submit should be 2
+let sessionTotalPool = 0n // total funds in session (player bet + house max payout)
+let sessionMaxPayout = 0n // house's contribution (what player can win)
 
-async function createAppSession(betAmount: bigint): Promise<Hex> {
+async function createAppSession(betAmount: bigint, numRows: number): Promise<Hex> {
   console.log('  Creating app session...')
 
-  // use broker address if available, otherwise use main account as counterparty
-  const counterparty = brokerAddress || mainAccount.address
-  console.log(`  Counterparty: ${counterparty}`)
+  // use broker address from config, fallback to constant
+  const counterparty = brokerAddress || BROKER_ADDRESS
+  console.log(`  Counterparty (broker): ${counterparty}`)
 
-  // 2 participants: player and house (broker or self)
+  // calculate max payout based on game config
+  // for N rows with 2 tiles each: max multiplier = 2^N
+  // max payout = bet * maxMultiplier * (1 - houseEdge)
+  sessionMaxPayout = calculateMaxPayout(betAmount, numRows, DEFAULT_GAME_CONFIG.houseEdgeBps)
+  sessionTotalPool = betAmount + sessionMaxPayout
+
+  console.log(`  Bet amount: ${betAmount} ${ASSET_SYMBOL}`)
+  console.log(`  Max payout (house funding): ${sessionMaxPayout} ${ASSET_SYMBOL}`)
+  console.log(`  Total pool: ${sessionTotalPool} ${ASSET_SYMBOL}`)
+
+  // 2 participants: player and house (broker)
   // weights give player 100%, quorum 100% means only player needs to sign
   const definition = {
     protocol: RPCProtocolVersion.NitroRPC_0_4,
@@ -447,11 +471,18 @@ async function createAppSession(betAmount: bigint): Promise<Hex> {
     application: APP_NAME,
   }
 
+  // CRITICAL: both player and house fund the session
+  // player contributes bet, house contributes max potential payout
   const allocations = [
     {
       participant: mainAccount.address,
       asset: ASSET_SYMBOL,
       amount: betAmount.toString(),
+    },
+    {
+      participant: counterparty,
+      asset: ASSET_SYMBOL,
+      amount: sessionMaxPayout.toString(),
     },
   ]
 
@@ -492,8 +523,7 @@ async function createAppSession(betAmount: bigint): Promise<Hex> {
 
 async function submitAppState(
   gameState: GameState,
-  playerAllocation: bigint,
-  totalBet: bigint
+  playerAllocation: bigint
 ): Promise<void> {
   if (!appSessionId) {
     throw new Error('No app session active')
@@ -504,10 +534,10 @@ async function submitAppState(
 
   const stateData = encodeGameState(gameState)
 
-  // allocations must sum to original total (totalBet)
+  // allocations must sum to session total pool (player bet + house max payout)
   // player gets playerAllocation, house gets the rest
-  const houseAllocation = totalBet - playerAllocation
-  const counterparty = brokerAddress || mainAccount.address
+  const houseAllocation = sessionTotalPool - playerAllocation
+  const counterparty = brokerAddress || BROKER_ADDRESS
 
   const allocations = [
     {
@@ -563,7 +593,7 @@ async function submitAppState(
   console.log(`  ✓ State v${stateVersion} accepted`)
 }
 
-async function closeAppSession(finalPlayerAmount: bigint, totalBet: bigint): Promise<void> {
+async function closeAppSession(finalPlayerAmount: bigint): Promise<void> {
   if (!appSessionId) {
     console.log('  No app session to close')
     return
@@ -571,9 +601,9 @@ async function closeAppSession(finalPlayerAmount: bigint, totalBet: bigint): Pro
 
   console.log('  Closing app session...')
 
-  // allocations must sum to original total
-  const houseAllocation = totalBet - finalPlayerAmount
-  const counterparty = brokerAddress || mainAccount.address
+  // allocations must sum to session total pool
+  const houseAllocation = sessionTotalPool - finalPlayerAmount
+  const counterparty = brokerAddress || BROKER_ADDRESS
 
   const allocations = [
     {
@@ -623,6 +653,8 @@ async function closeAppSession(finalPlayerAmount: bigint, totalBet: bigint): Pro
   }
 
   appSessionId = null
+  sessionTotalPool = 0n
+  sessionMaxPayout = 0n
 }
 
 // =============================================================================
@@ -679,8 +711,9 @@ async function runGame(): Promise<void> {
   const rows = generateGameRows(numRows)
   const betAmount = DEFAULT_GAME_CONFIG.initialBalance
 
-  // create app session for this game
-  await createAppSession(betAmount)
+  // create app session with house funding
+  // session now includes both player bet AND house max payout
+  await createAppSession(betAmount, numRows)
 
   const session: GameSession = {
     gameId,
@@ -696,6 +729,8 @@ async function runGame(): Promise<void> {
   console.log('\n=== Game Start ===')
   console.log(`Game ID: ${gameId.slice(0, 18)}...`)
   console.log(`Bet amount: ${session.virtualBet} ${ASSET_SYMBOL}`)
+  console.log(`House funding: ${sessionMaxPayout} ${ASSET_SYMBOL}`)
+  console.log(`Total pool: ${sessionTotalPool} ${ASSET_SYMBOL}`)
   console.log(`Rows: ${numRows}`)
 
   for (let i = 0; i < rows.length; i++) {
@@ -709,7 +744,7 @@ async function runGame(): Promise<void> {
       session.status = 'lost'
       session.cumulativeMultiplier = 0n
 
-      // submit final losing state, house gets the full bet
+      // player loses everything, house takes the full pool
       const gameState: GameState = {
         gameId: BigInt(gameId),
         currentRow: i,
@@ -717,30 +752,30 @@ async function runGame(): Promise<void> {
         multiplier: 0n,
         status: 'lost',
       }
-      await submitAppState(gameState, 0n, betAmount)
+      await submitAppState(gameState, 0n)
       break
     }
 
     const rowMult = calculateRowMultiplier(row.tilesInRow)
     session.cumulativeMultiplier = (session.cumulativeMultiplier * rowMult) / MULTIPLIER_SCALE
 
-    const currentBalance = (betAmount * session.cumulativeMultiplier) / MULTIPLIER_SCALE
-    const withEdge = applyHouseEdge(session.cumulativeMultiplier, DEFAULT_GAME_CONFIG.houseEdgeBps)
-    console.log(`  Cumulative: ${formatMultiplier(session.cumulativeMultiplier)} (with edge: ${formatMultiplier(withEdge)})`)
-    console.log(`  Current balance: ${currentBalance} ${ASSET_SYMBOL}`)
+    // calculate current payout with house edge applied
+    const currentPayout = (betAmount * applyHouseEdge(session.cumulativeMultiplier, DEFAULT_GAME_CONFIG.houseEdgeBps)) / MULTIPLIER_SCALE
+    console.log(`  Cumulative: ${formatMultiplier(session.cumulativeMultiplier)}`)
+    console.log(`  Current payout: ${currentPayout} ${ASSET_SYMBOL}`)
 
-    // submit state update (note: in a real game, the virtual balance grows
-    // but we can't exceed the original bet until we cash out)
+    // submit state update, player's allocation reflects their potential cashout
+    // if they cashed out now, they'd get currentPayout
     const gameState: GameState = {
       gameId: BigInt(gameId),
       currentRow: i,
-      virtualBalance: currentBalance,
+      virtualBalance: currentPayout,
       multiplier: session.cumulativeMultiplier,
       status: 'playing',
     }
-    // for state updates during play, we keep original allocation
-    // (player still has their bet, house has nothing)
-    await submitAppState(gameState, betAmount, betAmount)
+    // player allocation = what they'd get if they cash out now
+    // house allocation = total pool minus player allocation
+    await submitAppState(gameState, currentPayout)
 
     await new Promise(r => setTimeout(r, 100))
   }
@@ -754,20 +789,18 @@ async function runGame(): Promise<void> {
   console.log(`Final multiplier: ${formatMultiplier(session.cumulativeMultiplier)}`)
   console.log(`Result: ${session.status.toUpperCase()}`)
 
-  // calculate theoretical payout based on multiplier
-  const theoreticalPayout = session.status === 'won'
+  // calculate actual payout based on multiplier with house edge
+  const actualPayout = session.status === 'won'
     ? (session.virtualBet * applyHouseEdge(session.cumulativeMultiplier, DEFAULT_GAME_CONFIG.houseEdgeBps)) / MULTIPLIER_SCALE
     : 0n
 
-  // in sandbox mode without house funding, player can only get back original bet on win
-  // in production, house would also fund the session to cover potential payouts
-  const actualPayout = session.status === 'won' ? betAmount : 0n
+  const profit = session.status === 'won' ? actualPayout - session.virtualBet : -session.virtualBet
 
-  console.log(`Theoretical payout: ${theoreticalPayout} ${ASSET_SYMBOL}`)
-  console.log(`Actual payout (sandbox limit): ${actualPayout} ${ASSET_SYMBOL}`)
+  console.log(`Payout: ${actualPayout} ${ASSET_SYMBOL}`)
+  console.log(`Profit: ${profit > 0n ? '+' : ''}${profit} ${ASSET_SYMBOL}`)
 
   // close the app session with final allocation
-  await closeAppSession(actualPayout, betAmount)
+  await closeAppSession(actualPayout)
 }
 
 // =============================================================================
