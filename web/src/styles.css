@@ -170,3 +170,49 @@ html.dark ::selection {
     transform: translateX(100%);
   }
 }
+
+/* Mascot sway animation */
+@keyframes mascot-sway {
+  0%, 100% {
+    transform: rotate(-6deg) translateY(0px);
+  }
+  25% {
+    transform: rotate(0deg) translateY(-4px);
+  }
+  50% {
+    transform: rotate(6deg) translateY(0px);
+  }
+  75% {
+    transform: rotate(0deg) translateY(-4px);
+  }
+}
+
+.animate-mascot-sway {
+  animation: mascot-sway 4s ease-in-out infinite;
+  transform-origin: center center;
+}
+
+/* Subtle eye look animation */
+@keyframes eye-look {
+  0%, 100% {
+    transform: translate(0, 0);
+  }
+  20% {
+    transform: translate(2px, -1px);
+  }
+  40% {
+    transform: translate(-1px, 1px);
+  }
+  60% {
+    transform: translate(1px, 2px);
+  }
+  80% {
+    transform: translate(-2px, -1px);
+  }
+}
+
+.animate-eye-look {
+  animation: eye-look 4s ease-in-out infinite;
+  transform-origin: center center;
+}
+

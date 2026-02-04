@@ -11,7 +11,7 @@ export default function ConnectButton({ className }: ConnectButtonProps) {
   return (
     <div
       className={cnm(
-        'inline-flex items-center justify-center rounded-full border-2 border-black bg-white hover:translate-x-0.5 hover:translate-y-0.5 transition-transform duration-200 overflow-hidden [&_button]:!bg-white [&_button]:!text-black',
+        'inline-flex items-center justify-center rounded-full border-2 border-black bg-white hover:translate-x-0.5 hover:translate-y-0.5 transition-transform duration-200 overflow-hidden cursor-pointer [&_button]:!bg-white [&_button]:!text-black',
         className,
       )}
       style={{ boxShadow: '4px 4px 0px black' }}

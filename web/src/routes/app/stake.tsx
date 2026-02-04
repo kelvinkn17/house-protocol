@@ -1,7 +1,7 @@
 import { createFileRoute } from '@tanstack/react-router'
-import { useState, useEffect, useRef } from 'react'
-import { gsap } from 'gsap'
+import { useState } from 'react'
 import { cnm } from '@/utils/style'
+import AnimateComponent from '@/components/elements/AnimateComponent'
 
 export const Route = createFileRoute('/app/stake')({
   component: StakePage,
@@ -46,247 +46,245 @@ const ACTIVITY = [
 function StakePage() {
   const [tab, setTab] = useState<'deposit' | 'withdraw'>('deposit')
   const [amount, setAmount] = useState('')
-  const containerRef = useRef<HTMLDivElement>(null)
-
-  useEffect(() => {
-    const ctx = gsap.context(() => {
-      gsap.set('.fade-in', { y: 30, opacity: 0 })
-      gsap.to('.fade-in', {
-        y: 0,
-        opacity: 1,
-        duration: 0.6,
-        stagger: 0.08,
-        ease: 'power2.out',
-        delay: 0.1,
-      })
-    }, containerRef)
-    return () => ctx.revert()
-  }, [])
 
   const priceChange = ((PRICE_HISTORY[PRICE_HISTORY.length - 1] - PRICE_HISTORY[0]) / PRICE_HISTORY[0]) * 100
 
   return (
-    <div ref={containerRef} className="pb-12">
+    <div className="pb-12">
       <div className="mx-auto max-w-6xl">
         {/* header */}
-        <div className="fade-in flex flex-col md:flex-row md:items-end justify-between mb-8 gap-4 opacity-0">
-          <div>
-            <h1 className="text-4xl md:text-5xl font-black tracking-tight text-black mb-2">HOUSE VAULT</h1>
-            <p className="text-black/60 font-mono text-sm">** Deposit USDC. Earn from every bet.</p>
+        <AnimateComponent delay={50}>
+          <div className="flex flex-col md:flex-row md:items-end justify-between mb-8 gap-4">
+            <div>
+              <h1 className="text-4xl md:text-5xl font-black tracking-tight text-black mb-2">HOUSE VAULT</h1>
+              <p className="text-black/60 font-mono text-sm">** Deposit USDC. Earn from every bet.</p>
+            </div>
+            <div
+              className="flex items-center gap-2 px-4 py-2 bg-white border-2 border-black rounded-full"
+              style={{ boxShadow: '3px 3px 0px black' }}
+            >
+              <span className="w-2 h-2 rounded-full bg-black animate-pulse" />
+              <span className="text-xs font-black text-black">{VAULT.activeSessions} SESSIONS LIVE</span>
+            </div>
           </div>
-          <div
-            className="flex items-center gap-2 px-4 py-2 bg-white border-2 border-black rounded-full"
-            style={{ boxShadow: '3px 3px 0px black' }}
-          >
-            <span className="w-2 h-2 rounded-full bg-black animate-pulse" />
-            <span className="text-xs font-black text-black">{VAULT.activeSessions} SESSIONS LIVE</span>
-          </div>
-        </div>
+        </AnimateComponent>
 
-        {/* stats row - grouped */}
-        <div
-          className="fade-in bg-white border-2 border-black rounded-2xl p-5 mb-6 opacity-0"
-          style={{ boxShadow: '6px 6px 0px black' }}
-        >
-          <div className="grid grid-cols-2 lg:grid-cols-4 gap-6">
-            {[
-              { label: 'TVL', value: `$${(VAULT.tvl / 1e6).toFixed(2)}M` },
-              { label: 'hUSDC Price', value: `$${VAULT.sharePrice.toFixed(4)}` },
-              { label: 'hUSDC Supply', value: `${(VAULT.hUsdcSupply / 1e6).toFixed(2)}M` },
-              { label: 'House Cap', value: `$${(VAULT.houseCap / 1e6).toFixed(0)}M` },
-            ].map((stat, i) => (
-              <div
-                key={stat.label}
-                className={cnm(
-                  'py-2',
-                  i < 3 && 'lg:border-r-2 lg:border-black/10'
-                )}
-              >
-                <p className="text-xs font-mono text-black/50 mb-1">{stat.label}</p>
-                <p className="text-2xl font-black text-black">{stat.value}</p>
-              </div>
-            ))}
+        {/* stats row */}
+        <AnimateComponent delay={130}>
+          <div
+            className="bg-white border-2 border-black rounded-2xl p-5 mb-6"
+            style={{ boxShadow: '6px 6px 0px black' }}
+          >
+            <div className="grid grid-cols-2 lg:grid-cols-4 gap-6">
+              {[
+                { label: 'TVL', value: `$${(VAULT.tvl / 1e6).toFixed(2)}M` },
+                { label: 'hUSDC Price', value: `$${VAULT.sharePrice.toFixed(4)}` },
+                { label: 'hUSDC Supply', value: `${(VAULT.hUsdcSupply / 1e6).toFixed(2)}M` },
+                { label: 'House Cap', value: `$${(VAULT.houseCap / 1e6).toFixed(0)}M` },
+              ].map((stat, i) => (
+                <div
+                  key={stat.label}
+                  className={cnm(
+                    'py-2',
+                    i < 3 && 'lg:border-r-2 lg:border-black/10'
+                  )}
+                >
+                  <p className="text-xs font-mono text-black/50 mb-1">{stat.label}</p>
+                  <p className="text-2xl font-black text-black">{stat.value}</p>
+                </div>
+              ))}
+            </div>
           </div>
-        </div>
+        </AnimateComponent>
 
         {/* main grid */}
         <div className="grid lg:grid-cols-5 gap-6">
           {/* left col: chart + action */}
           <div className="lg:col-span-3 space-y-6">
             {/* chart card */}
-            <div
-              className="fade-in bg-white border-2 border-black p-5 rounded-2xl opacity-0"
-              style={{ boxShadow: '6px 6px 0px black' }}
-            >
-              <div className="flex items-center justify-between mb-4">
-                <p className="text-xs font-mono text-black/50 tracking-wider">hUSDC Price History</p>
-                <span
-                  className={cnm(
-                    'px-3 py-1 text-xs font-black rounded-full border-2 border-black',
-                    priceChange >= 0 ? 'bg-[#CDFF57] text-black' : 'bg-[#FF6B9D] text-black'
-                  )}
-                  style={{ boxShadow: '2px 2px 0px black' }}
-                >
-                  {priceChange >= 0 ? '+' : ''}{priceChange.toFixed(2)}% (7d)
-                </span>
-              </div>
-              <PriceChart data={PRICE_HISTORY} />
-            </div>
-
-            {/* deposit/withdraw */}
-            <div
-              className="fade-in bg-white border-2 border-black rounded-2xl overflow-hidden opacity-0"
-              style={{ boxShadow: '6px 6px 0px black' }}
-            >
-              <div className="flex border-b-2 border-black">
-                {(['deposit', 'withdraw'] as const).map((t) => (
-                  <button
-                    key={t}
-                    onClick={() => setTab(t)}
+            <AnimateComponent delay={210}>
+              <div
+                className="bg-white border-2 border-black p-5 rounded-2xl"
+                style={{ boxShadow: '6px 6px 0px black' }}
+              >
+                <div className="flex items-center justify-between mb-4">
+                  <p className="text-xs font-mono text-black/50 tracking-wider">hUSDC Price History</p>
+                  <span
                     className={cnm(
-                      'flex-1 py-4 text-sm font-black uppercase tracking-wider transition-colors',
-                      tab === t
-                        ? 'bg-black text-white'
-                        : 'bg-white text-black/40 hover:text-black/70'
+                      'px-3 py-1 text-xs font-black rounded-full border-2 border-black',
+                      priceChange >= 0 ? 'bg-[#CDFF57] text-black' : 'bg-[#FF6B9D] text-black'
                     )}
+                    style={{ boxShadow: '2px 2px 0px black' }}
                   >
-                    {t}
-                  </button>
-                ))}
-              </div>
-              <div className="p-5">
-                <div className="flex items-center justify-between text-xs font-mono text-black/50 mb-2">
-                  <span className="uppercase">{tab === 'deposit' ? 'Amount' : 'Shares'}</span>
-                  <span>
-                    Bal: <span className="text-black font-bold">{tab === 'deposit' ? '12,500 USDC' : '4,800 hUSDC'}</span>
+                    {priceChange >= 0 ? '+' : ''}{priceChange.toFixed(2)}% (7d)
                   </span>
                 </div>
-                <div className="relative mb-4">
-                  <input
-                    type="text"
-                    value={amount}
-                    onChange={(e) => setAmount(e.target.value)}
-                    placeholder="0.00"
-                    className="w-full border-2 border-black bg-black/5 px-4 py-4 pr-24 text-2xl font-black text-black placeholder-black/30 outline-none rounded-xl focus:ring-2 focus:ring-black/20"
-                  />
-                  <div className="absolute right-3 top-1/2 -translate-y-1/2 flex items-center gap-2">
-                    <button className="px-2 py-1 text-xs font-black bg-black text-white rounded hover:bg-black/80 transition-colors">
-                      MAX
-                    </button>
-                    <span className="text-sm font-mono text-black/50">{tab === 'deposit' ? 'USDC' : 'hUSDC'}</span>
-                  </div>
-                </div>
-                <div className="flex items-center justify-between text-sm font-mono text-black/50 mb-5 px-1">
-                  <span>You receive</span>
-                  <span className="text-black font-bold">{tab === 'deposit' ? '~4,886 hUSDC' : '~5,117 USDC'}</span>
-                </div>
-                <button
-                  className="w-full py-4 text-sm font-black uppercase tracking-wider bg-black text-white border-2 border-black rounded-xl transition-transform hover:translate-x-1 hover:translate-y-1"
-                  style={{ boxShadow: '4px 4px 0px #FF6B9D' }}
-                >
-                  {tab === 'deposit' ? 'Deposit USDC' : 'Withdraw USDC'}
-                </button>
+                <PriceChart data={PRICE_HISTORY} />
               </div>
-            </div>
+            </AnimateComponent>
+
+            {/* deposit/withdraw */}
+            <AnimateComponent delay={290}>
+              <div
+                className="bg-white border-2 border-black rounded-2xl overflow-hidden"
+                style={{ boxShadow: '6px 6px 0px black' }}
+              >
+                <div className="flex border-b-2 border-black">
+                  {(['deposit', 'withdraw'] as const).map((t) => (
+                    <button
+                      key={t}
+                      onClick={() => setTab(t)}
+                      className={cnm(
+                        'flex-1 py-4 text-sm font-black uppercase tracking-wider transition-colors',
+                        tab === t
+                          ? 'bg-black text-white'
+                          : 'bg-white text-black/40 hover:text-black/70'
+                      )}
+                    >
+                      {t}
+                    </button>
+                  ))}
+                </div>
+                <div className="p-5">
+                  <div className="flex items-center justify-between text-xs font-mono text-black/50 mb-2">
+                    <span className="uppercase">{tab === 'deposit' ? 'Amount' : 'Shares'}</span>
+                    <span>
+                      Bal: <span className="text-black font-bold">{tab === 'deposit' ? '12,500 USDC' : '4,800 hUSDC'}</span>
+                    </span>
+                  </div>
+                  <div className="relative mb-4">
+                    <input
+                      type="text"
+                      value={amount}
+                      onChange={(e) => setAmount(e.target.value)}
+                      placeholder="0.00"
+                      className="w-full border-2 border-black bg-black/5 px-4 py-4 pr-24 text-2xl font-black text-black placeholder-black/30 outline-none rounded-xl focus:ring-2 focus:ring-black/20"
+                    />
+                    <div className="absolute right-3 top-1/2 -translate-y-1/2 flex items-center gap-2">
+                      <button className="px-2 py-1 text-xs font-black bg-black text-white rounded hover:bg-black/80 transition-colors">
+                        MAX
+                      </button>
+                      <span className="text-sm font-mono text-black/50">{tab === 'deposit' ? 'USDC' : 'hUSDC'}</span>
+                    </div>
+                  </div>
+                  <div className="flex items-center justify-between text-sm font-mono text-black/50 mb-5 px-1">
+                    <span>You receive</span>
+                    <span className="text-black font-bold">{tab === 'deposit' ? '~4,886 hUSDC' : '~5,117 USDC'}</span>
+                  </div>
+                  <button
+                    className="w-full py-4 text-sm font-black uppercase tracking-wider bg-black text-white border-2 border-black rounded-xl transition-transform hover:translate-x-1 hover:translate-y-1"
+                    style={{ boxShadow: '4px 4px 0px #FF6B9D' }}
+                  >
+                    {tab === 'deposit' ? 'Deposit USDC' : 'Withdraw USDC'}
+                  </button>
+                </div>
+              </div>
+            </AnimateComponent>
           </div>
 
           {/* right col: position + activity */}
           <div className="lg:col-span-2 space-y-6">
             {/* position */}
-            <div
-              className="fade-in relative bg-white border-2 border-black p-5 rounded-2xl opacity-0"
-              style={{ boxShadow: '6px 6px 0px black' }}
-            >
-              <p className="text-xs font-mono text-black/50 uppercase mb-2">Your Position</p>
-              <div className="flex items-baseline justify-between mb-4">
-                <span className="text-3xl font-black text-black">${POSITION.value.toLocaleString()}</span>
-                <span className="text-sm font-bold text-[#7BA318]">+${POSITION.profit.toFixed(2)} ({POSITION.profitPercent}%)</span>
+            <AnimateComponent delay={370}>
+              <div
+                className="relative bg-white border-2 border-black p-5 rounded-2xl"
+                style={{ boxShadow: '6px 6px 0px black' }}
+              >
+                <p className="text-xs font-mono text-black/50 uppercase mb-2">Your Position</p>
+                <div className="flex items-baseline justify-between mb-4">
+                  <span className="text-3xl font-black text-black">${POSITION.value.toLocaleString()}</span>
+                  <span className="text-sm font-bold text-[#7BA318]">+${POSITION.profit.toFixed(2)} ({POSITION.profitPercent}%)</span>
+                </div>
+                <div className="grid grid-cols-3 gap-3 border-t-2 border-black/10 pt-4">
+                  {[
+                    { label: 'Shares', value: POSITION.shares.toLocaleString() },
+                    { label: 'Avg Entry', value: `$${POSITION.avgEntry.toFixed(4)}` },
+                    { label: 'Current', value: `$${VAULT.sharePrice.toFixed(4)}` },
+                  ].map((item) => (
+                    <div key={item.label} className="text-center">
+                      <p className="text-[10px] font-mono text-black/50 uppercase mb-1">{item.label}</p>
+                      <p className="text-sm font-black text-black">{item.value}</p>
+                    </div>
+                  ))}
+                </div>
               </div>
-              <div className="grid grid-cols-3 gap-3 border-t-2 border-black/10 pt-4">
-                {[
-                  { label: 'Shares', value: POSITION.shares.toLocaleString() },
-                  { label: 'Avg Entry', value: `$${POSITION.avgEntry.toFixed(4)}` },
-                  { label: 'Current', value: `$${VAULT.sharePrice.toFixed(4)}` },
-                ].map((item) => (
-                  <div key={item.label} className="text-center">
-                    <p className="text-[10px] font-mono text-black/50 uppercase mb-1">{item.label}</p>
-                    <p className="text-sm font-black text-black">{item.value}</p>
-                  </div>
-                ))}
-              </div>
-            </div>
+            </AnimateComponent>
 
             {/* activity */}
-            <div
-              className="fade-in bg-white border-2 border-black p-5 rounded-2xl opacity-0"
-              style={{ boxShadow: '6px 6px 0px black' }}
-            >
-              <div className="flex items-center justify-between mb-4">
-                <p className="text-xs font-mono text-black/50 uppercase tracking-wider">Activity</p>
-                <button className="text-xs font-black text-black/40 hover:text-black transition-colors">
-                  View all →
-                </button>
-              </div>
-              <div className="space-y-0">
-                {ACTIVITY.map((item, i) => (
-                  <div
-                    key={i}
-                    className="flex items-center justify-between py-3 border-b border-black/10 last:border-0"
-                  >
-                    <div className="flex items-center gap-3">
-                      <span
-                        className={cnm(
-                          'w-8 h-8 rounded-lg flex items-center justify-center text-sm font-black border-2 border-black',
-                          item.type === 'earnings'
-                            ? 'bg-[#CDFF57] text-black'
-                            : item.type === 'deposit'
-                              ? 'bg-white text-black'
-                              : 'bg-[#FF6B9D] text-black'
-                        )}
-                      >
-                        {item.type === 'earnings' ? '↑' : item.type === 'deposit' ? '+' : '−'}
-                      </span>
-                      <div>
+            <AnimateComponent delay={450}>
+              <div
+                className="bg-white border-2 border-black p-5 rounded-2xl"
+                style={{ boxShadow: '6px 6px 0px black' }}
+              >
+                <div className="flex items-center justify-between mb-4">
+                  <p className="text-xs font-mono text-black/50 uppercase tracking-wider">Activity</p>
+                  <button className="text-xs font-black text-black/40 hover:text-black transition-colors">
+                    View all →
+                  </button>
+                </div>
+                <div className="space-y-0">
+                  {ACTIVITY.map((item, i) => (
+                    <div
+                      key={i}
+                      className="flex items-center justify-between py-3 border-b border-black/10 last:border-0"
+                    >
+                      <div className="flex items-center gap-3">
+                        <span
+                          className={cnm(
+                            'w-8 h-8 rounded-lg flex items-center justify-center text-sm font-black border-2 border-black',
+                            item.type === 'earnings'
+                              ? 'bg-[#CDFF57] text-black'
+                              : item.type === 'deposit'
+                                ? 'bg-white text-black'
+                                : 'bg-[#FF6B9D] text-black'
+                          )}
+                        >
+                          {item.type === 'earnings' ? '↑' : item.type === 'deposit' ? '+' : '−'}
+                        </span>
+                        <div>
+                          <p className="text-sm font-bold text-black">
+                            {item.type === 'earnings' ? 'Earnings' : item.type === 'deposit' ? 'Deposit' : 'Withdraw'}
+                          </p>
+                          <p className="text-xs font-mono text-black/40">{item.addr}</p>
+                        </div>
+                      </div>
+                      <div className="text-right">
                         <p className="text-sm font-bold text-black">
-                          {item.type === 'earnings' ? 'Earnings' : item.type === 'deposit' ? 'Deposit' : 'Withdraw'}
+                          {item.type === 'earnings' ? '+' : ''}
+                          {item.amount.toLocaleString()}
                         </p>
-                        <p className="text-xs font-mono text-black/40">{item.addr}</p>
+                        <p className="text-xs font-mono text-black/40">{item.time}</p>
                       </div>
                     </div>
-                    <div className="text-right">
-                      <p className="text-sm font-bold text-black">
-                        {item.type === 'earnings' ? '+' : ''}
-                        {item.amount.toLocaleString()}
-                      </p>
-                      <p className="text-xs font-mono text-black/40">{item.time}</p>
-                    </div>
-                  </div>
-                ))}
+                  ))}
+                </div>
               </div>
-            </div>
+            </AnimateComponent>
 
             {/* how it works */}
-            <div
-              className="fade-in bg-black border-2 border-black p-5 rounded-2xl opacity-0"
-              style={{ boxShadow: '6px 6px 0px #FF6B9D' }}
-            >
-              <p className="text-xs font-mono text-white/50 uppercase tracking-wider mb-3">How It Works</p>
-              <div className="space-y-2">
-                {[
-                  'Deposit USDC, get hUSDC',
-                  'Your capital backs bets',
-                  'House edge = your yield',
-                  'Withdraw anytime',
-                ].map((step, i) => (
-                  <div key={i} className="flex items-center gap-3">
-                    <span className="w-6 h-6 flex items-center justify-center text-xs font-black bg-white text-black rounded">
-                      {i + 1}
-                    </span>
-                    <p className="text-sm text-white/80">{step}</p>
-                  </div>
-                ))}
+            <AnimateComponent delay={530}>
+              <div
+                className="bg-black border-2 border-black p-5 rounded-2xl"
+                style={{ boxShadow: '6px 6px 0px #FF6B9D' }}
+              >
+                <p className="text-xs font-mono text-white/50 uppercase tracking-wider mb-3">How It Works</p>
+                <div className="space-y-2">
+                  {[
+                    'Deposit USDC, get hUSDC',
+                    'Your capital backs bets',
+                    'House edge = your yield',
+                    'Withdraw anytime',
+                  ].map((step, i) => (
+                    <div key={i} className="flex items-center gap-3">
+                      <span className="w-6 h-6 flex items-center justify-center text-xs font-black bg-white text-black rounded">
+                        {i + 1}
+                      </span>
+                      <p className="text-sm text-white/80">{step}</p>
+                    </div>
+                  ))}
+                </div>
               </div>
-            </div>
+            </AnimateComponent>
           </div>
         </div>
       </div>

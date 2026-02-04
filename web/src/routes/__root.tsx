@@ -50,7 +50,7 @@ export const Route = createRootRouteWithContext<MyRouterContext>()({
       {
         rel: 'icon',
         type: 'image/png',
-        href: '/assets/logos/the-house-protocol-favicon.png',
+        href: '/assets/logos/hp-favicon.png',
       },
     ],
   }),

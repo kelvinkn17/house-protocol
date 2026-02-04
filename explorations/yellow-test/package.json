@@ -1,0 +1,21 @@
+{
+  "name": "yellow-test",
+  "version": "0.0.1",
+  "description": "Death Game exploration with Yellow/Nitrolite state channels on Base",
+  "type": "module",
+  "scripts": {
+    "death-game": "bun run src/death-game.ts",
+    "build:contracts": "forge build"
+  },
+  "dependencies": {
+    "@erc7824/nitrolite": "^0.5.3",
+    "viem": "^2.21.0",
+    "ws": "^8.18.0",
+    "dotenv": "^16.4.5"
+  },
+  "devDependencies": {
+    "@types/ws": "^8.5.12",
+    "bun-types": "latest",
+    "typescript": "^5.6.0"
+  }
+}
