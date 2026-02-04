@@ -4,6 +4,8 @@
 services:
   database:
     image: postgres:17.2
+    networks:
+      - clearnode-net
     environment:
       POSTGRES_USER: ${POSTGRES_USER:-clearnode}
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-clearnode}
@@ -22,6 +24,8 @@ services:
     build:
       context: ./db-init
       dockerfile: Dockerfile
+    networks:
+      - clearnode-net
     environment:
       PGUSER: ${POSTGRES_USER:-clearnode}
       PGPASSWORD: ${POSTGRES_PASSWORD:-clearnode}
@@ -104,6 +108,8 @@ services:
     build:
       context: ./clearnode
       dockerfile: Dockerfile
+    networks:
+      - clearnode-net
     ports:
       - "8000:8000"
       - "4242:4242"
@@ -134,3 +140,7 @@ services:
 volumes:
   postgres_data:
     driver: local
+
+networks:
+  clearnode-net:
+    driver: bridge
