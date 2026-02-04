@@ -39,11 +39,6 @@ import {
   type RowConfig,
   MULTIPLIER_SCALE,
   DEFAULT_GAME_CONFIG,
-  CLEARNODE_URL as PROD_CLEARNODE_URL,
-  CLEARNODE_SANDBOX_URL,
-  FAUCET_URL as SANDBOX_FAUCET_URL,
-  ASSET_SYMBOL as PROD_ASSET_SYMBOL,
-  ASSET_SYMBOL_SANDBOX,
   BROKER_ADDRESS,
   USDH_ADDRESS,
   CUSTODY_ADDRESS,
@@ -54,14 +49,14 @@ import {
 // =============================================================================
 
 const PRIVATE_KEY = process.env.PRIVATE_KEY as Hex
+const BROKER_PRIVATE_KEY = process.env.BROKER_PRIVATE_KEY as Hex
 const RPC_URL = process.env.RPC_URL || 'https://ethereum-sepolia-rpc.publicnode.com'
 
-// toggle between sandbox (no real funds) and production (real USDH)
-const USE_PRODUCTION = process.env.USE_PRODUCTION === 'true'
-const CLEARNODE_URL = USE_PRODUCTION ? PROD_CLEARNODE_URL : CLEARNODE_SANDBOX_URL
-const FAUCET_URL = SANDBOX_FAUCET_URL
-const SKIP_FAUCET = process.env.SKIP_FAUCET === 'true' || USE_PRODUCTION
-const ASSET_SYMBOL = USE_PRODUCTION ? PROD_ASSET_SYMBOL : ASSET_SYMBOL_SANDBOX
+// Nitrolite hosted clearnode
+const CLEARNODE_URL = process.env.CLEARNODE_URL || 'wss://nitrolite.kwek.dev/ws'
+
+// Asset symbol as registered on clearnode (check your clearnode config)
+const ASSET_SYMBOL = process.env.ASSET_SYMBOL || 'usdh'
 
 // optional: reuse session key
 const SAVED_SESSION_KEY = process.env.SESSION_KEY as Hex | undefined
@@ -74,12 +69,22 @@ if (!PRIVATE_KEY) {
   process.exit(1)
 }
 
+if (!BROKER_PRIVATE_KEY) {
+  console.error('ERROR: Missing BROKER_PRIVATE_KEY in .env')
+  console.error('This is required for house funding. Get it from the clearnode .env')
+  process.exit(1)
+}
+
 // =============================================================================
 // SETUP
 // =============================================================================
 
-// main wallet
+// main wallet (player)
 const mainAccount = privateKeyToAccount(PRIVATE_KEY)
+
+// broker wallet (house)
+const brokerAccount = privateKeyToAccount(BROKER_PRIVATE_KEY)
+const brokerSigner = createECDSAMessageSigner(BROKER_PRIVATE_KEY)
 
 // session key (reuse from env or generate fresh)
 const sessionPrivateKey = SAVED_SESSION_KEY || generatePrivateKey()
@@ -108,7 +113,7 @@ let isAuthenticated = false
 let jwtToken: string | null = null
 let appSessionId: Hex | null = null
 let ledgerBalance: bigint = 0n
-let brokerAddress: Hex | null = null
+let brokerAddressFromConfig: Hex | null = null
 
 // pending response handlers
 const pendingResponses = new Map<string, {
@@ -130,30 +135,6 @@ async function checkSepoliaBalance(): Promise<bigint> {
   return balance
 }
 
-async function requestFaucetTokens(): Promise<boolean> {
-  console.log('Requesting faucet tokens...')
-  try {
-    const response = await fetch(FAUCET_URL, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ userAddress: mainAccount.address }),
-    })
-
-    if (!response.ok) {
-      const text = await response.text()
-      console.log(`  Faucet response (${response.status}): ${text.slice(0, 100)}`)
-      return false
-    }
-
-    const data = await response.json()
-    console.log('  Faucet:', JSON.stringify(data))
-    return true
-  } catch (err) {
-    console.log(`  Faucet error: ${(err as Error).message}`)
-    return false
-  }
-}
-
 function generateRequestId(): string {
   return Math.floor(Math.random() * 1000000).toString()
 }
@@ -161,21 +142,6 @@ function generateRequestId(): string {
 // =============================================================================
 // WEBSOCKET MESSAGING
 // =============================================================================
-
-// send message and wait for response
-function sendAndWait<T>(message: string, method: string, timeoutMs = 10000): Promise<T> {
-  return new Promise((resolve, reject) => {
-    const requestId = generateRequestId()
-
-    const timeout = setTimeout(() => {
-      pendingResponses.delete(method)
-      reject(new Error(`Timeout waiting for ${method} response`))
-    }, timeoutMs)
-
-    pendingResponses.set(method, { resolve, reject, timeout })
-    ws.send(message)
-  })
-}
 
 function handleResponse(method: string, params: any, error?: string) {
   const pending = pendingResponses.get(method)
@@ -209,7 +175,7 @@ function connectAndAuth(): Promise<void> {
     ws = new WebSocket(CLEARNODE_URL)
 
     ws.on('open', async () => {
-      console.log('✓ Connected to Yellow Network (sandbox)')
+      console.log('✓ Connected to Yellow Network')
 
       try {
         const authRequestMsg = await createAuthRequestMessage({
@@ -293,11 +259,10 @@ function connectAndAuth(): Promise<void> {
 
           // ledger balances
           if (method === 'get_ledger_balances') {
-            console.log(`  Ledger balances: ${JSON.stringify(params)}`)
             if (params?.balances && Array.isArray(params.balances)) {
               for (const bal of params.balances) {
-                if (bal.asset === ASSET_SYMBOL || bal.asset === 'ytest.usd') {
-                  ledgerBalance = BigInt(bal.amount)
+                if (bal.asset === ASSET_SYMBOL || bal.asset === 'usdh') {
+                  ledgerBalance = BigInt(Math.floor(parseFloat(bal.amount)))
                   console.log(`  ${bal.asset}: ${bal.amount}`)
                 }
               }
@@ -318,10 +283,10 @@ function connectAndAuth(): Promise<void> {
 
           // config response
           if (method === 'get_config' || method === 'config') {
-            console.log('  Config received:', JSON.stringify(params).slice(0, 200))
+            console.log('  Config received')
             if (params?.broker_address || params?.brokerAddress) {
-              brokerAddress = (params?.broker_address || params?.brokerAddress) as Hex
-              console.log(`  Broker address: ${brokerAddress}`)
+              brokerAddressFromConfig = (params?.broker_address || params?.brokerAddress) as Hex
+              console.log(`  Broker address: ${brokerAddressFromConfig}`)
             }
             handleResponse('get_config', params, params?.error)
           }
@@ -371,7 +336,7 @@ async function getConfig(): Promise<void> {
   ws.send(msg)
 
   // wait for response
-  const response = await new Promise<any>((resolve, reject) => {
+  await new Promise<any>((resolve) => {
     const timeout = setTimeout(() => {
       console.log('  Config timeout, continuing...')
       resolve({})
@@ -381,15 +346,13 @@ async function getConfig(): Promise<void> {
         clearTimeout(timeout)
         resolve(params)
       },
-      reject: (err) => {
+      reject: () => {
         clearTimeout(timeout)
-        reject(err)
+        resolve({})
       },
       timeout
     })
   })
-
-  console.log(`  Config: ${JSON.stringify(response).slice(0, 300)}`)
 }
 
 // =============================================================================
@@ -403,7 +366,7 @@ async function getLedgerBalance(): Promise<bigint> {
   ws.send(msg)
 
   // wait for response
-  const response = await new Promise<any>((resolve) => {
+  await new Promise<any>((resolve) => {
     const timeout = setTimeout(() => {
       console.log('  Ledger balance timeout')
       resolve({})
@@ -435,71 +398,97 @@ async function getLedgerTransactions(): Promise<void> {
 }
 
 // =============================================================================
-// APP SESSION
+// APP SESSION WITH HOUSE FUNDING
 // =============================================================================
 
 // track state version globally for the session
-let stateVersion = 1 // starts at 1, first submit should be 2
+let stateVersion = 1 // starts at 1
 let sessionTotalPool = 0n // total funds in session (player bet + house max payout)
-let sessionMaxPayout = 0n // house's contribution (what player can win)
+let sessionPlayerBet = 0n // player's original bet
+let sessionHouseFunding = 0n // house's contribution (max payout)
 
-async function createAppSession(betAmount: bigint, numRows: number): Promise<Hex> {
-  console.log('  Creating app session...')
+async function createAppSessionWithHouseFunding(betAmount: bigint, numRows: number): Promise<Hex> {
+  console.log('\n=== Creating House-Funded Session ===')
 
   // use broker address from config, fallback to constant
-  const counterparty = brokerAddress || BROKER_ADDRESS
-  console.log(`  Counterparty (broker): ${counterparty}`)
+  const broker = brokerAddressFromConfig || BROKER_ADDRESS
 
-  // calculate max payout based on game config
-  // for N rows with 2 tiles each: max multiplier = 2^N
-  // max payout = bet * maxMultiplier * (1 - houseEdge)
-  sessionMaxPayout = calculateMaxPayout(betAmount, numRows, DEFAULT_GAME_CONFIG.houseEdgeBps)
-  sessionTotalPool = betAmount + sessionMaxPayout
+  // verify broker key matches
+  if (brokerAccount.address.toLowerCase() !== broker.toLowerCase()) {
+    console.warn(`  WARNING: Broker key mismatch!`)
+    console.warn(`    Config broker: ${broker}`)
+    console.warn(`    Key broker:    ${brokerAccount.address}`)
+  }
 
-  console.log(`  Bet amount: ${betAmount} ${ASSET_SYMBOL}`)
-  console.log(`  Max payout (house funding): ${sessionMaxPayout} ${ASSET_SYMBOL}`)
+  // calculate max payout (what player could win)
+  sessionHouseFunding = calculateMaxPayout(betAmount, numRows, DEFAULT_GAME_CONFIG.houseEdgeBps)
+  sessionPlayerBet = betAmount
+  sessionTotalPool = sessionPlayerBet + sessionHouseFunding
+
+  console.log(`  Player bet: ${sessionPlayerBet} ${ASSET_SYMBOL}`)
+  console.log(`  House funding: ${sessionHouseFunding} ${ASSET_SYMBOL}`)
   console.log(`  Total pool: ${sessionTotalPool} ${ASSET_SYMBOL}`)
+  console.log(`  Broker: ${broker}`)
 
-  // 2 participants: player and house (broker)
-  // weights give player 100%, quorum 100% means only player needs to sign
+  // step 1: create session with BOTH participants and BOTH allocations
+  // both player and broker must sign since both are contributing funds
+  console.log('\n  Step 1: Creating session with dual funding...')
+
   const definition = {
     protocol: RPCProtocolVersion.NitroRPC_0_4,
-    participants: [mainAccount.address, counterparty],
-    weights: [100, 0],
+    participants: [mainAccount.address, broker],
+    weights: [100, 0], // player controls game state
     quorum: 100,
     challenge: 0,
     nonce: Date.now(),
     application: APP_NAME,
   }
 
-  // CRITICAL: both player and house fund the session
-  // player contributes bet, house contributes max potential payout
+  // both parties fund the session
   const allocations = [
     {
       participant: mainAccount.address,
       asset: ASSET_SYMBOL,
-      amount: betAmount.toString(),
+      amount: sessionPlayerBet.toString(),
     },
     {
-      participant: counterparty,
+      participant: broker,
       asset: ASSET_SYMBOL,
-      amount: sessionMaxPayout.toString(),
+      amount: sessionHouseFunding.toString(),
     },
   ]
 
   // reset version for new session
   stateVersion = 1
 
-  const msg = await createAppSessionMessage(sessionSigner, {
+  // CRITICAL: Both signers must sign the SAME payload (same requestId and timestamp)
+  const requestId = Math.floor(Math.random() * 1000000)
+  const timestamp = Date.now()
+
+  // create the message with player signature using shared requestId/timestamp
+  const playerMsg = await createAppSessionMessage(sessionSigner, {
     definition,
     allocations,
-  })
+  }, requestId, timestamp)
 
-  ws.send(msg)
+  // parse and add broker signature
+  const parsed = JSON.parse(playerMsg)
+
+  // broker signs the SAME payload (same requestId and timestamp)
+  const brokerMsg = await createAppSessionMessage(brokerSigner, {
+    definition,
+    allocations,
+  }, requestId, timestamp)
+  const brokerParsed = JSON.parse(brokerMsg)
+
+  // combine signatures (player + broker)
+  parsed.sig = [...parsed.sig, ...brokerParsed.sig]
+
+  ws.send(JSON.stringify(parsed))
 
   // wait for response
   const response = await new Promise<any>((resolve, reject) => {
-    const timeout = setTimeout(() => reject(new Error('App session creation timeout')), 10000)
+    const timeout = setTimeout(() => reject(new Error('App session creation timeout')), 15000)
     pendingResponses.set('create_app_session', {
       resolve: (params) => {
         clearTimeout(timeout)
@@ -515,7 +504,8 @@ async function createAppSession(betAmount: bigint, numRows: number): Promise<Hex
 
   if (response?.app_session_id) {
     appSessionId = response.app_session_id as Hex
-    console.log(`✓ App session created: ${appSessionId.slice(0, 18)}...`)
+    console.log(`✓ House-funded session created: ${appSessionId.slice(0, 18)}...`)
+    console.log(`  Total pool: ${sessionTotalPool} ${ASSET_SYMBOL}`)
     return appSessionId
   }
 
@@ -524,7 +514,7 @@ async function createAppSession(betAmount: bigint, numRows: number): Promise<Hex
 
 async function submitAppState(
   gameState: GameState,
-  playerAllocation: bigint
+  playerPayout: bigint
 ): Promise<void> {
   if (!appSessionId) {
     throw new Error('No app session active')
@@ -534,11 +524,12 @@ async function submitAppState(
   stateVersion++
 
   const stateData = encodeGameState(gameState)
+  const broker = brokerAddressFromConfig || BROKER_ADDRESS
 
-  // allocations must sum to session total pool (player bet + house max payout)
-  // player gets playerAllocation, house gets the rest
-  const houseAllocation = sessionTotalPool - playerAllocation
-  const counterparty = brokerAddress || BROKER_ADDRESS
+  // allocations must sum to sessionTotalPool
+  // player gets their payout, broker gets the rest
+  const playerAllocation = playerPayout > sessionTotalPool ? sessionTotalPool : playerPayout
+  const brokerAllocation = sessionTotalPool - playerAllocation
 
   const allocations = [
     {
@@ -547,13 +538,13 @@ async function submitAppState(
       amount: playerAllocation.toString(),
     },
     {
-      participant: counterparty,
+      participant: broker,
       asset: ASSET_SYMBOL,
-      amount: houseAllocation.toString(),
+      amount: brokerAllocation.toString(),
     },
   ]
 
-  console.log(`  Submitting state v${stateVersion} (player: ${playerAllocation}, house: ${houseAllocation})...`)
+  console.log(`  State v${stateVersion}: player=${playerAllocation}, broker=${brokerAllocation}`)
 
   const msg = await createSubmitAppStateMessage<RPCProtocolVersion.NitroRPC_0_4>(
     sessionSigner,
@@ -590,11 +581,9 @@ async function submitAppState(
   if (response?.error) {
     throw new Error(`State submission failed: ${response.error}`)
   }
-
-  console.log(`  ✓ State v${stateVersion} accepted`)
 }
 
-async function closeAppSession(finalPlayerAmount: bigint): Promise<void> {
+async function closeAppSession(playerPayout: bigint): Promise<void> {
   if (!appSessionId) {
     console.log('  No app session to close')
     return
@@ -602,24 +591,26 @@ async function closeAppSession(finalPlayerAmount: bigint): Promise<void> {
 
   console.log('  Closing app session...')
 
-  // allocations must sum to session total pool
-  const houseAllocation = sessionTotalPool - finalPlayerAmount
-  const counterparty = brokerAddress || BROKER_ADDRESS
+  const broker = brokerAddressFromConfig || BROKER_ADDRESS
+
+  // allocations must sum to sessionTotalPool
+  const playerAllocation = playerPayout > sessionTotalPool ? sessionTotalPool : playerPayout
+  const brokerAllocation = sessionTotalPool - playerAllocation
 
   const allocations = [
     {
       participant: mainAccount.address,
       asset: ASSET_SYMBOL,
-      amount: finalPlayerAmount.toString(),
+      amount: playerAllocation.toString(),
     },
     {
-      participant: counterparty,
+      participant: broker,
       asset: ASSET_SYMBOL,
-      amount: houseAllocation.toString(),
+      amount: brokerAllocation.toString(),
     },
   ]
 
-  console.log(`  Final allocation: player ${finalPlayerAmount}, house ${houseAllocation}`)
+  console.log(`  Final: player=${playerAllocation}, broker=${brokerAllocation}`)
 
   const msg = await createCloseAppSessionMessage(sessionSigner, {
     app_session_id: appSessionId,
@@ -655,7 +646,8 @@ async function closeAppSession(finalPlayerAmount: bigint): Promise<void> {
 
   appSessionId = null
   sessionTotalPool = 0n
-  sessionMaxPayout = 0n
+  sessionPlayerBet = 0n
+  sessionHouseFunding = 0n
 }
 
 // =============================================================================
@@ -689,16 +681,16 @@ async function playRound(session: GameSession, row: RowConfig): Promise<RoundSta
   }
 
   round.bombPosition = deriveBombPosition(playerNonce, houseNonce, row.tilesInRow)
-  console.log(`  Revealing... Bomb at position ${round.bombPosition}`)
+  console.log(`  Bomb at position ${round.bombPosition}`)
 
   const hit = playerChoice === round.bombPosition
   round.result = hit ? 'boom' : 'safe'
 
   if (hit) {
-    console.log(`  ✗ BOOM! Picked ${playerChoice}, bomb was at ${round.bombPosition}`)
+    console.log(`  ✗ BOOM! Picked ${playerChoice}`)
   } else {
     const rowMult = calculateRowMultiplier(row.tilesInRow)
-    console.log(`  ✓ SAFE! Picked ${playerChoice}. Multiplier: ${formatMultiplier(rowMult)}`)
+    console.log(`  ✓ SAFE! Picked ${playerChoice}. Row multiplier: ${formatMultiplier(rowMult)}`)
   }
 
   return round
@@ -712,9 +704,8 @@ async function runGame(): Promise<void> {
   const rows = generateGameRows(numRows)
   const betAmount = DEFAULT_GAME_CONFIG.initialBalance
 
-  // create app session with house funding
-  // session now includes both player bet AND house max payout
-  await createAppSession(betAmount, numRows)
+  // create house-funded app session
+  await createAppSessionWithHouseFunding(betAmount, numRows)
 
   const session: GameSession = {
     gameId,
@@ -729,9 +720,8 @@ async function runGame(): Promise<void> {
 
   console.log('\n=== Game Start ===')
   console.log(`Game ID: ${gameId.slice(0, 18)}...`)
-  console.log(`Bet amount: ${session.virtualBet} ${ASSET_SYMBOL}`)
-  console.log(`House funding: ${sessionMaxPayout} ${ASSET_SYMBOL}`)
-  console.log(`Total pool: ${sessionTotalPool} ${ASSET_SYMBOL}`)
+  console.log(`Bet: ${session.virtualBet} ${ASSET_SYMBOL}`)
+  console.log(`Max win: ${sessionHouseFunding} ${ASSET_SYMBOL}`)
   console.log(`Rows: ${numRows}`)
 
   for (let i = 0; i < rows.length; i++) {
@@ -745,7 +735,7 @@ async function runGame(): Promise<void> {
       session.status = 'lost'
       session.cumulativeMultiplier = 0n
 
-      // player loses everything, house takes the full pool
+      // player loses everything, broker gets all
       const gameState: GameState = {
         gameId: BigInt(gameId),
         currentRow: i,
@@ -762,11 +752,10 @@ async function runGame(): Promise<void> {
 
     // calculate current payout with house edge applied
     const currentPayout = (betAmount * applyHouseEdge(session.cumulativeMultiplier, DEFAULT_GAME_CONFIG.houseEdgeBps)) / MULTIPLIER_SCALE
-    console.log(`  Cumulative: ${formatMultiplier(session.cumulativeMultiplier)}`)
+    console.log(`  Cumulative multiplier: ${formatMultiplier(session.cumulativeMultiplier)}`)
     console.log(`  Current payout: ${currentPayout} ${ASSET_SYMBOL}`)
 
-    // submit state update, player's allocation reflects their potential cashout
-    // if they cashed out now, they'd get currentPayout
+    // submit state update with current payout
     const gameState: GameState = {
       gameId: BigInt(gameId),
       currentRow: i,
@@ -774,8 +763,6 @@ async function runGame(): Promise<void> {
       multiplier: session.cumulativeMultiplier,
       status: 'playing',
     }
-    // player allocation = what they'd get if they cash out now
-    // house allocation = total pool minus player allocation
     await submitAppState(gameState, currentPayout)
 
     await new Promise(r => setTimeout(r, 100))
@@ -790,18 +777,20 @@ async function runGame(): Promise<void> {
   console.log(`Final multiplier: ${formatMultiplier(session.cumulativeMultiplier)}`)
   console.log(`Result: ${session.status.toUpperCase()}`)
 
-  // calculate actual payout based on multiplier with house edge
-  const actualPayout = session.status === 'won'
+  // calculate final payout based on multiplier with house edge
+  const finalPayout = session.status === 'won'
     ? (session.virtualBet * applyHouseEdge(session.cumulativeMultiplier, DEFAULT_GAME_CONFIG.houseEdgeBps)) / MULTIPLIER_SCALE
     : 0n
 
-  const profit = session.status === 'won' ? actualPayout - session.virtualBet : -session.virtualBet
+  const profit = session.status === 'won'
+    ? finalPayout - session.virtualBet
+    : -session.virtualBet
 
-  console.log(`Payout: ${actualPayout} ${ASSET_SYMBOL}`)
-  console.log(`Profit: ${profit > 0n ? '+' : ''}${profit} ${ASSET_SYMBOL}`)
+  console.log(`Final payout: ${finalPayout} ${ASSET_SYMBOL}`)
+  console.log(`Profit: ${profit >= 0n ? '+' : ''}${profit} ${ASSET_SYMBOL}`)
 
   // close the app session with final allocation
-  await closeAppSession(actualPayout)
+  await closeAppSession(finalPayout)
 }
 
 // =============================================================================
@@ -809,25 +798,20 @@ async function runGame(): Promise<void> {
 // =============================================================================
 
 async function main() {
-  console.log('Death Game - Yellow Network State Channels')
-  console.log('==========================================')
-  console.log('')
-  console.log('MODE:', USE_PRODUCTION ? 'PRODUCTION (real USDH)' : 'SANDBOX (test tokens)')
+  console.log('Death Game - House-Funded Nitrolite State Channels')
+  console.log('==================================================')
   console.log('')
   console.log('CONFIG:')
-  console.log(`  Main wallet: ${mainAccount.address}`)
+  console.log(`  Player wallet: ${mainAccount.address}`)
+  console.log(`  Broker wallet: ${brokerAccount.address}`)
   console.log(`  Session key: ${sessionAccount.address}${isNewSession ? ' (new)' : ' (saved)'}`)
   console.log(`  Chain: Sepolia (${SEPOLIA_CHAIN_ID})`)
   console.log(`  Clearnode: ${CLEARNODE_URL}`)
   console.log(`  Asset: ${ASSET_SYMBOL}`)
-  if (USE_PRODUCTION) {
-    console.log(`  Broker: ${BROKER_ADDRESS}`)
-    console.log(`  USDH: ${USDH_ADDRESS}`)
-    console.log(`  Custody: ${CUSTODY_ADDRESS}`)
-  }
   console.log('')
   console.log('LINKS:')
-  console.log(`  Wallet: ${sepoliaEtherscanAddress(mainAccount.address)}`)
+  console.log(`  Player: ${sepoliaEtherscanAddress(mainAccount.address)}`)
+  console.log(`  Broker: ${sepoliaEtherscanAddress(brokerAccount.address)}`)
   console.log('')
 
   // check Sepolia balance
@@ -839,13 +823,7 @@ async function main() {
   }
   console.log('')
 
-  // request faucet tokens for unified balance
-  if (!SKIP_FAUCET) {
-    await requestFaucetTokens()
-    console.log('')
-  }
-
-  // connect and authenticate, this MUST succeed
+  // connect and authenticate
   await connectAndAuth()
 
   if (!isAuthenticated) {
@@ -859,12 +837,13 @@ async function main() {
   await getConfig()
 
   // get ledger balance before game
+  console.log('\n=== Ledger Balances ===')
   await getLedgerBalance()
 
   // print session info for saving
   if (isNewSession) {
     console.log('')
-    console.log('  To reuse this session, add to .env:')
+    console.log('  To reuse this session key, add to .env:')
     console.log(`  SESSION_KEY=${sessionPrivateKey}`)
   }
 
@@ -872,7 +851,7 @@ async function main() {
   await runGame()
 
   // show transaction history
-  console.log('')
+  console.log('\n=== Post-Game ===')
   await getLedgerTransactions()
 
   // get final balance

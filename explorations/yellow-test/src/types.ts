@@ -13,7 +13,7 @@ export const FAUCET_URL = 'https://clearnet-sandbox.yellow.com/faucet/requestTok
 
 // asset symbols
 export const ASSET_SYMBOL_SANDBOX = 'ytest.usd'
-export const ASSET_SYMBOL = 'USDH'
+export const ASSET_SYMBOL = 'usdh'
 
 // contract addresses (Sepolia)
 export const USDH_ADDRESS = '0x25FfCCE632a03898c2ecB0EF9bb6a86177a363Ed' as Address
