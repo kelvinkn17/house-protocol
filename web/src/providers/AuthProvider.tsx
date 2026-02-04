@@ -33,11 +33,13 @@ interface AuthContextValue {
   // backend user (synced)
   backendUser: BackendUser | null
   isBackendSynced: boolean
+  isSyncing: boolean
 
   // actions
   login: () => void
   logout: () => Promise<void>
   getAuthHeader: () => Promise<string | null>
+  refreshUser: () => Promise<void>
 }
 
 const AuthContext = createContext<AuthContextValue | null>(null)
@@ -60,10 +62,20 @@ export function AuthProvider({ children }: AuthProviderProps) {
 
   const [backendUser, setBackendUser] = useState<BackendUser | null>(null)
   const [isBackendSynced, setIsBackendSynced] = useState(false)
+  const [isSyncing, setIsSyncing] = useState(false)
 
   // track if we already synced to prevent double calls
   const syncRef = useRef(false)
   const lastPrivyId = useRef<string | null>(null)
+  const mountedRef = useRef(true)
+
+  // cleanup on unmount
+  useEffect(() => {
+    mountedRef.current = true
+    return () => {
+      mountedRef.current = false
+    }
+  }, [])
 
   // get primary wallet address
   const walletAddress = useMemo(() => {
@@ -81,26 +93,35 @@ export function AuthProvider({ children }: AuthProviderProps) {
   }, [user])
 
   // sync with backend when authenticated
-  const syncWithBackend = useCallback(async () => {
+  const syncWithBackend = useCallback(async (force = false) => {
     if (!authenticated || !user) {
-      setBackendUser(null)
-      setIsBackendSynced(false)
+      if (mountedRef.current) {
+        setBackendUser(null)
+        setIsBackendSynced(false)
+      }
       return
     }
 
-    // prevent double sync for same user
-    if (syncRef.current && lastPrivyId.current === user.id) {
+    // prevent double sync for same user (unless forced)
+    if (!force && syncRef.current && lastPrivyId.current === user.id) {
       return
     }
 
     syncRef.current = true
     lastPrivyId.current = user.id
 
+    if (mountedRef.current) {
+      setIsSyncing(true)
+    }
+
     try {
       const token = await getAccessToken()
       if (!token) {
         console.error('Failed to get access token')
-        setIsBackendSynced(false)
+        if (mountedRef.current) {
+          setIsBackendSynced(false)
+          setIsSyncing(false)
+        }
         syncRef.current = false
         return
       }
@@ -108,16 +129,22 @@ export function AuthProvider({ children }: AuthProviderProps) {
       api.setAuthToken(token)
       const response = await authApi.verify()
 
-      if (response.success && response.data) {
-        setBackendUser(response.data.user as BackendUser)
-        setIsBackendSynced(true)
-      } else {
-        console.error('Backend sync failed:', response.error)
-        setIsBackendSynced(false)
+      if (mountedRef.current) {
+        if (response.success && response.data) {
+          setBackendUser(response.data.user as BackendUser)
+          setIsBackendSynced(true)
+        } else {
+          console.error('Backend sync failed:', response.error)
+          setIsBackendSynced(false)
+        }
+        setIsSyncing(false)
       }
     } catch (error) {
       console.error('Backend sync error:', error)
-      setIsBackendSynced(false)
+      if (mountedRef.current) {
+        setIsBackendSynced(false)
+        setIsSyncing(false)
+      }
     }
 
     syncRef.current = false
@@ -150,6 +177,11 @@ export function AuthProvider({ children }: AuthProviderProps) {
     }
   }, [authenticated, getAccessToken])
 
+  // refresh user data from backend
+  const refreshUser = useCallback(async () => {
+    await syncWithBackend(true)
+  }, [syncWithBackend])
+
   // logout handler
   const logout = useCallback(async () => {
     setBackendUser(null)
@@ -168,9 +200,11 @@ export function AuthProvider({ children }: AuthProviderProps) {
     email,
     backendUser,
     isBackendSynced,
+    isSyncing,
     login,
     logout,
     getAuthHeader,
+    refreshUser,
   }
 
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>

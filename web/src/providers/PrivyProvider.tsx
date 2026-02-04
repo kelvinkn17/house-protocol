@@ -20,14 +20,10 @@ export default function PrivyProvider({ children }: PrivyProviderProps) {
           logo: '/assets/logos/the-house-protocol-favicon.png',
           showWalletLoginFirst: false,
         },
-        // embedded wallets config
+        // embedded wallets config, create for users signing in with email/social
         embeddedWallets: {
-          createOnLogin: 'users-without-wallets',
-        },
-        // external wallets
-        externalWallets: {
-          coinbaseWallet: {
-            connectionOptions: 'smartWalletOnly',
+          ethereum: {
+            createOnLogin: 'users-without-wallets',
           },
         },
       }}

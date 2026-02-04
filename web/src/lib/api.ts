@@ -1,6 +1,7 @@
-import { env } from '@/env'
-
-const API_BASE_URL = env.VITE_API_URL || 'http://localhost:3700'
+// api base url, defaults to localhost:3700 for local dev
+const API_BASE_URL = typeof window !== 'undefined'
+  ? (import.meta.env.VITE_API_URL || 'http://localhost:3700')
+  : 'http://localhost:3700'
 
 interface ApiResponse<T> {
   success: boolean
