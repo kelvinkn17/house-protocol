@@ -4,24 +4,35 @@
 
 ```
 contract/
-├── contracts/          # solidity source files
-├── scripts/            # deployment scripts
+├── src/                # solidity source files
+├── script/             # deployment scripts
 ├── test/               # test files
-├── hardhat.config.ts   # hardhat configuration
+├── lib/                # dependencies (forge-std, etc.)
+├── foundry.toml        # foundry configuration
 └── .env.example        # env template
 ```
 
 ## commands
 
 ```bash
-bun run compile         # compile contracts
-bun run test            # run tests
-bun run node            # start local hardhat node
-bun run deploy:localhost # deploy to local node
-bun run deploy:sepolia  # deploy to sepolia testnet
-bun run deploy:mainnet  # deploy to mainnet
-bun run verify          # verify on etherscan
-bun run clean           # clean artifacts
+forge build             # compile contracts
+forge test              # run tests
+forge test -vvv         # run tests with verbosity
+forge test --match-test testName  # run specific test
+forge test --match-contract ContractTest  # run specific contract tests
+forge fmt               # format code
+forge clean             # clean artifacts
+
+# local node
+anvil                   # start local node
+
+# deployment
+forge script script/Counter.s.sol --rpc-url localhost --broadcast  # deploy to local
+forge script script/Counter.s.sol --rpc-url $SEPOLIA_RPC_URL --broadcast --verify  # deploy to sepolia
+forge script script/Counter.s.sol --rpc-url $MAINNET_RPC_URL --broadcast --verify  # deploy to mainnet
+
+# verification (standalone)
+forge verify-contract <address> MyContract --chain sepolia
 ```
 
 ## environment setup
@@ -31,53 +42,79 @@ copy `.env.example` to `.env` and fill in:
 - `ETHERSCAN_API_KEY` - for contract verification
 - `SEPOLIA_RPC_URL` / `MAINNET_RPC_URL` - optional custom rpcs
 
+load env before deploying:
+```bash
+source .env
+```
+
 ## adding new contracts
 
-1. create `.sol` file in `contracts/`
-2. add deploy script in `scripts/`
-3. add tests in `test/`
-4. run `bun run compile` to generate types
+1. create `.sol` file in `src/`
+2. add deploy script in `script/` (naming: `MyContract.s.sol`)
+3. add tests in `test/` (naming: `MyContract.t.sol`)
+4. run `forge build` to compile
 
 ## testing pattern
 
-```ts
-import { expect } from "chai";
-import { ethers } from "hardhat";
+```solidity
+// SPDX-License-Identifier: UNLICENSED
+pragma solidity ^0.8.13;
 
-describe("MyContract", function () {
-  it("should do something", async function () {
-    const Factory = await ethers.getContractFactory("MyContract");
-    const contract = await Factory.deploy();
-    // assertions
-  });
-});
+import {Test, console} from "forge-std/Test.sol";
+import {MyContract} from "../src/MyContract.sol";
+
+contract MyContractTest is Test {
+    MyContract public myContract;
+
+    function setUp() public {
+        myContract = new MyContract();
+    }
+
+    function test_SomeFunction() public {
+        // arrange, act, assert
+        assertEq(myContract.value(), expected);
+    }
+
+    function testFuzz_SomeFunction(uint256 x) public {
+        // fuzz testing
+        myContract.setValue(x);
+        assertEq(myContract.value(), x);
+    }
+}
 ```
 
 ## deployment pattern
 
-```ts
-import { ethers } from "hardhat";
+```solidity
+// SPDX-License-Identifier: UNLICENSED
+pragma solidity ^0.8.13;
 
-async function main() {
-  const [deployer] = await ethers.getSigners();
-  console.log("deploying with:", deployer.address);
+import {Script, console} from "forge-std/Script.sol";
+import {MyContract} from "../src/MyContract.sol";
 
-  const Factory = await ethers.getContractFactory("MyContract");
-  const contract = await Factory.deploy(/* args */);
-  await contract.waitForDeployment();
+contract MyContractScript is Script {
+    function setUp() public {}
 
-  console.log("deployed to:", await contract.getAddress());
+    function run() public {
+        vm.startBroadcast();
+
+        MyContract myContract = new MyContract(/* args */);
+        console.log("deployed to:", address(myContract));
+
+        vm.stopBroadcast();
+    }
 }
-
-main().catch((e) => {
-  console.error(e);
-  process.exitCode = 1;
-});
 ```
 
-## verifying contracts
+## installing dependencies
 
 ```bash
-# after deployment
-bun run --cwd contract verify <address> --network sepolia "constructor arg 1" "arg 2"
+forge install OpenZeppelin/openzeppelin-contracts  # install openzeppelin
+forge install transmissions11/solmate              # install solmate
+forge update                                        # update all deps
+```
+
+add remappings to `foundry.toml` or `remappings.txt`:
+```
+@openzeppelin/=lib/openzeppelin-contracts/
 ```

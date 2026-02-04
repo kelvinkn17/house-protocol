@@ -5,3 +5,5 @@ typechain-types/
 .env
 coverage/
 coverage.json
+/lib
+/build
