@@ -1,5 +1,6 @@
 import { Link, useLocation } from '@tanstack/react-router'
 import { cnm } from '@/utils/style'
+import ConnectButton from '@/components/ConnectButton'
 
 interface AppLayoutProps {
   children: React.ReactNode
@@ -13,8 +14,8 @@ export default function AppLayout({ children, noPadding }: AppLayoutProps) {
 
   return (
     <div className="min-h-screen bg-[#cdff57]">
-      {/* Sticky navbar - no border, clean */}
-      <header className="sticky top-0 z-40 h-14 bg-[#cdff57] px-4 sm:px-6">
+      {/* Sticky navbar */}
+      <header className="sticky top-0 z-40 h-20 bg-[#cdff57] px-4 sm:px-6">
         <nav className="mx-auto flex h-full max-w-7xl items-center justify-between">
           <Link to="/" className="flex items-center">
             <div className="px-3 py-1.5 bg-black text-[#CDFF57] font-black text-lg tracking-tight">
@@ -34,17 +35,12 @@ export default function AppLayout({ children, noPadding }: AppLayoutProps) {
             </NavLink>
           </div>
 
-          <button
-            className="px-5 py-2.5 text-sm font-black uppercase tracking-wide rounded-full border-2 border-black bg-white text-black hover:translate-x-0.5 hover:translate-y-0.5 transition-transform duration-200"
-            style={{ boxShadow: '4px 4px 0px black' }}
-          >
-            Connect Wallet
-          </button>
+          <ConnectButton />
         </nav>
       </header>
 
       {/* Sticky inverted corners */}
-      <div className="pointer-events-none sticky top-14 z-20 mx-2 flex justify-between sm:mx-6">
+      <div className="pointer-events-none sticky top-20 z-20 mx-2 flex justify-between sm:mx-6">
         <div className="h-6 w-6 bg-[#cdff57] sm:h-8 sm:w-8 [mask-image:radial-gradient(circle_at_100%_100%,transparent_23px,black_24px)] sm:[mask-image:radial-gradient(circle_at_100%_100%,transparent_31px,black_32px)]" />
         <div className="h-6 w-6 bg-[#cdff57] sm:h-8 sm:w-8 [mask-image:radial-gradient(circle_at_0%_100%,transparent_23px,black_24px)] sm:[mask-image:radial-gradient(circle_at_0%_100%,transparent_31px,black_32px)]" />
       </div>

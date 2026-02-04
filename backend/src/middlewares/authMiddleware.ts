@@ -1,19 +1,29 @@
-import jwt from 'jsonwebtoken';
+import { PrivyClient } from '@privy-io/server-auth';
 import type { FastifyRequest, FastifyReply } from 'fastify';
 import { prismaQuery } from '../lib/prisma.ts';
-import { JWT_SECRET } from '../config/main-config.ts';
+import { PRIVY_APP_ID, PRIVY_APP_SECRET } from '../config/main-config.ts';
 import { handleError } from '../utils/errorHandler.ts';
 
-interface JwtPayload {
+// initialize privy client
+const privy = new PrivyClient(PRIVY_APP_ID, PRIVY_APP_SECRET);
+
+// verified claims from privy token
+interface PrivyClaims {
   userId: string;
+  appId: string;
+  issuer: string;
+  issuedAt: number;
+  expiration: number;
 }
 
 declare module 'fastify' {
   interface FastifyRequest {
+    privyClaims?: PrivyClaims;
     user?: {
       id: string;
-      walletAddress: string;
-      nonce: string | null;
+      privyId: string;
+      walletAddress: string | null;
+      email: string | null;
       lastSignIn: Date | null;
       createdAt: Date;
       updatedAt: Date;
@@ -21,8 +31,13 @@ declare module 'fastify' {
   }
 }
 
+/**
+ * Auth middleware that verifies Privy access tokens
+ * Sets request.privyClaims with token claims
+ * Sets request.user if user exists in database
+ */
 export const authMiddleware = async (request: FastifyRequest, reply: FastifyReply): Promise<true | FastifyReply> => {
-  // Check if Authorization header exists
+  // check authorization header
   const authHeader = request.headers.authorization;
   if (!authHeader || !authHeader.startsWith('Bearer ')) {
     return handleError(reply, 401, 'Missing or invalid authorization header', 'MISSING_AUTH_HEADER');
@@ -33,29 +48,57 @@ export const authMiddleware = async (request: FastifyRequest, reply: FastifyRepl
     return handleError(reply, 401, 'Token not provided', 'TOKEN_MISSING');
   }
 
-  let authData: JwtPayload | null = null;
+  // verify privy token
+  let claims: PrivyClaims;
   try {
-    authData = jwt.verify(token, JWT_SECRET) as JwtPayload;
+    const verifiedClaims = await privy.verifyAuthToken(token);
+    claims = {
+      userId: verifiedClaims.userId,
+      appId: verifiedClaims.appId,
+      issuer: verifiedClaims.issuer,
+      issuedAt: verifiedClaims.issuedAt,
+      expiration: verifiedClaims.expiration,
+    };
   } catch (error) {
-    console.log(`Token verification failed with error ${error}.`);
+    console.log(`Privy token verification failed: ${error}`);
     return handleError(reply, 401, 'Invalid or expired token', 'INVALID_TOKEN', error as Error);
   }
 
-  // Safety check: Ensure authData.userId exists and is valid
-  if (!authData || !authData.userId || authData.userId === undefined || authData.userId === null) {
-    return handleError(reply, 401, 'Invalid token payload - missing user ID', 'INVALID_TOKEN_PAYLOAD');
+  // check app id matches
+  if (claims.appId !== PRIVY_APP_ID) {
+    return handleError(reply, 401, 'Token issued for different app', 'INVALID_APP_ID');
   }
 
+  request.privyClaims = claims;
+
+  // try to find existing user
   const user = await prismaQuery.user.findUnique({
     where: {
-      id: authData.userId,
+      privyId: claims.userId,
     },
   });
 
-  if (!user) {
-    return handleError(reply, 401, 'User not found', 'USER_NOT_FOUND');
+  if (user) {
+    request.user = user;
   }
 
-  request.user = user;
   return true;
 };
+
+/**
+ * Strict auth middleware that requires user to exist in database
+ * Use this for protected routes where user must already be registered
+ */
+export const strictAuthMiddleware = async (request: FastifyRequest, reply: FastifyReply): Promise<true | FastifyReply> => {
+  const result = await authMiddleware(request, reply);
+  if (result !== true) return result;
+
+  if (!request.user) {
+    return handleError(reply, 401, 'User not found in database', 'USER_NOT_FOUND');
+  }
+
+  return true;
+};
+
+// export privy client for use in routes
+export { privy };
