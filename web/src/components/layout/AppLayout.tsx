@@ -30,8 +30,8 @@ export default function AppLayout({ children, noPadding }: AppLayoutProps) {
             <NavLink to="/build" active={isBuild}>
               BUILDERS
             </NavLink>
-            <NavLink to="/docs" active={path.includes('/docs')}>
-              DOCS
+            <NavLink to="/app/play" active={path.includes('/play')}>
+              PLAY
             </NavLink>
           </div>
 
