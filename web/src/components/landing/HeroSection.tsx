@@ -2,6 +2,7 @@ import { Link } from '@tanstack/react-router'
 import { useState, useEffect } from 'react'
 import AnimateComponent from '@/components/elements/AnimateComponent'
 import AnimatedText from '@/components/elements/AnimatedText'
+import AnimatedMascot from '@/components/elements/AnimatedMascot'
 import { cssTransition } from '@/lib/styling'
 
 const mascotQuotes = [
@@ -112,11 +113,7 @@ export default function HeroSection() {
             </AnimateComponent>
             {/* mascot face */}
             <AnimateComponent variant="fadeInUp" delay={600}>
-              <img
-                src="/assets/images/hp-face.svg"
-                alt="House Protocol Mascot"
-                className="w-44 h-44 xl:w-64 xl:h-64 animate-mascot-sway drop-shadow-[6px_6px_0px_rgba(0,0,0,0.3)]"
-              />
+              <AnimatedMascot className="w-44 h-44 xl:w-64 xl:h-64 animate-mascot-sway drop-shadow-[6px_6px_0px_rgba(0,0,0,0.3)]" />
             </AnimateComponent>
           </div>
 
