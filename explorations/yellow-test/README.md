@@ -5,14 +5,13 @@ Exploration of Yellow Network / Nitrolite state channels for gasless gaming on S
 ## Status
 
 **Working:**
-- WebSocket connection to Yellow clearnode (sandbox & production)
-- EIP-712 authentication flow (session key registration + challenge signing)
+- WebSocket connection to Yellow clearnode (sandbox)
+- EIP-712 authentication flow
+- Session key registration
+- Channel creation
 - Game logic with commit-reveal fairness
 - Multiplier calculations
-
-**Known Issue:**
-- Yellow clearnode returns "failed to generate JWT token" after valid EIP-712 signature
-- This may require creating a channel first at https://app.yellow.org or is a server-side issue
+- Session/channel reuse for faster startup
 
 ## Setup
 
@@ -23,43 +22,60 @@ cp .env.example .env
 # Add your PRIVATE_KEY to .env
 ```
 
+You need Sepolia ETH for gas. Get some from https://sepoliafaucet.com/
+
 ## Running
 
 ```bash
 bun run death-game
 ```
 
-Expected output:
+First run output:
 ```
 Death Game - Yellow Network State Channels
 ==========================================
-Main wallet: 0x...
-Session key: 0x...
-Clearnode: wss://clearnet-sandbox.yellow.com/ws
 
-Sepolia balance: 0.399026 ETH
+CONFIG:
+  Main wallet: 0x...
+  Session key: 0x... (new)
+  Chain: Sepolia (11155111)
+  Clearnode: wss://clearnet-sandbox.yellow.com/ws
+
+Sepolia ETH: 0.399 ETH
+
+Requesting faucet tokens...
+  Faucet: {"success":true,"amount":"10000000","asset":"ytest.usd"}
 
 ✓ Connected to Yellow Network (sandbox)
-  Sending auth_request...
-  Received challenge: 57da306b...
-  Signed EIP-712, sending auth_verify...
-  Error: failed to generate JWT token    <-- server-side issue
+✓ Authenticated!
+✓ Channel created: 0x...
+
+  To reuse this session, add to .env:
+  SESSION_KEY=0x...
+  CHANNEL_ID=0x...
 
 === Game Start ===
-Game ID: 0x...
-Virtual bet: 100
-Rows: 5
-
-Row 1 (3 tiles):
-  ✓ SAFE! Picked 2. Multiplier: 1.50x
-  Cumulative: 1.50x (with edge: 1.47x)
 ...
 ```
 
-## Authentication Flow (per Yellow docs)
+After adding `SKIP_FAUCET=true`, `SESSION_KEY`, and `CHANNEL_ID` to .env, subsequent runs are faster:
+```
+CONFIG:
+  Session key: 0x... (saved)
+  Channel: 0x...
+
+✓ Connected to Yellow Network (sandbox)
+✓ Authenticated!
+  Using saved channel: 0x...
+
+=== Game Start ===
+...
+```
+
+## Authentication Flow
 
 ```
-1. Generate session keypair locally
+1. Generate session keypair locally (or reuse from .env)
 2. auth_request (public, no signature)
    → address, session_key, application, expires_at, allowances
 3. auth_challenge (from server)
@@ -105,8 +121,18 @@ PLAYER                          HOUSE
 | `src/game-logic.ts` | Commit-reveal, multipliers |
 | `src/death-game.ts` | Main script with Yellow auth |
 
-## Next Steps
+## Environment Variables
 
-1. Create channel at https://app.yellow.org (may resolve JWT issue)
-2. Or wait for Yellow Network to fix server-side JWT generation
-3. Once authenticated, use session key to sign app session messages
+| Variable | Required | Description |
+|----------|----------|-------------|
+| `PRIVATE_KEY` | Yes | Wallet private key (Sepolia) |
+| `RPC_URL` | No | Custom RPC URL |
+| `SKIP_FAUCET` | No | Set to `true` after first run |
+| `SESSION_KEY` | No | Reuse session key |
+| `CHANNEL_ID` | No | Reuse channel |
+
+## Contract Addresses (Sepolia)
+
+- Custody: `0x019B65A265EB3363822f2752141b3dF16131B262`
+- Adjudicator: `0x7c7ccbc98469190849BCC6c926307794fDfB11F2`
+- ytest.usd: `0xDB9F293e3898c9E5536A3be1b0C56c89d2b32DEb`

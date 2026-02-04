@@ -50,6 +50,10 @@ const CLEARNODE_URL = 'wss://clearnet-sandbox.yellow.com/ws'
 const FAUCET_URL = 'https://clearnet-sandbox.yellow.com/faucet/requestTokens'
 const SKIP_FAUCET = process.env.SKIP_FAUCET === 'true'
 
+// optional: reuse session key and channel for faster startup
+const SAVED_SESSION_KEY = process.env.SESSION_KEY as Hex | undefined
+const SAVED_CHANNEL_ID = process.env.CHANNEL_ID as string | undefined
+
 // Yellow Network contract addresses on Sepolia
 const CUSTODY_ADDRESS = '0x019B65A265EB3363822f2752141b3dF16131B262' as Hex
 const ADJUDICATOR_ADDRESS = '0x7c7ccbc98469190849BCC6c926307794fDfB11F2' as Hex
@@ -70,10 +74,11 @@ if (!PRIVATE_KEY) {
 // main wallet
 const mainAccount = privateKeyToAccount(PRIVATE_KEY)
 
-// session key (generated fresh)
-const sessionPrivateKey = generatePrivateKey()
+// session key (reuse from env or generate fresh)
+const sessionPrivateKey = SAVED_SESSION_KEY || generatePrivateKey()
 const sessionAccount = privateKeyToAccount(sessionPrivateKey)
 const sessionSigner = createECDSAMessageSigner(sessionPrivateKey)
+const isNewSession = !SAVED_SESSION_KEY
 
 // viem clients
 const publicClient = createPublicClient({
@@ -148,7 +153,7 @@ async function requestFaucetTokens(): Promise<boolean> {
 let ws: WebSocket
 let isAuthenticated = false
 let jwtToken: string | null = null
-let channelId: string | null = null
+let channelId: string | null = SAVED_CHANNEL_ID || null
 let supportedTokens: Map<string, { address: Hex; chainId: number }> = new Map()
 
 // auth params for EIP-712
@@ -243,10 +248,9 @@ function connectAndAuth(): Promise<void> {
             const channelsList = params?.channels || params || []
             if (Array.isArray(channelsList) && channelsList.length > 0) {
               channelId = channelsList[0].channel_id
-              console.log(`  Found channel: ${channelId}`)
-            } else if (!channelId) {
-              console.log('  No channels found')
+              console.log(`  Found existing channel: ${channelId}`)
             }
+            // don't log "no channels found" here, we'll handle it in main
           }
 
           // channel created
@@ -458,7 +462,8 @@ async function main() {
   console.log('')
   console.log('CONFIG:')
   console.log(`  Main wallet: ${mainAccount.address}`)
-  console.log(`  Session key: ${sessionAccount.address}`)
+  console.log(`  Session key: ${sessionAccount.address}${isNewSession ? ' (new)' : ' (saved)'}`)
+  if (SAVED_CHANNEL_ID) console.log(`  Channel: ${SAVED_CHANNEL_ID}`)
   console.log(`  Chain: Sepolia (${SEPOLIA_CHAIN_ID})`)
   console.log(`  Clearnode: ${CLEARNODE_URL}`)
   console.log('')
@@ -492,14 +497,22 @@ async function main() {
     console.log('The game will run in simulation mode (local state only)')
     console.log('')
   } else {
-    // wait a bit for assets broadcast
-    await new Promise(r => setTimeout(r, 1000))
+    // wait for assets and channels broadcasts
+    await new Promise(r => setTimeout(r, 1500))
 
-    // try to get/create channels
-    await getChannels()
-
+    // create channel if none found
     if (!channelId) {
       await createChannel()
+    } else if (SAVED_CHANNEL_ID) {
+      console.log(`  Using saved channel: ${channelId}`)
+    }
+
+    // print session info for saving (only if new session)
+    if (isNewSession && channelId) {
+      console.log('')
+      console.log('  To reuse this session, add to .env:')
+      console.log(`  SESSION_KEY=${sessionPrivateKey}`)
+      console.log(`  CHANNEL_ID=${channelId}`)
     }
   }
 
