@@ -1,0 +1,111 @@
+# docker-compose for running clearnode against Sepolia
+# No Anvil, uses external Sepolia RPC
+
+services:
+  database:
+    image: postgres:17.2
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:-clearnode}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-clearnode}
+      POSTGRES_DB: ${POSTGRES_DB:-clearnode}
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-clearnode} -d ${POSTGRES_DB:-clearnode}"]
+      interval: 5s
+      retries: 5
+      start_period: 10s
+
+  db-init:
+    image: postgres:17.2
+    environment:
+      PGUSER: ${POSTGRES_USER:-clearnode}
+      PGPASSWORD: ${POSTGRES_PASSWORD:-clearnode}
+      PGDATABASE: ${POSTGRES_DB:-clearnode}
+      PGHOST: database
+      PGPORT: 5432
+      USDH_TOKEN_ADDRESS: ${USDH_TOKEN_ADDRESS:-0x25FfCCE632a03898c2ecB0EF9bb6a86177a363Ed}
+    volumes:
+      - ./clearnode/config/migrations/postgres:/migrations
+    command: >
+      sh -c "
+        echo 'Waiting for database to be ready...' &&
+        until pg_isready -h database -p 5432 -U ${POSTGRES_USER:-clearnode}; do
+          echo 'Waiting for database connection...'
+          sleep 2
+        done &&
+
+        # Create migrations table if it doesn't exist
+        echo 'Creating migrations table if not exists...' &&
+        psql -h database -c \"
+          CREATE TABLE IF NOT EXISTS goose_db_version (
+            id serial PRIMARY KEY,
+            version_id int8 NOT NULL,
+            is_applied boolean NOT NULL DEFAULT true,
+            tstamp timestamp NOT NULL DEFAULT CURRENT_TIMESTAMP
+          );
+        \" &&
+
+        echo 'Running pending migrations...' &&
+        for migration in /migrations/*.sql; do
+          filename=\$$(basename \$$migration) &&
+          version=\$$(echo \$$filename | grep -o '^[0-9]\\+') &&
+
+          if ! psql -h database -tAc \"SELECT 1 FROM goose_db_version WHERE version_id = \$$version\" | grep -q 1; then
+            echo \"Applying migration: \$$filename\" &&
+            sed -n '/^-- +goose Up/,/^-- +goose Down/p' \$$migration |
+            grep -v '^-- +goose' |
+            psql -h database &&
+            psql -h database -c \"INSERT INTO goose_db_version (version_id) VALUES (\$$version);\" &&
+            echo \"Successfully applied: \$$filename\"
+          else
+            echo \"Skipping already applied migration: \$$filename\"
+          fi
+        done &&
+
+        echo 'Checking database...' &&
+        # Check if USDH token already exists
+        USDH_EXISTS=\$$(psql -h database -t -c \"SELECT COUNT(*) FROM assets WHERE token = '\$$USDH_TOKEN_ADDRESS' AND chain_id = 11155111;\" | xargs) &&
+
+        if [ \"\$$USDH_EXISTS\" -eq \"0\" ]; then
+          echo 'Seeding database with USDH token...' &&
+          psql -h database -c \"
+            INSERT INTO assets (token, chain_id, symbol, decimals)
+            VALUES ('\$$USDH_TOKEN_ADDRESS', 11155111, 'usdh', 6);
+          \" &&
+          echo 'USDH token seeded successfully'
+        else
+          echo 'USDH token already seeded, skipping'
+        fi
+      "
+    depends_on:
+      database:
+        condition: service_healthy
+
+  clearnode:
+    build:
+      context: ./clearnode
+      dockerfile: Dockerfile
+    ports:
+      - "8000:8000"
+      - "4242:4242"
+    depends_on:
+      database:
+        condition: service_healthy
+      db-init:
+        condition: service_completed_successfully
+    environment:
+      CLEARNODE_CONFIG_DIR_PATH: /config
+      CLEARNODE_MODE: test
+      ETHEREUM_SEPOLIA_BLOCKCHAIN_RPC: ${ETHEREUM_SEPOLIA_BLOCKCHAIN_RPC}
+      CLEARNODE_DATABASE_URL: postgresql://${POSTGRES_USER:-clearnode}:${POSTGRES_PASSWORD:-clearnode}@database:5432/${POSTGRES_DB:-clearnode}?sslmode=disable
+      CLEARNODE_LOG_LEVEL: ${CLEARNODE_LOG_LEVEL:-info}
+    volumes:
+      - ./clearnode/config/compose/sepolia:/config:ro
+    restart: unless-stopped
+
+volumes:
+  postgres_data:
+    driver: local
