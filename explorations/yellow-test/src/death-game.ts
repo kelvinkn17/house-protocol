@@ -1,7 +1,16 @@
 import 'dotenv/config'
 import { WebSocket } from 'ws'
 import { privateKeyToAccount, generatePrivateKey } from 'viem/accounts'
-import { createPublicClient, createWalletClient, http, type Hex, formatEther } from 'viem'
+import {
+  createPublicClient,
+  createWalletClient,
+  http,
+  type Hex,
+  type Address,
+  formatEther,
+  formatUnits,
+  parseUnits,
+} from 'viem'
 import { sepolia } from 'viem/chains'
 import {
   createECDSAMessageSigner,
@@ -45,6 +54,81 @@ import {
 } from './types'
 
 // =============================================================================
+// CONTRACT ABIS (minimal)
+// =============================================================================
+
+const ERC20_ABI = [
+  {
+    name: 'balanceOf',
+    type: 'function',
+    stateMutability: 'view',
+    inputs: [{ name: 'account', type: 'address' }],
+    outputs: [{ name: '', type: 'uint256' }],
+  },
+  {
+    name: 'approve',
+    type: 'function',
+    stateMutability: 'nonpayable',
+    inputs: [
+      { name: 'spender', type: 'address' },
+      { name: 'amount', type: 'uint256' },
+    ],
+    outputs: [{ name: '', type: 'bool' }],
+  },
+  {
+    name: 'allowance',
+    type: 'function',
+    stateMutability: 'view',
+    inputs: [
+      { name: 'owner', type: 'address' },
+      { name: 'spender', type: 'address' },
+    ],
+    outputs: [{ name: '', type: 'uint256' }],
+  },
+  {
+    name: 'decimals',
+    type: 'function',
+    stateMutability: 'view',
+    inputs: [],
+    outputs: [{ name: '', type: 'uint8' }],
+  },
+] as const
+
+const CUSTODY_ABI = [
+  {
+    name: 'deposit',
+    type: 'function',
+    stateMutability: 'payable',
+    inputs: [
+      { name: 'account', type: 'address' },
+      { name: 'token', type: 'address' },
+      { name: 'amount', type: 'uint256' },
+    ],
+    outputs: [],
+  },
+  {
+    name: 'withdraw',
+    type: 'function',
+    stateMutability: 'nonpayable',
+    inputs: [
+      { name: 'token', type: 'address' },
+      { name: 'amount', type: 'uint256' },
+    ],
+    outputs: [],
+  },
+  {
+    name: 'getAccountsBalances',
+    type: 'function',
+    stateMutability: 'view',
+    inputs: [
+      { name: 'accounts', type: 'address[]' },
+      { name: 'tokens', type: 'address[]' },
+    ],
+    outputs: [{ name: '', type: 'uint256[][]' }],
+  },
+] as const
+
+// =============================================================================
 // CONFIG
 // =============================================================================
 
@@ -60,6 +144,9 @@ const ASSET_SYMBOL = process.env.ASSET_SYMBOL || 'usdh'
 
 // optional: reuse session key
 const SAVED_SESSION_KEY = process.env.SESSION_KEY as Hex | undefined
+
+// force deposit even if custody has funds (for demo purposes)
+const FORCE_DEPOSIT = process.env.FORCE_DEPOSIT === 'true'
 
 const APP_NAME = 'death-game'
 const SEPOLIA_CHAIN_ID = 11155111
@@ -130,6 +217,10 @@ function sepoliaEtherscanAddress(addr: string): string {
   return `https://sepolia.etherscan.io/address/${addr}`
 }
 
+function sepoliaEtherscanTx(hash: string): string {
+  return `https://sepolia.etherscan.io/tx/${hash}`
+}
+
 async function checkSepoliaBalance(): Promise<bigint> {
   const balance = await publicClient.getBalance({ address: mainAccount.address })
   return balance
@@ -137,6 +228,116 @@ async function checkSepoliaBalance(): Promise<bigint> {
 
 function generateRequestId(): string {
   return Math.floor(Math.random() * 1000000).toString()
+}
+
+// =============================================================================
+// ON-CHAIN: USDH TOKEN
+// =============================================================================
+
+async function getUSDHBalance(address: Address): Promise<bigint> {
+  const balance = await publicClient.readContract({
+    address: USDH_ADDRESS,
+    abi: ERC20_ABI,
+    functionName: 'balanceOf',
+    args: [address],
+  })
+  return balance
+}
+
+async function getUSDHAllowance(owner: Address, spender: Address): Promise<bigint> {
+  const allowance = await publicClient.readContract({
+    address: USDH_ADDRESS,
+    abi: ERC20_ABI,
+    functionName: 'allowance',
+    args: [owner, spender],
+  })
+  return allowance
+}
+
+async function approveUSDH(spender: Address, amount: bigint): Promise<Hex> {
+  console.log(`  Approving ${formatUnits(amount, 6)} USDH to ${spender.slice(0, 10)}...`)
+
+  const hash = await walletClient.writeContract({
+    address: USDH_ADDRESS,
+    abi: ERC20_ABI,
+    functionName: 'approve',
+    args: [spender, amount],
+  })
+
+  console.log(`  Tx: ${sepoliaEtherscanTx(hash)}`)
+
+  // wait for confirmation
+  const receipt = await publicClient.waitForTransactionReceipt({ hash })
+  console.log(`  Confirmed in block ${receipt.blockNumber}`)
+
+  return hash
+}
+
+// =============================================================================
+// ON-CHAIN: CUSTODY (DEPOSIT/WITHDRAW)
+// =============================================================================
+
+async function getCustodyBalance(account: Address): Promise<bigint> {
+  const balances = await publicClient.readContract({
+    address: CUSTODY_ADDRESS,
+    abi: CUSTODY_ABI,
+    functionName: 'getAccountsBalances',
+    args: [[account], [USDH_ADDRESS]],
+  })
+  return balances[0]?.[0] ?? 0n
+}
+
+async function depositToCustody(amount: bigint): Promise<Hex> {
+  console.log(`\n=== Depositing to Custody (On-Chain) ===`)
+  console.log(`  Amount: ${formatUnits(amount, 6)} USDH`)
+  console.log(`  Custody: ${CUSTODY_ADDRESS}`)
+
+  // check current allowance
+  const allowance = await getUSDHAllowance(mainAccount.address, CUSTODY_ADDRESS)
+  console.log(`  Current allowance: ${formatUnits(allowance, 6)} USDH`)
+
+  // approve if needed
+  if (allowance < amount) {
+    console.log(`  Need approval...`)
+    await approveUSDH(CUSTODY_ADDRESS, amount * 10n) // approve 10x for future deposits
+  }
+
+  // deposit to custody for our own account
+  console.log(`  Depositing...`)
+  const hash = await walletClient.writeContract({
+    address: CUSTODY_ADDRESS,
+    abi: CUSTODY_ABI,
+    functionName: 'deposit',
+    args: [mainAccount.address, USDH_ADDRESS, amount],
+  })
+
+  console.log(`  Tx: ${sepoliaEtherscanTx(hash)}`)
+
+  // wait for confirmation
+  const receipt = await publicClient.waitForTransactionReceipt({ hash })
+  console.log(`  ✓ Deposited in block ${receipt.blockNumber}`)
+
+  return hash
+}
+
+async function withdrawFromCustody(amount: bigint): Promise<Hex> {
+  console.log(`\n=== Withdrawing from Custody (On-Chain) ===`)
+  console.log(`  Amount: ${formatUnits(amount, 6)} USDH`)
+
+  const hash = await walletClient.writeContract({
+    address: CUSTODY_ADDRESS,
+    abi: CUSTODY_ABI,
+    functionName: 'withdraw',
+    args: [USDH_ADDRESS, amount],
+  })
+
+  console.log(`  Tx: ${sepoliaEtherscanTx(hash)}`)
+
+  // wait for confirmation
+  const receipt = await publicClient.waitForTransactionReceipt({ hash })
+  console.log(`  ✓ Withdrawn in block ${receipt.blockNumber}`)
+
+  return hash
 }
 
 // =============================================================================
@@ -696,7 +897,10 @@ async function playRound(session: GameSession, row: RowConfig): Promise<RoundSta
   return round
 }
 
-async function runGame(): Promise<void> {
+// cashout row config: cash out after this many successful rows
+const CASHOUT_AFTER_ROW = 3
+
+async function runGame(): Promise<bigint> {
   const gameIdBytes = crypto.getRandomValues(new Uint8Array(32))
   const gameId = ('0x' + Array.from(gameIdBytes).map(b => b.toString(16).padStart(2, '0')).join('')) as Hex
 
@@ -723,6 +927,10 @@ async function runGame(): Promise<void> {
   console.log(`Bet: ${session.virtualBet} ${ASSET_SYMBOL}`)
   console.log(`Max win: ${sessionHouseFunding} ${ASSET_SYMBOL}`)
   console.log(`Rows: ${numRows}`)
+  console.log(`Strategy: Cash out after row ${CASHOUT_AFTER_ROW} if still alive`)
+
+  let finalPayout = 0n
+  let cashedOut = false
 
   for (let i = 0; i < rows.length; i++) {
     const row = rows[i]
@@ -734,6 +942,7 @@ async function runGame(): Promise<void> {
     if (round.result === 'boom') {
       session.status = 'lost'
       session.cumulativeMultiplier = 0n
+      finalPayout = 0n
 
       // player loses everything, broker gets all
       const gameState: GameState = {
@@ -765,22 +974,30 @@ async function runGame(): Promise<void> {
     }
     await submitAppState(gameState, currentPayout)
 
+    // EARLY CASHOUT: if we survived to CASHOUT_AFTER_ROW, take the profit!
+    if (i + 1 >= CASHOUT_AFTER_ROW) {
+      console.log(`\n  💰 CASHING OUT after row ${i + 1}!`)
+      console.log(`  Locking in payout: ${currentPayout} ${ASSET_SYMBOL}`)
+      session.status = 'won'
+      finalPayout = currentPayout
+      cashedOut = true
+      break
+    }
+
     await new Promise(r => setTimeout(r, 100))
   }
 
   if (session.status === 'playing') {
     session.status = 'won'
+    // if we completed all rows without cashing out, final payout is max
+    const maxPayout = (betAmount * applyHouseEdge(session.cumulativeMultiplier, DEFAULT_GAME_CONFIG.houseEdgeBps)) / MULTIPLIER_SCALE
+    finalPayout = maxPayout
   }
 
   console.log('\n=== Game Over ===')
   console.log(`Rows completed: ${session.rounds.filter(r => r.result === 'safe').length}`)
   console.log(`Final multiplier: ${formatMultiplier(session.cumulativeMultiplier)}`)
-  console.log(`Result: ${session.status.toUpperCase()}`)
-
-  // calculate final payout based on multiplier with house edge
-  const finalPayout = session.status === 'won'
-    ? (session.virtualBet * applyHouseEdge(session.cumulativeMultiplier, DEFAULT_GAME_CONFIG.houseEdgeBps)) / MULTIPLIER_SCALE
-    : 0n
+  console.log(`Result: ${session.status.toUpperCase()}${cashedOut ? ' (CASHED OUT)' : ''}`)
 
   const profit = session.status === 'won'
     ? finalPayout - session.virtualBet
@@ -791,6 +1008,8 @@ async function runGame(): Promise<void> {
 
   // close the app session with final allocation
   await closeAppSession(finalPayout)
+
+  return finalPayout
 }
 
 // =============================================================================
@@ -798,8 +1017,13 @@ async function runGame(): Promise<void> {
 // =============================================================================
 
 async function main() {
-  console.log('Death Game - House-Funded Nitrolite State Channels')
-  console.log('==================================================')
+  console.log('Death Game - Full Flow Demo')
+  console.log('===========================')
+  console.log('')
+  console.log('This demo shows the COMPLETE flow:')
+  console.log('  1. Deposit USDH to Custody (on-chain tx)')
+  console.log('  2. Play game rounds (off-chain state channels)')
+  console.log('  3. Withdraw winnings from Custody (on-chain tx)')
   console.log('')
   console.log('CONFIG:')
   console.log(`  Player wallet: ${mainAccount.address}`)
@@ -809,21 +1033,72 @@ async function main() {
   console.log(`  Clearnode: ${CLEARNODE_URL}`)
   console.log(`  Asset: ${ASSET_SYMBOL}`)
   console.log('')
+  console.log('CONTRACTS:')
+  console.log(`  USDH Token: ${USDH_ADDRESS}`)
+  console.log(`  Custody:    ${CUSTODY_ADDRESS}`)
+  console.log(`  Broker:     ${BROKER_ADDRESS}`)
+  console.log('')
   console.log('LINKS:')
   console.log(`  Player: ${sepoliaEtherscanAddress(mainAccount.address)}`)
   console.log(`  Broker: ${sepoliaEtherscanAddress(brokerAccount.address)}`)
   console.log('')
 
-  // check Sepolia balance
-  const balance = await checkSepoliaBalance()
-  console.log(`Sepolia ETH: ${formatEther(balance)} ETH`)
+  // =========================================================================
+  // STEP 0: Check balances
+  // =========================================================================
+  console.log('=== Step 0: Check Balances ===')
 
-  if (balance === 0n) {
+  const ethBalance = await checkSepoliaBalance()
+  console.log(`  Sepolia ETH: ${formatEther(ethBalance)} ETH`)
+
+  if (ethBalance === 0n) {
     throw new Error('No Sepolia ETH. Get some from https://sepoliafaucet.com/')
   }
-  console.log('')
 
-  // connect and authenticate
+  const usdhBalance = await getUSDHBalance(mainAccount.address)
+  console.log(`  USDH (wallet): ${formatUnits(usdhBalance, 6)} USDH`)
+
+  const custodyBalance = await getCustodyBalance(mainAccount.address)
+  console.log(`  USDH (custody): ${formatUnits(custodyBalance, 6)} USDH`)
+
+  // =========================================================================
+  // STEP 1: Deposit to Custody (ON-CHAIN)
+  // =========================================================================
+  // We need USDH in custody to create ledger balance for state channels
+  // This is the ONLY on-chain tx before playing
+
+  const betAmount = 100n // 100 USDH (already in smallest unit for clearnode)
+  const depositAmount = parseUnits('100', 6) // 100 USDH for on-chain (6 decimals)
+
+  // check if we need to deposit (or force deposit for demo)
+  const needsDeposit = custodyBalance < depositAmount || FORCE_DEPOSIT
+
+  if (needsDeposit) {
+    if (usdhBalance < depositAmount) {
+      console.log('')
+      console.log('ERROR: Not enough USDH in wallet')
+      console.log(`  Need: ${formatUnits(depositAmount, 6)} USDH`)
+      console.log(`  Have: ${formatUnits(usdhBalance, 6)} USDH`)
+      console.log('')
+      console.log('Get USDH from:')
+      console.log('  1. Deploy/mint test USDH, or')
+      console.log('  2. Transfer from another wallet')
+      throw new Error('Insufficient USDH balance')
+    }
+
+    if (FORCE_DEPOSIT) {
+      console.log('\n  FORCE_DEPOSIT=true, depositing for demo...')
+    }
+    await depositToCustody(depositAmount)
+  } else {
+    console.log(`\n  ✓ Already have ${formatUnits(custodyBalance, 6)} USDH in custody, skipping deposit`)
+    console.log(`    Set FORCE_DEPOSIT=true to make a new deposit tx`)
+  }
+
+  // =========================================================================
+  // STEP 2: Connect to Clearnode and Authenticate
+  // =========================================================================
+  console.log('\n=== Step 1: Connect & Authenticate ===')
   await connectAndAuth()
 
   if (!isAuthenticated) {
@@ -836,9 +1111,18 @@ async function main() {
   // get clearnode config to find broker address
   await getConfig()
 
-  // get ledger balance before game
-  console.log('\n=== Ledger Balances ===')
-  await getLedgerBalance()
+  // =========================================================================
+  // STEP 3: Check Ledger Balance (OFF-CHAIN)
+  // =========================================================================
+  console.log('\n=== Step 2: Ledger Balance (Off-Chain) ===')
+  const ledgerBal = await getLedgerBalance()
+  console.log(`  This is your clearnode ledger balance, synced from custody deposits`)
+
+  if (ledgerBal < betAmount) {
+    console.log('')
+    console.log('WARNING: Ledger balance might need time to sync from custody deposit')
+    console.log('  If this keeps failing, check clearnode logs or wait a moment')
+  }
 
   // print session info for saving
   if (isNewSession) {
@@ -847,15 +1131,64 @@ async function main() {
     console.log(`  SESSION_KEY=${sessionPrivateKey}`)
   }
 
-  // run the game
-  await runGame()
+  // =========================================================================
+  // STEP 4: Play the Game (OFF-CHAIN STATE CHANNELS)
+  // =========================================================================
+  // This is completely gasless, all state updates happen off-chain
+  const gameWinnings = await runGame()
 
-  // show transaction history
-  console.log('\n=== Post-Game ===')
+  // =========================================================================
+  // STEP 5: Check Final Balance
+  // =========================================================================
+  console.log('\n=== Step 3: Post-Game Ledger ===')
   await getLedgerTransactions()
 
-  // get final balance
-  await getLedgerBalance()
+  const finalLedgerBalance = await getLedgerBalance()
+
+  // =========================================================================
+  // STEP 6: Withdraw from Custody (ON-CHAIN)
+  // =========================================================================
+  // This is the ONLY on-chain tx after playing
+  // Withdraw winnings back to wallet
+
+  if (gameWinnings > 0n) {
+    console.log(`\n=== Step 4: Withdrawing Winnings (On-Chain) ===`)
+    console.log(`  Game winnings: ${gameWinnings} ${ASSET_SYMBOL}`)
+
+    // wait a moment for ledger to sync from session close
+    console.log(`  Waiting for ledger sync...`)
+    await new Promise(r => setTimeout(r, 3000))
+
+    // check custody balance on-chain
+    const custodyBalanceBefore = await getCustodyBalance(mainAccount.address)
+    console.log(`  Custody balance: ${formatUnits(custodyBalanceBefore, 6)} USDH`)
+
+    if (custodyBalanceBefore > 0n) {
+      // withdraw the winnings (convert from clearnode units to on-chain units)
+      // clearnode uses integer amounts, on-chain uses 6 decimals
+      const withdrawAmount = gameWinnings * 1000000n // convert to 6 decimals
+
+      // but don't withdraw more than we have
+      const actualWithdraw = withdrawAmount > custodyBalanceBefore ? custodyBalanceBefore : withdrawAmount
+
+      console.log(`  Withdrawing ${formatUnits(actualWithdraw, 6)} USDH to wallet...`)
+      await withdrawFromCustody(actualWithdraw)
+    } else {
+      console.log(`  No custody balance to withdraw (ledger may not have synced yet)`)
+    }
+  } else {
+    console.log(`\n  No winnings to withdraw (you lost!)`)
+  }
+
+  // =========================================================================
+  // FINAL: Show all balances
+  // =========================================================================
+  console.log('\n=== Final Balances ===')
+  const finalUsdhWallet = await getUSDHBalance(mainAccount.address)
+  const finalUsdhCustody = await getCustodyBalance(mainAccount.address)
+  console.log(`  USDH (wallet):  ${formatUnits(finalUsdhWallet, 6)} USDH`)
+  console.log(`  USDH (custody): ${formatUnits(finalUsdhCustody, 6)} USDH`)
+  console.log(`  Ledger balance: ${finalLedgerBalance} ${ASSET_SYMBOL}`)
 
   // cleanup
   if (ws && ws.readyState === WebSocket.OPEN) {
@@ -863,6 +1196,11 @@ async function main() {
   }
 
   console.log('\n✓ Done!')
+  console.log('')
+  console.log('Summary:')
+  console.log('  - Deposit to Custody: 1 on-chain tx (visible on etherscan)')
+  console.log('  - Game play: 0 on-chain txs (state channels are off-chain)')
+  console.log('  - Withdraw from Custody: 1 on-chain tx (when you choose)')
 }
 
 main().catch((err) => {
