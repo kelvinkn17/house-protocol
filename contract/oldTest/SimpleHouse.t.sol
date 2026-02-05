@@ -23,8 +23,14 @@ contract SimpleHouseTest is Test {
     uint256 sessionNonce;
 
     /// @dev Helper to generate unique seed and session hash
-    function _newSession(address _player) internal returns (uint256 seed, bytes32 sessionHash) {
-        seed = uint256(keccak256(abi.encodePacked(_player, block.timestamp, sessionNonce++)));
+    function _newSession(
+        address _player
+    ) internal returns (uint256 seed, bytes32 sessionHash) {
+        seed = uint256(
+            keccak256(
+                abi.encodePacked(_player, block.timestamp, sessionNonce++)
+            )
+        );
         sessionHash = sha256(abi.encodePacked(seed, _player));
     }
 
@@ -89,7 +95,10 @@ contract SimpleHouseTest is Test {
         escrow.openSession(sessionHash, player, 100 * ONE_USDC);
         console.log("Session opened with 100 USDC");
         console.log("Session hash:", uint256(sessionHash));
-        console.log("Player balance after opening session:", usdc.balanceOf(player));
+        console.log(
+            "Player balance after opening session:",
+            usdc.balanceOf(player)
+        );
 
         // Close session - player won, final balance is 150 (50 profit)
         // Reveals seed for provably fair verification
@@ -102,7 +111,10 @@ contract SimpleHouseTest is Test {
         uint256 vaultBalanceAfter = vault.totalAssets();
 
         console.log("Player balance after:", playerBalanceAfter);
-        console.log("Player profit:", playerBalanceAfter - playerBalanceBefore + 100 * ONE_USDC);
+        console.log(
+            "Player profit:",
+            playerBalanceAfter - playerBalanceBefore + 100 * ONE_USDC
+        );
         console.log("Vault balance before:", vaultBalanceBefore);
         console.log("Vault balance after:", vaultBalanceAfter);
         console.log("Vault loss:", vaultBalanceBefore - vaultBalanceAfter);
@@ -198,7 +210,10 @@ contract SimpleHouseTest is Test {
         uint256 vaultBalanceAfter = vault.totalAssets();
 
         console.log("Player balance after:", playerBalanceAfter);
-        console.log("Player total loss:", playerBalanceBefore - playerBalanceAfter);
+        console.log(
+            "Player total loss:",
+            playerBalanceBefore - playerBalanceAfter
+        );
         console.log("Vault balance before:", vaultBalanceBefore);
         console.log("Vault balance after:", vaultBalanceAfter);
         console.log("Vault gain:", vaultBalanceAfter - vaultBalanceBefore);
@@ -246,10 +261,16 @@ contract SimpleHouseTest is Test {
         uint256 vaultBalanceAfter = vault.totalAssets();
 
         console.log("Player balance after:", playerBalanceAfter);
-        console.log("Player net change:", int256(playerBalanceAfter) - int256(playerBalanceBefore));
+        console.log(
+            "Player net change:",
+            int256(playerBalanceAfter) - int256(playerBalanceBefore)
+        );
         console.log("Vault balance before:", vaultBalanceBefore);
         console.log("Vault balance after:", vaultBalanceAfter);
-        console.log("Vault net change:", int256(vaultBalanceAfter) - int256(vaultBalanceBefore));
+        console.log(
+            "Vault net change:",
+            int256(vaultBalanceAfter) - int256(vaultBalanceBefore)
+        );
 
         // No change for either party
         assertEq(
@@ -302,9 +323,15 @@ contract SimpleHouseTest is Test {
         // Step 2: Attacker "donates" directly to vault to inflate share price
         vm.prank(attacker);
         usdc.transfer(address(vault), 1000 * ONE_USDC);
-        console.log("  Vault total assets after donation:", vault.totalAssets());
+        console.log(
+            "  Vault total assets after donation:",
+            vault.totalAssets()
+        );
         console.log("  Share price inflated!");
-        console.log("  Assets per share:", vault.totalAssets() * 1e18 / vault.totalSupply());
+        console.log(
+            "  Assets per share:",
+            (vault.totalAssets() * 1e18) / vault.totalSupply()
+        );
 
         console.log("");
         console.log("Step 3: Victim deposits 500 USDC");
@@ -331,7 +358,12 @@ contract SimpleHouseTest is Test {
         uint256 attackerRedeemable = vault.previewRedeem(attackerShares);
         console.log("  Victim can redeem:", victimRedeemable);
         console.log("  Attacker can redeem:", attackerRedeemable);
-        console.log("  Victim loss (if any):", 500 * ONE_USDC > victimRedeemable ? 500 * ONE_USDC - victimRedeemable : 0);
+        console.log(
+            "  Victim loss (if any):",
+            500 * ONE_USDC > victimRedeemable
+                ? 500 * ONE_USDC - victimRedeemable
+                : 0
+        );
 
         console.log("");
         console.log("Result: Attack mitigated by _decimalsOffset() = 3");
@@ -348,8 +380,12 @@ contract SimpleHouseTest is Test {
     // ==================== Deposit Before Big Win/Loss Tests ====================
 
     function test_DepositBeforeBigPlayerWin_DilutionRisk() public {
-        console.log("=== TEST: Deposit Before Big Player Win (Dilution Risk) ===");
-        console.log("Scenario: LP2 front-runs settlement to dilute LP1's loss exposure");
+        console.log(
+            "=== TEST: Deposit Before Big Player Win (Dilution Risk) ==="
+        );
+        console.log(
+            "Scenario: LP2 front-runs settlement to dilute LP1's loss exposure"
+        );
         console.log("");
 
         // Scenario: LP1 deposits, player opens session
@@ -436,8 +472,12 @@ contract SimpleHouseTest is Test {
     }
 
     function test_DepositBeforeBigHouseWin_ProfitDilution() public {
-        console.log("=== TEST: Deposit Before Big House Win (Profit Dilution) ===");
-        console.log("Scenario: LP2 front-runs settlement to share LP1's profit");
+        console.log(
+            "=== TEST: Deposit Before Big House Win (Profit Dilution) ==="
+        );
+        console.log(
+            "Scenario: LP2 front-runs settlement to share LP1's profit"
+        );
         console.log("");
 
         // Scenario: LP1 deposits, player opens session
@@ -524,7 +564,9 @@ contract SimpleHouseTest is Test {
 
     function test_WithdrawBeforeBigLoss_ExitLiquidity() public {
         console.log("=== TEST: Withdraw Before Big Loss (Exit Liquidity) ===");
-        console.log("Scenario: LP2 front-runs to exit before loss, LP1 absorbs all");
+        console.log(
+            "Scenario: LP2 front-runs to exit before loss, LP1 absorbs all"
+        );
         console.log("");
 
         // Scenario: Both LPs deposit, player opens session
@@ -559,7 +601,10 @@ contract SimpleHouseTest is Test {
         console.log("");
         console.log("Step 3: LP2 front-runs and withdraws everything");
         console.log("  LP2 withdrew:", lp2Withdrawn);
-        console.log("  Vault total assets after withdrawal:", vault.totalAssets());
+        console.log(
+            "  Vault total assets after withdrawal:",
+            vault.totalAssets()
+        );
         console.log("  LP1 is now ALONE bearing all the risk!");
 
         // Player wins: 1000 -> 2000 (1000 profit)
@@ -609,7 +654,9 @@ contract SimpleHouseTest is Test {
 
     function test_ProvablyFair_SeedHashVerification() public {
         console.log("=== TEST: Provably Fair Seed/Hash Verification ===");
-        console.log("Verifying that sha256(seed, player) produces correct sessionHash");
+        console.log(
+            "Verifying that sha256(seed, player) produces correct sessionHash"
+        );
         console.log("");
 
         // LP deposits liquidity
@@ -633,7 +680,11 @@ contract SimpleHouseTest is Test {
         console.log("");
         console.log("Step 3: Verify contract computes same hash");
         console.log("  Contract computed:", uint256(sessionHashOnchain));
-        assertEq(sessionHashOffchain, sessionHashOnchain, "Off-chain and on-chain hash should match");
+        assertEq(
+            sessionHashOffchain,
+            sessionHashOnchain,
+            "Off-chain and on-chain hash should match"
+        );
         console.log("  MATCH!");
 
         // Step 4: Open session with the committed hash
@@ -643,7 +694,11 @@ contract SimpleHouseTest is Test {
         escrow.openSession(sessionHashOffchain, player, 100 * ONE_USDC);
         console.log("  Session opened successfully");
         console.log("  Stored sessionHash:", uint256(escrow.sessions(player)));
-        assertEq(escrow.sessions(player), sessionHashOffchain, "Stored hash should match");
+        assertEq(
+            escrow.sessions(player),
+            sessionHashOffchain,
+            "Stored hash should match"
+        );
 
         // Step 5: Close session by revealing seed
         console.log("");
@@ -656,12 +711,19 @@ contract SimpleHouseTest is Test {
 
         uint256 playerBalanceAfter = usdc.balanceOf(player);
         console.log("  Session closed successfully!");
-        console.log("  Player profit:", playerBalanceAfter - playerBalanceBefore + 100 * ONE_USDC);
+        console.log(
+            "  Player profit:",
+            playerBalanceAfter - playerBalanceBefore + 100 * ONE_USDC
+        );
 
         // Step 6: Verify session is cleared
         console.log("");
         console.log("Step 6: Verify session cleared");
-        assertEq(escrow.sessions(player), bytes32(0), "Session should be cleared");
+        assertEq(
+            escrow.sessions(player),
+            bytes32(0),
+            "Session should be cleared"
+        );
         console.log("  Session cleared: true");
 
         console.log("");
@@ -669,7 +731,9 @@ contract SimpleHouseTest is Test {
         console.log("The provably fair mechanism works correctly:");
         console.log("  1. Backend commits hash upfront (cannot change seed)");
         console.log("  2. On close, seed is revealed for verification");
-        console.log("  3. Player can verify: sha256(seed, player) == committedHash");
+        console.log(
+            "  3. Player can verify: sha256(seed, player) == committedHash"
+        );
         console.log("  4. Player can then verify all game outcomes using seed");
     }
 
