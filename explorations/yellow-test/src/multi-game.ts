@@ -10,6 +10,8 @@ import {
   formatEther,
   formatUnits,
   parseUnits,
+  keccak256,
+  encodePacked,
 } from 'viem'
 import { sepolia } from 'viem/chains'
 import {
@@ -148,7 +150,7 @@ const SAVED_SESSION_KEY = process.env.SESSION_KEY as Hex | undefined
 // force deposit even if custody has funds (for demo purposes)
 const FORCE_DEPOSIT = process.env.FORCE_DEPOSIT === 'true'
 
-const APP_NAME = 'death-game'
+const APP_NAME = 'multi-game' // all games use same app name to match auth scope
 const SEPOLIA_CHAIN_ID = 11155111
 
 if (!PRIVATE_KEY) {
@@ -191,6 +193,13 @@ const walletClient = createWalletClient({
   transport: http(RPC_URL),
 })
 
+// broker wallet client for auto-replenishment
+const brokerWalletClient = createWalletClient({
+  account: brokerAccount,
+  chain: sepolia,
+  transport: http(RPC_URL),
+})
+
 // =============================================================================
 // STATE
 // =============================================================================
@@ -200,6 +209,7 @@ let isAuthenticated = false
 let jwtToken: string | null = null
 let appSessionId: Hex | null = null
 let ledgerBalance: bigint = 0n
+let brokerLedgerBalance: bigint = 0n
 let brokerAddressFromConfig: Hex | null = null
 
 // pending response handlers
@@ -359,6 +369,103 @@ async function withdrawFromCustody(amount: bigint): Promise<Hex> {
   console.log(`  ✓ Withdrawn in block ${receipt.blockNumber}`)
 
   return hash
+}
+
+// =============================================================================
+// CUSTODY BALANCE DISPLAY
+// =============================================================================
+
+async function showCustodyBalances(label: string = ''): Promise<{ player: bigint, broker: bigint }> {
+  const playerCustody = await getCustodyBalance(mainAccount.address)
+  const brokerCustody = await getCustodyBalance(brokerAccount.address)
+
+  console.log(`\n=== Custody Balances${label ? ` (${label})` : ''} ===`)
+  console.log(`  Player (${mainAccount.address.slice(0, 10)}...): ${formatUnits(playerCustody, 6)} USDH`)
+  console.log(`  Broker (${brokerAccount.address.slice(0, 10)}...): ${formatUnits(brokerCustody, 6)} USDH`)
+  console.log(`  Total in Custody: ${formatUnits(playerCustody + brokerCustody, 6)} USDH`)
+
+  return { player: playerCustody, broker: brokerCustody }
+}
+
+// =============================================================================
+// BROKER AUTO-REPLENISHMENT
+// =============================================================================
+
+async function brokerDepositToCustody(amount: bigint): Promise<Hex> {
+  console.log(`\n=== Broker Depositing to Custody (On-Chain) ===`)
+  console.log(`  Amount: ${formatUnits(amount, 6)} USDH`)
+  console.log(`  Broker: ${brokerAccount.address}`)
+
+  // check broker's USDH balance
+  const brokerUsdhBalance = await getUSDHBalance(brokerAccount.address)
+  console.log(`  Broker USDH balance: ${formatUnits(brokerUsdhBalance, 6)} USDH`)
+
+  if (brokerUsdhBalance < amount) {
+    throw new Error(`Broker has insufficient USDH. Need ${formatUnits(amount, 6)}, have ${formatUnits(brokerUsdhBalance, 6)}`)
+  }
+
+  // check allowance
+  const allowance = await getUSDHAllowance(brokerAccount.address, CUSTODY_ADDRESS)
+  console.log(`  Current allowance: ${formatUnits(allowance, 6)} USDH`)
+
+  // approve if needed
+  if (allowance < amount) {
+    console.log(`  Broker approving USDH...`)
+    const approveHash = await brokerWalletClient.writeContract({
+      address: USDH_ADDRESS,
+      abi: ERC20_ABI,
+      functionName: 'approve',
+      args: [CUSTODY_ADDRESS, amount * 10n],
+    })
+    await publicClient.waitForTransactionReceipt({ hash: approveHash })
+    console.log(`  Approved`)
+  }
+
+  // deposit
+  console.log(`  Broker depositing...`)
+  const hash = await brokerWalletClient.writeContract({
+    address: CUSTODY_ADDRESS,
+    abi: CUSTODY_ABI,
+    functionName: 'deposit',
+    args: [brokerAccount.address, USDH_ADDRESS, amount],
+  })
+
+  console.log(`  Tx: ${sepoliaEtherscanTx(hash)}`)
+
+  const receipt = await publicClient.waitForTransactionReceipt({ hash })
+
+  if (receipt.status !== 'success') {
+    throw new Error(`Broker deposit failed. Check: ${sepoliaEtherscanTx(hash)}`)
+  }
+
+  console.log(`  ✓ Broker deposited in block ${receipt.blockNumber}`)
+
+  return hash
+}
+
+async function ensureBrokerHasFunds(amountNeeded: bigint): Promise<void> {
+  const broker = brokerAddressFromConfig || BROKER_ADDRESS
+  const brokerCustody = await getCustodyBalance(broker)
+
+  console.log(`\n  Checking broker funds...`)
+  console.log(`    Broker custody balance: ${formatUnits(brokerCustody, 6)} USDH`)
+  console.log(`    Amount needed for game: ${amountNeeded} USDH`)
+
+  // Convert amountNeeded to on-chain units (6 decimals)
+  const amountNeededOnChain = amountNeeded * 1000000n
+
+  if (brokerCustody < amountNeededOnChain) {
+    // Deposit 2x what's needed
+    const depositAmount = amountNeededOnChain * 2n
+    console.log(`    Broker needs more funds! Depositing 2x = ${formatUnits(depositAmount, 6)} USDH`)
+    await brokerDepositToCustody(depositAmount)
+
+    // Wait for ledger sync
+    console.log(`    Waiting for ledger sync...`)
+    await new Promise(r => setTimeout(r, 3000))
+  } else {
+    console.log(`    ✓ Broker has sufficient funds`)
+  }
 }
 
 // =============================================================================
@@ -638,7 +745,7 @@ let sessionPlayerBet = 0n // player's original bet
 let sessionHouseFunding = 0n // house's contribution (max payout)
 
 async function createAppSessionWithHouseFunding(betAmount: bigint, numRows: number): Promise<Hex> {
-  console.log('\n=== Creating House-Funded Session ===')
+  console.log('\n=== Creating House-Funded Session (Death Game) ===')
 
   // use broker address from config, fallback to constant
   const broker = brokerAddressFromConfig || BROKER_ADDRESS
@@ -652,6 +759,9 @@ async function createAppSessionWithHouseFunding(betAmount: bigint, numRows: numb
 
   // calculate max payout (what player could win)
   sessionHouseFunding = calculateMaxPayout(betAmount, numRows, DEFAULT_GAME_CONFIG.houseEdgeBps)
+
+  // ensure broker has enough funds (auto-replenish if needed)
+  await ensureBrokerHasFunds(sessionHouseFunding)
   sessionPlayerBet = betAmount
   sessionTotalPool = sessionPlayerBet + sessionHouseFunding
 
@@ -821,13 +931,27 @@ async function closeAppSession(playerPayout: bigint): Promise<void> {
     return
   }
 
-  console.log('  Closing app session...')
+  console.log('\n  === SETTLING SESSION ===')
+  console.log(`  Session ID: ${appSessionId.slice(0, 18)}...`)
 
   const broker = brokerAddressFromConfig || BROKER_ADDRESS
 
   // allocations must sum to sessionTotalPool
   const playerAllocation = playerPayout > sessionTotalPool ? sessionTotalPool : playerPayout
   const brokerAllocation = sessionTotalPool - playerAllocation
+
+  console.log(`  Session Pool: ${sessionTotalPool} ${ASSET_SYMBOL}`)
+  console.log(`    - Player contributed: ${sessionPlayerBet} ${ASSET_SYMBOL}`)
+  console.log(`    - Broker contributed: ${sessionHouseFunding} ${ASSET_SYMBOL}`)
+  console.log(`  Settlement:`)
+  console.log(`    - Player receives: ${playerAllocation} ${ASSET_SYMBOL}`)
+  console.log(`    - Broker receives: ${brokerAllocation} ${ASSET_SYMBOL}`)
+
+  const playerProfit = playerAllocation - sessionPlayerBet
+  const brokerProfit = brokerAllocation - sessionHouseFunding
+  console.log(`  P/L:`)
+  console.log(`    - Player P/L: ${playerProfit >= 0n ? '+' : ''}${playerProfit} ${ASSET_SYMBOL}`)
+  console.log(`    - Broker P/L: ${brokerProfit >= 0n ? '+' : ''}${brokerProfit} ${ASSET_SYMBOL}`)
 
   const allocations = [
     {
@@ -841,8 +965,6 @@ async function closeAppSession(playerPayout: bigint): Promise<void> {
       amount: brokerAllocation.toString(),
     },
   ]
-
-  console.log(`  Final: player=${playerAllocation}, broker=${brokerAllocation}`)
 
   const msg = await createCloseAppSessionMessage(sessionSigner, {
     app_session_id: appSessionId,
@@ -872,8 +994,11 @@ async function closeAppSession(playerPayout: bigint): Promise<void> {
   })
 
   if (response?.status === 'closed') {
-    console.log(`✓ App session closed`)
+    console.log(`  ✓ Session closed and settled!`)
+    console.log(`    Player ledger: ${playerAllocation >= sessionPlayerBet ? 'gained' : 'lost'} ${Math.abs(Number(playerAllocation - sessionPlayerBet))} ${ASSET_SYMBOL}`)
+    console.log(`    Broker ledger: ${brokerAllocation >= sessionHouseFunding ? 'gained' : 'lost'} ${Math.abs(Number(brokerAllocation - sessionHouseFunding))} ${ASSET_SYMBOL}`)
   } else if (response?.error) {
+    console.log(`  ✗ Close failed: ${response.error}`)
     throw new Error(`Close session failed: ${response.error}`)
   } else {
     console.log(`  Close response: ${JSON.stringify(response)}`)
@@ -932,15 +1057,176 @@ async function playRound(session: GameSession, row: RowConfig): Promise<RoundSta
 }
 
 // cashout row config: cash out after this many successful rows
-const CASHOUT_AFTER_ROW = 3
+const CASHOUT_AFTER_ROW = 2 // conservative: cash out early!
 
-async function runGame(): Promise<bigint> {
+// =============================================================================
+// COIN FLIP GAME LOGIC
+// =============================================================================
+
+// coin flip: 50/50 odds, 2x payout (minus house edge)
+const COINFLIP_MULTIPLIER = 2n * MULTIPLIER_SCALE // 2x
+const COINFLIP_HOUSE_EDGE_BPS = 200n // 2%
+
+function calculateCoinFlipMaxPayout(bet: bigint): bigint {
+  const withEdge = applyHouseEdge(COINFLIP_MULTIPLIER, COINFLIP_HOUSE_EDGE_BPS)
+  return (bet * withEdge) / MULTIPLIER_SCALE
+}
+
+async function createCoinFlipSession(betAmount: bigint): Promise<Hex> {
+  console.log('\n=== Creating Coin Flip Session ===')
+
+  const broker = brokerAddressFromConfig || BROKER_ADDRESS
+
+  // house funding = max payout (bet * 2 * 0.98 - bet = ~0.96 * bet)
+  sessionHouseFunding = calculateCoinFlipMaxPayout(betAmount) - betAmount
+  if (sessionHouseFunding < 0n) sessionHouseFunding = betAmount // safety
+  sessionPlayerBet = betAmount
+  sessionTotalPool = sessionPlayerBet + sessionHouseFunding
+
+  // ensure broker has enough funds (auto-replenish if needed)
+  await ensureBrokerHasFunds(sessionHouseFunding)
+
+  console.log(`  Player bet: ${sessionPlayerBet} ${ASSET_SYMBOL}`)
+  console.log(`  House funding: ${sessionHouseFunding} ${ASSET_SYMBOL}`)
+  console.log(`  Total pool: ${sessionTotalPool} ${ASSET_SYMBOL}`)
+
+  const definition = {
+    protocol: RPCProtocolVersion.NitroRPC_0_4,
+    participants: [mainAccount.address, broker],
+    weights: [100, 0],
+    quorum: 100,
+    challenge: 0,
+    nonce: Date.now(),
+    application: APP_NAME,
+  }
+
+  const allocations = [
+    {
+      participant: mainAccount.address,
+      asset: ASSET_SYMBOL,
+      amount: sessionPlayerBet.toString(),
+    },
+    {
+      participant: broker,
+      asset: ASSET_SYMBOL,
+      amount: sessionHouseFunding.toString(),
+    },
+  ]
+
+  stateVersion = 1
+
+  const requestId = Math.floor(Math.random() * 1000000)
+  const timestamp = Date.now()
+
+  const playerMsg = await createAppSessionMessage(sessionSigner, {
+    definition,
+    allocations,
+  }, requestId, timestamp)
+
+  const parsed = JSON.parse(playerMsg)
+
+  const brokerMsg = await createAppSessionMessage(brokerSigner, {
+    definition,
+    allocations,
+  }, requestId, timestamp)
+  const brokerParsed = JSON.parse(brokerMsg)
+
+  parsed.sig = [...parsed.sig, ...brokerParsed.sig]
+
+  assertWsOpen()
+  ws.send(JSON.stringify(parsed))
+
+  const response = await new Promise<any>((resolve, reject) => {
+    const timeout = setTimeout(() => reject(new Error('Coin flip session creation timeout')), 15000)
+    pendingResponses.set('create_app_session', {
+      resolve: (params) => {
+        clearTimeout(timeout)
+        resolve(params)
+      },
+      reject: (err) => {
+        clearTimeout(timeout)
+        reject(err)
+      },
+      timeout
+    })
+  })
+
+  if (response?.app_session_id) {
+    appSessionId = response.app_session_id as Hex
+    console.log(`  Coin flip session created: ${appSessionId.slice(0, 18)}...`)
+    return appSessionId
+  }
+
+  throw new Error(`Failed to create coin flip session: ${JSON.stringify(response)}`)
+}
+
+async function runCoinFlip(betAmount: bigint): Promise<bigint> {
+  const gameIdBytes = crypto.getRandomValues(new Uint8Array(32))
+  const gameId = ('0x' + Array.from(gameIdBytes).map(b => b.toString(16).padStart(2, '0')).join('')) as Hex
+
+  await createCoinFlipSession(betAmount)
+
+  console.log('\n=== Coin Flip ===')
+  console.log(`Game ID: ${gameId.slice(0, 18)}...`)
+  console.log(`Bet: ${betAmount} ${ASSET_SYMBOL}`)
+
+  // commit-reveal for coin flip
+  const playerChoice = Math.random() < 0.5 ? 0 : 1 // 0 = heads, 1 = tails
+  const playerNonce = randomNonce()
+  const playerCommit = createCommitment(playerChoice, playerNonce)
+  console.log(`  Player choice: ${playerChoice === 0 ? 'HEADS' : 'TAILS'}`)
+  console.log(`  Player commit: ${playerCommit.hash.slice(0, 18)}...`)
+
+  const houseNonce = randomNonce()
+  const houseCommit = createCommitment(0, houseNonce)
+  console.log(`  House commit: ${houseCommit.hash.slice(0, 18)}...`)
+
+  // derive result from combined nonces
+  const combined = keccak256(encodePacked(['bytes32', 'bytes32'], [playerNonce, houseNonce]))
+  const firstByte = parseInt(combined.slice(2, 4), 16)
+  const coinResult = firstByte % 2 // 0 = heads, 1 = tails
+  console.log(`  Coin landed: ${coinResult === 0 ? 'HEADS' : 'TAILS'}`)
+
+  const won = playerChoice === coinResult
+  let finalPayout = 0n
+
+  if (won) {
+    finalPayout = calculateCoinFlipMaxPayout(betAmount)
+    console.log(`  WIN! Payout: ${finalPayout} ${ASSET_SYMBOL}`)
+  } else {
+    finalPayout = 0n
+    console.log(`  LOSE! Payout: 0 ${ASSET_SYMBOL}`)
+  }
+
+  // submit final state
+  const gameState: GameState = {
+    gameId: BigInt(gameId),
+    currentRow: 0,
+    virtualBalance: finalPayout,
+    multiplier: won ? applyHouseEdge(COINFLIP_MULTIPLIER, COINFLIP_HOUSE_EDGE_BPS) : 0n,
+    status: won ? 'won' : 'lost',
+  }
+  await submitAppState(gameState, finalPayout)
+
+  // close session
+  await closeAppSession(finalPayout)
+
+  const profit = won ? finalPayout - betAmount : -betAmount
+  console.log(`  Profit: ${profit >= 0n ? '+' : ''}${profit} ${ASSET_SYMBOL}`)
+
+  return finalPayout
+}
+
+// =============================================================================
+// DEATH GAME
+// =============================================================================
+
+async function runDeathGame(betAmount: bigint): Promise<bigint> {
   const gameIdBytes = crypto.getRandomValues(new Uint8Array(32))
   const gameId = ('0x' + Array.from(gameIdBytes).map(b => b.toString(16).padStart(2, '0')).join('')) as Hex
 
   const numRows = 5
   const rows = generateGameRows(numRows)
-  const betAmount = DEFAULT_GAME_CONFIG.initialBalance
 
   // create house-funded app session
   await createAppSessionWithHouseFunding(betAmount, numRows)
@@ -1051,13 +1337,14 @@ async function runGame(): Promise<bigint> {
 // =============================================================================
 
 async function main() {
-  console.log('Death Game - Full Flow Demo')
-  console.log('===========================')
+  console.log('Multi-Game Demo')
+  console.log('===============')
   console.log('')
-  console.log('This demo shows the COMPLETE flow:')
-  console.log('  1. Deposit USDH to Custody (on-chain tx)')
-  console.log('  2. Play game rounds (off-chain state channels)')
-  console.log('  3. Withdraw winnings from Custody (on-chain tx)')
+  console.log('This demo plays multiple games in one session:')
+  console.log('  1. Deposit 100 USDH to Custody (on-chain tx)')
+  console.log('  2. Play Death Game 2x (10 USDH each)')
+  console.log('  3. Play Coin Flip 2x (1 USDH each)')
+  console.log('  4. Withdraw remaining balance (on-chain tx)')
   console.log('')
   console.log('CONFIG:')
   console.log(`  Player wallet: ${mainAccount.address}`)
@@ -1095,16 +1382,14 @@ async function main() {
   const custodyBalance = await getCustodyBalance(mainAccount.address)
   console.log(`  USDH (custody): ${formatUnits(custodyBalance, 6)} USDH`)
 
+  // Show both player and broker custody balances
+  const initialCustody = await showCustodyBalances('BEFORE GAMES')
+
   // =========================================================================
   // STEP 1: Deposit to Custody (ON-CHAIN)
   // =========================================================================
-  // We need USDH in custody to create ledger balance for state channels
-  // This is the ONLY on-chain tx before playing
-
-  const betAmount = 100n // 100 USDH (already in smallest unit for clearnode)
   const depositAmount = parseUnits('100', 6) // 100 USDH for on-chain (6 decimals)
 
-  // check if we need to deposit (or force deposit for demo)
   const needsDeposit = custodyBalance < depositAmount || FORCE_DEPOSIT
 
   if (needsDeposit) {
@@ -1113,10 +1398,6 @@ async function main() {
       console.log('ERROR: Not enough USDH in wallet')
       console.log(`  Need: ${formatUnits(depositAmount, 6)} USDH`)
       console.log(`  Have: ${formatUnits(usdhBalance, 6)} USDH`)
-      console.log('')
-      console.log('Get USDH from:')
-      console.log('  1. Deploy/mint test USDH, or')
-      console.log('  2. Transfer from another wallet')
       throw new Error('Insufficient USDH balance')
     }
 
@@ -1125,8 +1406,7 @@ async function main() {
     }
     await depositToCustody(depositAmount)
   } else {
-    console.log(`\n  ✓ Already have ${formatUnits(custodyBalance, 6)} USDH in custody, skipping deposit`)
-    console.log(`    Set FORCE_DEPOSIT=true to make a new deposit tx`)
+    console.log(`\n  Already have ${formatUnits(custodyBalance, 6)} USDH in custody, skipping deposit`)
   }
 
   // =========================================================================
@@ -1139,27 +1419,33 @@ async function main() {
     throw new Error('Failed to authenticate with Yellow Network')
   }
 
-  // wait for connection to stabilize
   await new Promise(r => setTimeout(r, 1000))
-
-  // get clearnode config to find broker address
   await getConfig()
 
   // =========================================================================
   // STEP 3: Check Ledger Balance (OFF-CHAIN)
   // =========================================================================
   console.log('\n=== Step 2: Ledger Balance (Off-Chain) ===')
-  const ledgerBal = await getLedgerBalance()
-  console.log(`  This is your clearnode ledger balance, synced from custody deposits`)
+  let currentLedgerBalance = await getLedgerBalance()
+  console.log(`  Ledger balance: ${currentLedgerBalance} ${ASSET_SYMBOL}`)
 
-  if (ledgerBal < betAmount) {
-    throw new Error(
-      `Insufficient ledger balance. Have ${ledgerBal}, need ${betAmount}. ` +
-      `Custody deposit may not have synced yet. Wait a moment and try again.`
-    )
+  const totalBetsNeeded = 10n + 10n + 1n + 1n // 2x death game (10) + 2x coin flip (1)
+  // Check for negative or insufficient balance
+  if (currentLedgerBalance <= 0n) {
+    console.log(`\n  WARNING: Ledger balance is ${currentLedgerBalance} (negative or zero)!`)
+    console.log(`  This means there are unclosed sessions from previous runs.`)
+    console.log(`  Options:`)
+    console.log(`    1. Deposit more USDH to custody to cover the deficit`)
+    console.log(`    2. Ask clearnode admin to reset your ledger`)
+    console.log(`    3. Run: npx tsx src/check-custody.ts --withdraw`)
+    throw new Error(`Cannot play with negative ledger balance: ${currentLedgerBalance}`)
   }
 
-  // print session info for saving
+  if (currentLedgerBalance < totalBetsNeeded) {
+    console.log(`\n  WARNING: Ledger balance (${currentLedgerBalance}) < total bets needed (${totalBetsNeeded})`)
+    console.log(`  Will play as many games as balance allows.`)
+  }
+
   if (isNewSession) {
     console.log('')
     console.log('  To reuse this session key, add to .env:')
@@ -1167,52 +1453,182 @@ async function main() {
   }
 
   // =========================================================================
-  // STEP 4: Play the Game (OFF-CHAIN STATE CHANNELS)
+  // STEP 4: Play Games (OFF-CHAIN STATE CHANNELS)
   // =========================================================================
-  // This is completely gasless, all state updates happen off-chain
-  const gameWinnings = await runGame()
+
+  // Track game results for summary table
+  type GameResult = {
+    round: number
+    game: string
+    bet: bigint
+    playerBefore: bigint
+    playerAfter: bigint
+    brokerBefore: bigint
+    brokerAfter: bigint
+    payout: bigint
+    result: string
+  }
+  const gameResults: GameResult[] = []
+  let playerBalance = currentLedgerBalance
+  let roundNum = 0
+
+  // Helper to check if player can afford bet
+  function canAffordBet(bet: bigint): boolean {
+    if (playerBalance < bet) {
+      console.log(`\n  SKIPPING: Player balance (${playerBalance}) < bet (${bet})`)
+      return false
+    }
+    return true
+  }
+
+  // --- DEATH GAME 1 (10 USDH) ---
+  if (canAffordBet(10n)) {
+    roundNum++
+    console.log('\n' + '='.repeat(60))
+    console.log(`ROUND ${roundNum}: DEATH GAME (Bet: 10 USDH)`)
+    console.log('='.repeat(60))
+    const playerBefore1 = playerBalance
+    const brokerBefore1 = calculateMaxPayout(10n, 5, DEFAULT_GAME_CONFIG.houseEdgeBps)
+    const deathGame1 = await runDeathGame(10n)
+    const playerAfter1 = playerBefore1 - 10n + deathGame1
+    playerBalance = playerAfter1
+    gameResults.push({
+      round: roundNum,
+      game: 'Death Game',
+      bet: 10n,
+      playerBefore: playerBefore1,
+      playerAfter: playerAfter1,
+      brokerBefore: brokerBefore1,
+      brokerAfter: brokerBefore1 + 10n - deathGame1,
+      payout: deathGame1,
+      result: deathGame1 > 0n ? 'WIN' : 'LOSE'
+    })
+    await new Promise(r => setTimeout(r, 1000))
+  }
+
+  // --- DEATH GAME 2 (10 USDH) ---
+  if (canAffordBet(10n)) {
+    roundNum++
+    console.log('\n' + '='.repeat(60))
+    console.log(`ROUND ${roundNum}: DEATH GAME (Bet: 10 USDH)`)
+    console.log('='.repeat(60))
+    const playerBefore2 = playerBalance
+    const brokerBefore2 = calculateMaxPayout(10n, 5, DEFAULT_GAME_CONFIG.houseEdgeBps)
+    const deathGame2 = await runDeathGame(10n)
+    const playerAfter2 = playerBefore2 - 10n + deathGame2
+    playerBalance = playerAfter2
+    gameResults.push({
+      round: roundNum,
+      game: 'Death Game',
+      bet: 10n,
+      playerBefore: playerBefore2,
+      playerAfter: playerAfter2,
+      brokerBefore: brokerBefore2,
+      brokerAfter: brokerBefore2 + 10n - deathGame2,
+      payout: deathGame2,
+      result: deathGame2 > 0n ? 'WIN' : 'LOSE'
+    })
+    await new Promise(r => setTimeout(r, 1000))
+  }
+
+  // --- COIN FLIP 1 (1 USDH) ---
+  if (canAffordBet(1n)) {
+    roundNum++
+    console.log('\n' + '='.repeat(60))
+    console.log(`ROUND ${roundNum}: COIN FLIP (Bet: 1 USDH)`)
+    console.log('='.repeat(60))
+    const playerBefore3 = playerBalance
+    const brokerBefore3 = calculateCoinFlipMaxPayout(1n) - 1n
+    const coinFlip1 = await runCoinFlip(1n)
+    const playerAfter3 = playerBefore3 - 1n + coinFlip1
+    playerBalance = playerAfter3
+    gameResults.push({
+      round: roundNum,
+      game: 'Coin Flip',
+      bet: 1n,
+      playerBefore: playerBefore3,
+      playerAfter: playerAfter3,
+      brokerBefore: brokerBefore3,
+      brokerAfter: brokerBefore3 + 1n - coinFlip1,
+      payout: coinFlip1,
+      result: coinFlip1 > 0n ? 'WIN' : 'LOSE'
+    })
+    await new Promise(r => setTimeout(r, 1000))
+  }
+
+  // --- COIN FLIP 2 (1 USDH) ---
+  if (canAffordBet(1n)) {
+    roundNum++
+    console.log('\n' + '='.repeat(60))
+    console.log(`ROUND ${roundNum}: COIN FLIP (Bet: 1 USDH)`)
+    console.log('='.repeat(60))
+    const playerBefore4 = playerBalance
+    const brokerBefore4 = calculateCoinFlipMaxPayout(1n) - 1n
+    const coinFlip2 = await runCoinFlip(1n)
+    const playerAfter4 = playerBefore4 - 1n + coinFlip2
+    playerBalance = playerAfter4
+    gameResults.push({
+      round: roundNum,
+      game: 'Coin Flip',
+      bet: 1n,
+      playerBefore: playerBefore4,
+      playerAfter: playerAfter4,
+      brokerBefore: brokerBefore4,
+      brokerAfter: brokerBefore4 + 1n - coinFlip2,
+      payout: coinFlip2,
+      result: coinFlip2 > 0n ? 'WIN' : 'LOSE'
+    })
+  }
 
   // =========================================================================
-  // STEP 5: Check Final Balance
+  // STEP 5: Summary Table
   // =========================================================================
-  console.log('\n=== Step 3: Post-Game Ledger ===')
+  console.log('\n' + '='.repeat(90))
+  console.log('GAME SUMMARY TABLE')
+  console.log('='.repeat(90))
+  console.log('| Round | Game       | Bet  | Player Before | Player After | Broker Before | Broker After | Result |')
+  console.log('|-------|------------|------|---------------|--------------|---------------|--------------|--------|')
+  for (const g of gameResults) {
+    console.log(`| ${String(g.round).padStart(5)} | ${g.game.padEnd(10)} | ${String(g.bet).padStart(4)} | ${String(g.playerBefore).padStart(13)} | ${String(g.playerAfter).padStart(12)} | ${String(g.brokerBefore).padStart(13)} | ${String(g.brokerAfter).padStart(12)} | ${g.result.padStart(6)} |`)
+  }
+  console.log('='.repeat(90))
+
+  const totalBets = gameResults.reduce((sum, g) => sum + g.bet, 0n)
+  const totalWinnings = gameResults.reduce((sum, g) => sum + g.payout, 0n)
+  console.log(`  Total bets: ${totalBets} ${ASSET_SYMBOL}`)
+  console.log(`  Total payouts: ${totalWinnings} ${ASSET_SYMBOL}`)
+  console.log(`  Net P/L: ${totalWinnings >= totalBets ? '+' : ''}${totalWinnings - totalBets} ${ASSET_SYMBOL}`)
+
+  // =========================================================================
+  // STEP 6: Check Final Ledger
+  // =========================================================================
+  console.log('\n=== Post-Game Ledger ===')
   await getLedgerTransactions()
-
   const finalLedgerBalance = await getLedgerBalance()
 
+  // Show custody balances after all games
+  console.log(`\n  Waiting for ledger sync...`)
+  await new Promise(r => setTimeout(r, 3000))
+  const finalCustody = await showCustodyBalances('AFTER GAMES')
+
+  // Compare with initial
+  console.log(`\n=== Custody Balance Changes ===`)
+  console.log(`  Player: ${formatUnits(initialCustody.player, 6)} -> ${formatUnits(finalCustody.player, 6)} USDH (${finalCustody.player >= initialCustody.player ? '+' : ''}${formatUnits(finalCustody.player - initialCustody.player, 6)})`)
+  console.log(`  Broker: ${formatUnits(initialCustody.broker, 6)} -> ${formatUnits(finalCustody.broker, 6)} USDH (${finalCustody.broker >= initialCustody.broker ? '+' : ''}${formatUnits(finalCustody.broker - initialCustody.broker, 6)})`)
+
   // =========================================================================
-  // STEP 6: Withdraw from Custody (ON-CHAIN)
+  // STEP 7: Withdraw from Custody (ON-CHAIN)
   // =========================================================================
-  // This is the ONLY on-chain tx after playing
-  // Withdraw winnings back to wallet
+  console.log('\n=== Withdrawing (On-Chain) ===')
 
-  if (gameWinnings > 0n) {
-    console.log(`\n=== Step 4: Withdrawing Winnings (On-Chain) ===`)
-    console.log(`  Game winnings: ${gameWinnings} ${ASSET_SYMBOL}`)
+  const custodyBalanceBefore = await getCustodyBalance(mainAccount.address)
+  console.log(`  Custody balance: ${formatUnits(custodyBalanceBefore, 6)} USDH`)
 
-    // wait a moment for ledger to sync from session close
-    console.log(`  Waiting for ledger sync...`)
-    await new Promise(r => setTimeout(r, 3000))
-
-    // check custody balance on-chain
-    const custodyBalanceBefore = await getCustodyBalance(mainAccount.address)
-    console.log(`  Custody balance: ${formatUnits(custodyBalanceBefore, 6)} USDH`)
-
-    if (custodyBalanceBefore > 0n) {
-      // withdraw the winnings (convert from clearnode units to on-chain units)
-      // clearnode uses integer amounts, on-chain uses 6 decimals
-      const withdrawAmount = gameWinnings * 1000000n // convert to 6 decimals
-
-      // but don't withdraw more than we have
-      const actualWithdraw = withdrawAmount > custodyBalanceBefore ? custodyBalanceBefore : withdrawAmount
-
-      console.log(`  Withdrawing ${formatUnits(actualWithdraw, 6)} USDH to wallet...`)
-      await withdrawFromCustody(actualWithdraw)
-    } else {
-      console.log(`  No custody balance to withdraw (ledger may not have synced yet)`)
-    }
+  if (custodyBalanceBefore > 0n) {
+    console.log(`  Withdrawing all ${formatUnits(custodyBalanceBefore, 6)} USDH to wallet...`)
+    await withdrawFromCustody(custodyBalanceBefore)
   } else {
-    console.log(`\n  No winnings to withdraw (you lost!)`)
+    console.log(`  No custody balance to withdraw`)
   }
 
   // =========================================================================
@@ -1225,17 +1641,17 @@ async function main() {
   console.log(`  USDH (custody): ${formatUnits(finalUsdhCustody, 6)} USDH`)
   console.log(`  Ledger balance: ${finalLedgerBalance} ${ASSET_SYMBOL}`)
 
-  // cleanup
   if (ws && ws.readyState === WebSocket.OPEN) {
     ws.close()
   }
 
-  console.log('\n✓ Done!')
+  console.log('\n Done!')
   console.log('')
   console.log('Summary:')
-  console.log('  - Deposit to Custody: 1 on-chain tx (visible on etherscan)')
-  console.log('  - Game play: 0 on-chain txs (state channels are off-chain)')
-  console.log('  - Withdraw from Custody: 1 on-chain tx (when you choose)')
+  console.log('  - Deposit: 1 on-chain tx')
+  console.log('  - Death Game x2: off-chain')
+  console.log('  - Coin Flip x2: off-chain')
+  console.log('  - Withdraw: 1 on-chain tx')
 }
 
 main().catch((err) => {
