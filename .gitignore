@@ -45,5 +45,9 @@ yarn-error.log*
 # Testing
 coverage/
 
+# Explorations (heavy, local only)
+explorations/nitrolite-local/
+explorations/yellow-test/out/
+
 # Misc
 *.tsbuildinfo
