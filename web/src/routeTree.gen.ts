@@ -17,6 +17,7 @@ import { Route as BuildGamesRouteImport } from './routes/build/games'
 import { Route as BuildAnalyticsRouteImport } from './routes/build/analytics'
 import { Route as AppStakeRouteImport } from './routes/app/stake'
 import { Route as AppPlayRouteImport } from './routes/app/play'
+import { Route as AppPlayIndexRouteImport } from './routes/app/play.index'
 import { Route as BuildGamesNewRouteImport } from './routes/build/games.new'
 import { Route as BuildGamesIdRouteImport } from './routes/build/games.$id'
 import { Route as AppPlaySlugRouteImport } from './routes/app/play.$slug'
@@ -61,6 +62,11 @@ const AppPlayRoute = AppPlayRouteImport.update({
   path: '/play',
   getParentRoute: () => AppRoute,
 } as any)
+const AppPlayIndexRoute = AppPlayIndexRouteImport.update({
+  id: '/',
+  path: '/',
+  getParentRoute: () => AppPlayRoute,
+} as any)
 const BuildGamesNewRoute = BuildGamesNewRouteImport.update({
   id: '/new',
   path: '/new',
@@ -89,12 +95,12 @@ export interface FileRoutesByFullPath {
   '/app/play/$slug': typeof AppPlaySlugRoute
   '/build/games/$id': typeof BuildGamesIdRoute
   '/build/games/new': typeof BuildGamesNewRoute
+  '/app/play/': typeof AppPlayIndexRoute
 }
 export interface FileRoutesByTo {
   '/': typeof IndexRoute
   '/app': typeof AppRouteWithChildren
   '/build': typeof BuildRouteWithChildren
-  '/app/play': typeof AppPlayRouteWithChildren
   '/app/stake': typeof AppStakeRoute
   '/build/analytics': typeof BuildAnalyticsRoute
   '/build/games': typeof BuildGamesRouteWithChildren
@@ -102,6 +108,7 @@ export interface FileRoutesByTo {
   '/app/play/$slug': typeof AppPlaySlugRoute
   '/build/games/$id': typeof BuildGamesIdRoute
   '/build/games/new': typeof BuildGamesNewRoute
+  '/app/play': typeof AppPlayIndexRoute
 }
 export interface FileRoutesById {
   __root__: typeof rootRouteImport
@@ -116,6 +123,7 @@ export interface FileRoutesById {
   '/app/play/$slug': typeof AppPlaySlugRoute
   '/build/games/$id': typeof BuildGamesIdRoute
   '/build/games/new': typeof BuildGamesNewRoute
+  '/app/play/': typeof AppPlayIndexRoute
 }
 export interface FileRouteTypes {
   fileRoutesByFullPath: FileRoutesByFullPath
@@ -131,12 +139,12 @@ export interface FileRouteTypes {
     | '/app/play/$slug'
     | '/build/games/$id'
     | '/build/games/new'
+    | '/app/play/'
   fileRoutesByTo: FileRoutesByTo
   to:
     | '/'
     | '/app'
     | '/build'
-    | '/app/play'
     | '/app/stake'
     | '/build/analytics'
     | '/build/games'
@@ -144,6 +152,7 @@ export interface FileRouteTypes {
     | '/app/play/$slug'
     | '/build/games/$id'
     | '/build/games/new'
+    | '/app/play'
   id:
     | '__root__'
     | '/'
@@ -157,6 +166,7 @@ export interface FileRouteTypes {
     | '/app/play/$slug'
     | '/build/games/$id'
     | '/build/games/new'
+    | '/app/play/'
   fileRoutesById: FileRoutesById
 }
 export interface RootRouteChildren {
@@ -223,6 +233,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AppPlayRouteImport
       parentRoute: typeof AppRoute
     }
+    '/app/play/': {
+      id: '/app/play/'
+      path: '/'
+      fullPath: '/app/play/'
+      preLoaderRoute: typeof AppPlayIndexRouteImport
+      parentRoute: typeof AppPlayRoute
+    }
     '/build/games/new': {
       id: '/build/games/new'
       path: '/new'
@@ -249,10 +266,12 @@ declare module '@tanstack/react-router' {
 
 interface AppPlayRouteChildren {
   AppPlaySlugRoute: typeof AppPlaySlugRoute
+  AppPlayIndexRoute: typeof AppPlayIndexRoute
 }
 
 const AppPlayRouteChildren: AppPlayRouteChildren = {
   AppPlaySlugRoute: AppPlaySlugRoute,
+  AppPlayIndexRoute: AppPlayIndexRoute,
 }
 
 const AppPlayRouteWithChildren =
