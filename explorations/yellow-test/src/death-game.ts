@@ -230,6 +230,12 @@ function generateRequestId(): string {
   return Math.floor(Math.random() * 1000000).toString()
 }
 
+function assertWsOpen(): void {
+  if (!ws || ws.readyState !== WebSocket.OPEN) {
+    throw new Error('WebSocket not connected. Cannot send message.')
+  }
+}
+
 // =============================================================================
 // ON-CHAIN: USDH TOKEN
 // =============================================================================
@@ -268,6 +274,11 @@ async function approveUSDH(spender: Address, amount: bigint): Promise<Hex> {
 
   // wait for confirmation
   const receipt = await publicClient.waitForTransactionReceipt({ hash })
+
+  if (receipt.status !== 'success') {
+    throw new Error(`Approve transaction reverted. Check: ${sepoliaEtherscanTx(hash)}`)
+  }
+
   console.log(`  Confirmed in block ${receipt.blockNumber}`)
 
   return hash
@@ -315,6 +326,11 @@ async function depositToCustody(amount: bigint): Promise<Hex> {
 
   // wait for confirmation
   const receipt = await publicClient.waitForTransactionReceipt({ hash })
+
+  if (receipt.status !== 'success') {
+    throw new Error(`Deposit transaction reverted. Check: ${sepoliaEtherscanTx(hash)}`)
+  }
+
   console.log(`  ✓ Deposited in block ${receipt.blockNumber}`)
 
   return hash
@@ -335,6 +351,11 @@ async function withdrawFromCustody(amount: bigint): Promise<Hex> {
 
   // wait for confirmation
   const receipt = await publicClient.waitForTransactionReceipt({ hash })
+
+  if (receipt.status !== 'success') {
+    throw new Error(`Withdraw transaction reverted. Check: ${sepoliaEtherscanTx(hash)}`)
+  }
+
   console.log(`  ✓ Withdrawn in block ${receipt.blockNumber}`)
 
   return hash
@@ -533,23 +554,24 @@ function connectAndAuth(): Promise<void> {
 async function getConfig(): Promise<void> {
   console.log('  Fetching clearnode config...')
 
+  assertWsOpen()
   const msg = createGetConfigMessageV2()
   ws.send(msg)
 
-  // wait for response
-  await new Promise<any>((resolve) => {
+  // wait for response, throw on timeout
+  await new Promise<any>((resolve, reject) => {
     const timeout = setTimeout(() => {
-      console.log('  Config timeout, continuing...')
-      resolve({})
+      pendingResponses.delete('get_config')
+      reject(new Error('Config fetch timeout. Clearnode not responding.'))
     }, 5000)
     pendingResponses.set('get_config', {
       resolve: (params) => {
         clearTimeout(timeout)
         resolve(params)
       },
-      reject: () => {
+      reject: (err) => {
         clearTimeout(timeout)
-        resolve({})
+        reject(err)
       },
       timeout
     })
@@ -563,23 +585,24 @@ async function getConfig(): Promise<void> {
 async function getLedgerBalance(): Promise<bigint> {
   console.log('  Fetching ledger balance...')
 
+  assertWsOpen()
   const msg = await createGetLedgerBalancesMessage(sessionSigner)
   ws.send(msg)
 
-  // wait for response
-  await new Promise<any>((resolve) => {
+  // wait for response, throw on timeout
+  await new Promise<any>((resolve, reject) => {
     const timeout = setTimeout(() => {
-      console.log('  Ledger balance timeout')
-      resolve({})
+      pendingResponses.delete('get_ledger_balances')
+      reject(new Error('Ledger balance fetch timeout. Clearnode not responding.'))
     }, 5000)
     pendingResponses.set('get_ledger_balances', {
       resolve: (params) => {
         clearTimeout(timeout)
         resolve(params)
       },
-      reject: () => {
+      reject: (err) => {
         clearTimeout(timeout)
-        resolve({})
+        reject(err)
       },
       timeout
     })
@@ -591,6 +614,7 @@ async function getLedgerBalance(): Promise<bigint> {
 async function getLedgerTransactions(): Promise<void> {
   console.log('  Fetching recent transactions...')
 
+  assertWsOpen()
   const msg = createGetLedgerTransactionsMessageV2(mainAccount.address, { limit: 5 })
   ws.send(msg)
 
@@ -685,6 +709,7 @@ async function createAppSessionWithHouseFunding(betAmount: bigint, numRows: numb
   // combine signatures (player + broker)
   parsed.sig = [...parsed.sig, ...brokerParsed.sig]
 
+  assertWsOpen()
   ws.send(JSON.stringify(parsed))
 
   // wait for response
@@ -758,14 +783,15 @@ async function submitAppState(
     }
   )
 
+  assertWsOpen()
   ws.send(msg)
 
-  // wait for response
+  // wait for response, throw on timeout
   const response = await new Promise<any>((resolve, reject) => {
     const timeout = setTimeout(() => {
-      console.log(`  State v${stateVersion} timeout, continuing...`)
-      resolve({ status: 'timeout' })
-    }, 3000)
+      pendingResponses.delete('submit_app_state')
+      reject(new Error(`State v${stateVersion} submission timeout. Clearnode not responding.`))
+    }, 5000)
     pendingResponses.set('submit_app_state', {
       resolve: (params) => {
         clearTimeout(timeout)
@@ -818,13 +844,14 @@ async function closeAppSession(playerPayout: bigint): Promise<void> {
     allocations,
   })
 
+  assertWsOpen()
   ws.send(msg)
 
-  // wait for response
+  // wait for response, throw on timeout
   const response = await new Promise<any>((resolve, reject) => {
     const timeout = setTimeout(() => {
-      console.log('  Close session timeout, continuing...')
-      resolve({ status: 'timeout' })
+      pendingResponses.delete('close_app_session')
+      reject(new Error('Close session timeout. Clearnode not responding.'))
     }, 5000)
     pendingResponses.set('close_app_session', {
       resolve: (params) => {
@@ -839,8 +866,10 @@ async function closeAppSession(playerPayout: bigint): Promise<void> {
     })
   })
 
-  if (response?.status === 'closed' || response?.status === 'timeout') {
+  if (response?.status === 'closed') {
     console.log(`✓ App session closed`)
+  } else if (response?.error) {
+    throw new Error(`Close session failed: ${response.error}`)
   } else {
     console.log(`  Close response: ${JSON.stringify(response)}`)
   }
@@ -1119,9 +1148,10 @@ async function main() {
   console.log(`  This is your clearnode ledger balance, synced from custody deposits`)
 
   if (ledgerBal < betAmount) {
-    console.log('')
-    console.log('WARNING: Ledger balance might need time to sync from custody deposit')
-    console.log('  If this keeps failing, check clearnode logs or wait a moment')
+    throw new Error(
+      `Insufficient ledger balance. Have ${ledgerBal}, need ${betAmount}. ` +
+      `Custody deposit may not have synced yet. Wait a moment and try again.`
+    )
   }
 
   // print session info for saving
