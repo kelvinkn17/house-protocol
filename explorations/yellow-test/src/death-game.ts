@@ -481,8 +481,10 @@ function connectAndAuth(): Promise<void> {
 
           // ledger balances
           if (method === 'get_ledger_balances') {
-            if (params?.balances && Array.isArray(params.balances)) {
-              for (const bal of params.balances) {
+            // clearnode returns ledger_balances, not balances
+            const balances = params?.ledger_balances || params?.balances
+            if (balances && Array.isArray(balances)) {
+              for (const bal of balances) {
                 if (bal.asset === ASSET_SYMBOL || bal.asset === 'usdh') {
                   ledgerBalance = BigInt(Math.floor(parseFloat(bal.amount)))
                   console.log(`  ${bal.asset}: ${bal.amount}`)
