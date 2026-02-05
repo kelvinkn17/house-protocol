@@ -1,9 +1,12 @@
 import { useState, useCallback } from 'react'
 import { cnm } from '@/utils/style'
+import { useSound } from '@/providers/SoundProvider'
+import AnimateComponent from '@/components/elements/AnimateComponent'
 import SdkPanel from './SdkPanel'
 
 const ROWS = 5
-const TILES_PER_ROW = 3
+const MIN_TILES = 2
+const MAX_TILES = 6
 
 type Phase = 'idle' | 'playing' | 'dead' | 'survived'
 
@@ -23,7 +26,7 @@ const game = HouseSDK.createGame({
   houseEdge: 200, // 2% in bps
   options: {
     rows: 5,
-    tilesPerRow: 3,
+    tilesPerRow: [2, 6], // random 2-6 per row
     bombsPerRow: 1,
   },
 })`,
@@ -33,19 +36,19 @@ const game = HouseSDK.createGame({
     code: `const session = await house.openSession({
   gameId: game.id,
   bet: parseUnits('50', 6),
-  maxPayout: parseUnits('370', 6),
+  maxPayout: parseUnits('500', 6),
 })
 
 // each row = 1 state channel round
+// tile count varies per row (2-6)
 for (let row = 0; row < 5; row++) {
   const result = await session.play({
     action: 'pick',
-    tile: selectedTile, // 0, 1, or 2
+    tile: selectedTile, // 0 to tileCount-1
   })
 
   if (!result.survived) break
 
-  // can cash out between rows
   if (wantsToCashOut) {
     await session.cashOut()
     break
@@ -54,36 +57,58 @@ for (let row = 0; row < 5; row++) {
   },
   {
     label: 'Math',
-    code: `// 3 tiles, 1 bomb per row
-// winProbability per row = 2/3
-// survivalProbability(n) = (2/3)^n
-
-// row multipliers (with 2% edge):
-// row 1: 1.47x
-// row 2: 2.16x
-// row 3: 3.17x
-// row 4: 4.66x
-// row 5: 6.85x
-
-// formula: ((3/2)^n) * (1 - 0.02)^n`,
+    code: `// variable tiles per row (2-6), 1 bomb each
+// row with N tiles: winProb = (N-1)/N
+// row multiplier = N/(N-1)
+// protocol applies house edge on cashout
+//
+// 2 tiles -> 2/1 = 2.00x (50% survive)
+// 3 tiles -> 3/2 = 1.50x (67% survive)
+// 4 tiles -> 4/3 = 1.33x (75% survive)
+// 5 tiles -> 5/4 = 1.25x (80% survive)
+// 6 tiles -> 6/5 = 1.20x (83% survive)
+//
+// fewer tiles = higher risk = bigger multiplier
+// cumulative = product of all row multipliers`,
   },
 ]
 
-function getMultiplier(rows: number) {
-  return Math.pow(3 / 2, rows) * Math.pow(0.98, rows)
+function generateTileCounts(): number[] {
+  return Array.from(
+    { length: ROWS },
+    () => Math.floor(Math.random() * (MAX_TILES - MIN_TILES + 1)) + MIN_TILES,
+  )
+}
+
+// N tiles, 1 bomb: survive = (N-1)/N, multiplier = N/(N-1)
+function getRowMultiplier(tileCount: number): number {
+  return tileCount / (tileCount - 1)
+}
+
+function getCumulativeMultiplier(tileCounts: number[], completedRows: number): number {
+  let m = 1
+  for (let i = 0; i < completedRows; i++) {
+    m *= getRowMultiplier(tileCounts[i])
+  }
+  return m
 }
 
 export default function Death() {
+  const { play } = useSound()
+  const [tileCounts, setTileCounts] = useState<number[]>(() => generateTileCounts())
   const [phase, setPhase] = useState<Phase>('idle')
   const [currentRow, setCurrentRow] = useState(0)
   const [results, setResults] = useState<RowResult[]>([])
   const [betAmount, setBetAmount] = useState('50')
   const [revealingRow, setRevealingRow] = useState(-1)
 
-  const multiplier = results.length === 0 ? 1 : getMultiplier(results.length)
+  const multiplier = results.length === 0 ? 1 : getCumulativeMultiplier(tileCounts, results.length)
   const cashoutValue = parseFloat(betAmount || '0') * multiplier
 
   const startGame = () => {
+    play('action')
+    const newCounts = generateTileCounts()
+    setTileCounts(newCounts)
     setPhase('playing')
     setCurrentRow(0)
     setResults([])
@@ -94,7 +119,8 @@ export default function Death() {
     (tile: number) => {
       if (phase !== 'playing' || revealingRow >= 0) return
 
-      const bomb = Math.floor(Math.random() * TILES_PER_ROW)
+      play('reveal')
+      const bomb = Math.floor(Math.random() * tileCounts[currentRow])
       setRevealingRow(currentRow)
 
       setTimeout(() => {
@@ -104,61 +130,79 @@ export default function Death() {
         setRevealingRow(-1)
 
         if (tile === bomb) {
+          play('lose')
           setPhase('dead')
         } else if (currentRow >= ROWS - 1) {
+          play('win')
           setPhase('survived')
         } else {
+          play('win')
           setCurrentRow((r) => r + 1)
         }
       }, 400)
     },
-    [phase, currentRow, results, revealingRow],
+    [phase, currentRow, results, revealingRow, tileCounts, play],
   )
 
   const cashOut = () => {
+    play('cashout')
     setPhase('idle')
     setCurrentRow(0)
     setResults([])
   }
 
   const reset = () => {
-    setPhase('idle')
-    setCurrentRow(0)
-    setResults([])
+    startGame()
   }
 
   return (
     <div className="grid lg:grid-cols-5 gap-6">
-      <div className="lg:col-span-3">
+      <AnimateComponent delay={50} className="lg:col-span-3">
         <div
           className="bg-white border-2 border-black rounded-2xl p-6"
           style={{ boxShadow: '6px 6px 0px black' }}
         >
-          {/* tile grid */}
+          {/* tile grid, top = highest row, bottom = first row */}
           <div className="space-y-2.5 mb-6">
-            {Array.from({ length: ROWS }).map((_, rowIdx) => {
+            {Array.from({ length: ROWS }).map((_, i) => {
+              const rowIdx = ROWS - 1 - i
+              const tileCount = tileCounts[rowIdx]
               const isCompleted = rowIdx < results.length
               const isCurrent = rowIdx === currentRow && phase === 'playing'
               const isRevealing = rowIdx === revealingRow
               const result = results[rowIdx]
+              const cumulativeMult = getCumulativeMultiplier(tileCounts, rowIdx + 1)
 
               return (
                 <div key={rowIdx} className="flex items-center gap-3">
-                  {/* row number */}
-                  <div className="w-6 text-right">
+                  {/* cumulative multiplier */}
+                  <div className="w-14 text-right">
                     <span
                       className={cnm(
-                        'text-xs font-black',
-                        isCurrent ? 'text-black' : 'text-black/25',
+                        'text-xs font-mono',
+                        isCompleted && result?.picked !== result?.bomb
+                          ? 'text-black font-black'
+                          : isCurrent
+                            ? 'text-black/60'
+                            : 'text-black/25',
                       )}
                     >
-                      {rowIdx + 1}
+                      {cumulativeMult.toFixed(2)}x
                     </span>
                   </div>
 
-                  {/* tiles */}
-                  <div className="flex-1 flex gap-2">
-                    {Array.from({ length: TILES_PER_ROW }).map((_, tileIdx) => {
+                  {/* row container with border */}
+                  <div
+                    className={cnm(
+                      'flex-1 flex gap-2 p-2 rounded-xl border-2 transition-all',
+                      isCurrent && !isRevealing
+                        ? 'border-black/40 bg-black/[0.03]'
+                        : isCompleted
+                          ? 'border-black/10 bg-transparent'
+                          : 'border-black/5 bg-transparent',
+                    )}
+                  >
+                    {Array.from({ length: tileCount }).map((_, tileIdx) => {
                       const isPicked = isCompleted && result?.picked === tileIdx
                       const isBomb = isCompleted && result?.bomb === tileIdx
                       const pickedBomb = isPicked && isBomb
@@ -170,20 +214,20 @@ export default function Death() {
                           disabled={!isCurrent || isRevealing}
                           className={cnm(
                             'flex-1 h-14 rounded-xl border-2 font-black text-sm transition-all',
-                            // picked the bomb
                             pickedBomb && 'bg-[#FF6B9D] border-black text-black',
-                            // picked safe
                             isPicked && !isBomb && 'bg-[#CDFF57] border-black text-black',
-                            // bomb revealed (not picked)
-                            !isPicked && isBomb && isCompleted && 'bg-[#FF6B9D]/20 border-black/15 text-black/30',
-                            // safe not picked
-                            !isPicked && !isBomb && isCompleted && 'bg-black/5 border-black/10 text-transparent',
-                            // current row tiles
+                            !isPicked &&
+                              isBomb &&
+                              isCompleted &&
+                              'bg-[#FF6B9D]/20 border-black/15 text-black/30',
+                            !isPicked &&
+                              !isBomb &&
+                              isCompleted &&
+                              'bg-black/5 border-black/10 text-transparent',
                             isCurrent &&
                               !isRevealing &&
                               'bg-white border-black cursor-pointer hover:bg-black/5 hover:translate-x-0.5 hover:translate-y-0.5',
                             isCurrent && isRevealing && 'bg-black/5 border-black/20',
-                            // future rows
                             !isCompleted && !isCurrent && 'bg-black/[0.03] border-black/10',
                           )}
                           style={
@@ -192,27 +236,13 @@ export default function Death() {
                               : undefined
                           }
                         >
-                          {pickedBomb && '✕'}
-                          {isPicked && !isBomb && '✓'}
-                          {!isPicked && isBomb && isCompleted && '✕'}
+                          {pickedBomb && '\u2715'}
+                          {isPicked && !isBomb && '\u2713'}
+                          {!isPicked && isBomb && isCompleted && '\u2715'}
                           {isCurrent && !isRevealing && '?'}
                         </button>
                       )
                     })}
-                  </div>
-
-                  {/* row multiplier */}
-                  <div className="w-14 text-right">
-                    <span
-                      className={cnm(
-                        'text-xs font-mono',
-                        isCompleted && result?.picked !== result?.bomb
-                          ? 'text-black font-black'
-                          : 'text-black/25',
-                      )}
-                    >
-                      {getMultiplier(rowIdx + 1).toFixed(2)}x
-                    </span>
                   </div>
                 </div>
               )
@@ -250,7 +280,7 @@ export default function Death() {
                   {[10, 50, 100, 500].map((amt) => (
                     <button
                       key={amt}
-                      onClick={() => setBetAmount(String(amt))}
+                      onClick={() => { play('click'); setBetAmount(String(amt)) }}
                       className={cnm(
                         'flex-1 py-2 text-xs font-black border-2 border-black rounded-lg transition-transform hover:translate-x-0.5 hover:translate-y-0.5',
                         betAmount === String(amt)
@@ -293,15 +323,15 @@ export default function Death() {
             )}
           </div>
         </div>
-      </div>
+      </AnimateComponent>
 
-      <div className="lg:col-span-2">
+      <AnimateComponent delay={150} className="lg:col-span-2">
         <SdkPanel
           gameType="reveal-tiles"
-          description="Death uses the reveal-tiles primitive. Player picks one tile per row, avoiding the hidden bomb. Multiplier grows with each survived row. Can cash out between rows. Each pick is a gasless state channel round."
+          description="Death uses the reveal-tiles primitive. Each row has a random number of tiles (2-6), one hiding a bomb. Player picks from bottom up, multiplier compounds. Can cash out between rows. Each pick is a gasless state channel round."
           tabs={SDK_TABS}
         />
-      </div>
+      </AnimateComponent>
     </div>
   )
 }

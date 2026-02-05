@@ -26,7 +26,7 @@ export default function SdkPanel({
       >
         <div className="flex items-center gap-2 mb-3">
           <span
-            className="px-3 py-1 text-[10px] font-black uppercase rounded-full border-2 border-black bg-[#CDFF57]"
+            className="px-3 py-1 text-[10px] font-black uppercase rounded-full border-2 border-black bg-[#CDFF57] text-black"
             style={{ boxShadow: '2px 2px 0px black' }}
           >
             {gameType}

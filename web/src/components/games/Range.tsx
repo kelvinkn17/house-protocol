@@ -1,5 +1,7 @@
-import { useState, useRef, useCallback } from 'react'
+import { useState, useRef, useCallback, useEffect } from 'react'
 import { cnm } from '@/utils/style'
+import { useSound } from '@/providers/SoundProvider'
+import AnimateComponent from '@/components/elements/AnimateComponent'
 import SdkPanel from './SdkPanel'
 
 type Mode = 'over' | 'under' | 'range'
@@ -61,6 +63,7 @@ console.log(result.payout) // amount won`,
 ]
 
 export default function Range() {
+  const { play } = useSound()
   const [mode, setMode] = useState<Mode>('over')
   const [target, setTarget] = useState(50)
   const [rangeStart, setRangeStart] = useState(30)
@@ -70,6 +73,10 @@ export default function Range() {
   const [won, setWon] = useState(false)
   const [betAmount, setBetAmount] = useState('100')
   const intervalRef = useRef<ReturnType<typeof setInterval> | null>(null)
+
+  // slider drag state
+  const barRef = useRef<HTMLDivElement>(null)
+  const [dragging, setDragging] = useState<'target' | 'start' | 'end' | null>(null)
 
   const winProbability = (() => {
     switch (mode) {
@@ -84,13 +91,81 @@ export default function Range() {
 
   const payout = winProbability > 0 ? (1 / winProbability) * 0.98 : 0
 
+  // convert mouse/touch position to slider value (1-99)
+  const getValueFromPosition = useCallback((clientX: number) => {
+    if (!barRef.current) return null
+    const rect = barRef.current.getBoundingClientRect()
+    const pct = ((clientX - rect.left) / rect.width) * 100
+    return Math.round(Math.max(1, Math.min(99, pct)))
+  }, [])
+
+  // global drag listeners
+  useEffect(() => {
+    if (!dragging) return
+
+    const handleMove = (e: MouseEvent | TouchEvent) => {
+      e.preventDefault()
+      const clientX = 'touches' in e ? e.touches[0].clientX : e.clientX
+      const value = getValueFromPosition(clientX)
+      if (value === null) return
+
+      if (dragging === 'target') {
+        setTarget(Math.max(2, Math.min(98, value)))
+      } else if (dragging === 'start') {
+        setRangeStart(Math.max(1, Math.min(rangeEnd - 2, value)))
+      } else if (dragging === 'end') {
+        setRangeEnd(Math.max(rangeStart + 2, Math.min(99, value)))
+      }
+    }
+
+    const handleUp = () => setDragging(null)
+
+    window.addEventListener('mousemove', handleMove)
+    window.addEventListener('mouseup', handleUp)
+    window.addEventListener('touchmove', handleMove, { passive: false })
+    window.addEventListener('touchend', handleUp)
+
+    return () => {
+      window.removeEventListener('mousemove', handleMove)
+      window.removeEventListener('mouseup', handleUp)
+      window.removeEventListener('touchmove', handleMove)
+      window.removeEventListener('touchend', handleUp)
+    }
+  }, [dragging, rangeStart, rangeEnd, getValueFromPosition])
+
+  // clicking on the bar (not thumb) to jump + start dragging
+  const handleBarInteraction = useCallback(
+    (clientX: number) => {
+      const value = getValueFromPosition(clientX)
+      if (value === null) return
+
+      if (mode === 'range') {
+        const distStart = Math.abs(value - rangeStart)
+        const distEnd = Math.abs(value - rangeEnd)
+        if (distStart <= distEnd) {
+          setRangeStart(Math.max(1, Math.min(rangeEnd - 2, value)))
+          setDragging('start')
+        } else {
+          setRangeEnd(Math.max(rangeStart + 2, Math.min(99, value)))
+          setDragging('end')
+        }
+      } else {
+        setTarget(Math.max(2, Math.min(98, value)))
+        setDragging('target')
+      }
+    },
+    [mode, rangeStart, rangeEnd, getValueFromPosition],
+  )
+
   const roll = useCallback(() => {
+    play('action')
     setPhase('rolling')
     setResult(null)
 
     let count = 0
     intervalRef.current = setInterval(() => {
       setResult(Math.floor(Math.random() * 100) + 1)
+      play('tick')
       count++
       if (count >= 15) {
         if (intervalRef.current) clearInterval(intervalRef.current)
@@ -110,18 +185,18 @@ export default function Range() {
 
         setWon(isWin)
         setPhase('result')
+        play(isWin ? 'win' : 'lose')
       }
     }, 50)
-  }, [mode, target, rangeStart, rangeEnd])
+  }, [mode, target, rangeStart, rangeEnd, play])
 
   const reset = () => {
-    setPhase('idle')
-    setResult(null)
+    roll()
   }
 
   return (
     <div className="grid lg:grid-cols-5 gap-6">
-      <div className="lg:col-span-3">
+      <AnimateComponent delay={50} className="lg:col-span-3">
         <div
           className="bg-white border-2 border-black rounded-2xl p-6"
           style={{ boxShadow: '6px 6px 0px black' }}
@@ -162,40 +237,127 @@ export default function Range() {
             )}
           </div>
 
-          {/* visual range bar */}
-          <div className="relative h-8 bg-black/5 rounded-lg border-2 border-black overflow-hidden mb-5">
-            {mode === 'over' && (
-              <div
-                className="absolute top-0 bottom-0 bg-[#CDFF57]/40"
-                style={{ left: `${target}%`, right: 0 }}
-              />
-            )}
-            {mode === 'under' && (
-              <div
-                className="absolute top-0 bottom-0 bg-[#CDFF57]/40"
-                style={{ left: 0, width: `${target}%` }}
-              />
-            )}
-            {mode === 'range' && (
-              <div
-                className="absolute top-0 bottom-0 bg-[#CDFF57]/40"
-                style={{ left: `${rangeStart}%`, width: `${rangeEnd - rangeStart}%` }}
-              />
-            )}
-            {/* result marker */}
-            {result !== null && phase === 'result' && (
-              <div
-                className={cnm(
-                  'absolute top-0 bottom-0 w-0.5',
-                  won ? 'bg-black' : 'bg-[#FF6B9D]',
+          {/* integrated range slider */}
+          <div className="mb-5 select-none" style={{ touchAction: 'none' }}>
+            <div
+              ref={barRef}
+              className="relative h-10 flex items-center cursor-pointer"
+              onMouseDown={(e) => handleBarInteraction(e.clientX)}
+              onTouchStart={(e) => {
+                e.preventDefault()
+                handleBarInteraction(e.touches[0].clientX)
+              }}
+            >
+              {/* visual bar track */}
+              <div className="absolute left-0 right-0 h-3.5 rounded-full overflow-hidden border-2 border-black">
+                {/* losing zone background */}
+                <div className="absolute inset-0 bg-[#FF6B9D]" />
+
+                {/* winning zone */}
+                {mode === 'over' && (
+                  <div
+                    className="absolute top-0 bottom-0 bg-[#CDFF57]"
+                    style={{ left: `${target}%`, right: 0 }}
+                  />
                 )}
-                style={{ left: `${result}%` }}
-              />
-            )}
-            <div className="absolute inset-0 flex items-center justify-between px-2 text-[10px] font-mono text-black/30 pointer-events-none">
-              <span>0</span>
-              <span>50</span>
-              <span>100</span>
+                {mode === 'under' && (
+                  <div
+                    className="absolute top-0 bottom-0 bg-[#CDFF57]"
+                    style={{ left: 0, width: `${target}%` }}
+                  />
+                )}
+                {mode === 'range' && (
+                  <div
+                    className="absolute top-0 bottom-0 bg-[#CDFF57]"
+                    style={{ left: `${rangeStart}%`, width: `${rangeEnd - rangeStart}%` }}
+                  />
+                )}
+
+                {/* result indicator line */}
+                {result !== null && phase === 'result' && (
+                  <div
+                    className={cnm(
+                      'absolute top-0 bottom-0 w-1 -ml-0.5',
+                      won ? 'bg-black' : 'bg-white',
+                    )}
+                    style={{ left: `${result}%` }}
+                  />
+                )}
+              </div>
+
+              {/* thumb(s) */}
+              {mode !== 'range' ? (
+                <div
+                  className="absolute w-6 h-6 bg-black rounded-full border-2 border-white shadow-md z-10 cursor-grab active:cursor-grabbing"
+                  style={{
+                    left: `${target}%`,
+                    top: '50%',
+                    transform: 'translate(-50%, -50%)',
+                  }}
+                  onMouseDown={(e) => {
+                    e.stopPropagation()
+                    setDragging('target')
+                  }}
+                  onTouchStart={(e) => {
+                    e.stopPropagation()
+                    e.preventDefault()
+                    setDragging('target')
+                  }}
+                />
+              ) : (
+                <>
+                  <div
+                    className="absolute w-6 h-6 bg-black rounded-full border-2 border-white shadow-md z-10 cursor-grab active:cursor-grabbing"
+                    style={{
+                      left: `${rangeStart}%`,
+                      top: '50%',
+                      transform: 'translate(-50%, -50%)',
+                    }}
+                    onMouseDown={(e) => {
+                      e.stopPropagation()
+                      setDragging('start')
+                    }}
+                    onTouchStart={(e) => {
+                      e.stopPropagation()
+                      e.preventDefault()
+                      setDragging('start')
+                    }}
+                  />
+                  <div
+                    className="absolute w-6 h-6 bg-black rounded-full border-2 border-white shadow-md z-10 cursor-grab active:cursor-grabbing"
+                    style={{
+                      left: `${rangeEnd}%`,
+                      top: '50%',
+                      transform: 'translate(-50%, -50%)',
+                    }}
+                    onMouseDown={(e) => {
+                      e.stopPropagation()
+                      setDragging('end')
+                    }}
+                    onTouchStart={(e) => {
+                      e.stopPropagation()
+                      e.preventDefault()
+                      setDragging('end')
+                    }}
+                  />
+                </>
+              )}
+            </div>
+
+            {/* tick labels */}
+            <div className="flex justify-between mt-1 text-[10px] font-mono text-black/30">
+              {[0, 25, 50, 75, 100].map((v) => (
+                <span key={v}>{v}</span>
+              ))}
+            </div>
+
+            {/* value display */}
+            <div className="text-center mt-2">
+              <span className="text-xs font-mono text-black/50">
+                {mode === 'over' && `Roll > ${target}`}
+                {mode === 'under' && `Roll < ${target}`}
+                {mode === 'range' && `Roll between ${rangeStart} and ${rangeEnd}`}
+              </span>
             </div>
           </div>
 
@@ -205,6 +367,7 @@ export default function Range() {
               <button
                 key={m}
                 onClick={() => {
+                  play('click')
                   setMode(m)
                   setPhase('idle')
                   setResult(null)
@@ -220,57 +383,6 @@ export default function Range() {
                 {m}
               </button>
             ))}
-          </div>
-
-          {/* target config */}
-          <div className="mb-5">
-            {mode === 'range' ? (
-              <div className="space-y-3">
-                <div>
-                  <div className="flex justify-between text-xs font-mono text-black/50 mb-1">
-                    <span>From</span>
-                    <span className="font-black text-black">{rangeStart}</span>
-                  </div>
-                  <input
-                    type="range"
-                    min={1}
-                    max={rangeEnd - 1}
-                    value={rangeStart}
-                    onChange={(e) => setRangeStart(Number(e.target.value))}
-                    className="w-full accent-black h-2"
-                  />
-                </div>
-                <div>
-                  <div className="flex justify-between text-xs font-mono text-black/50 mb-1">
-                    <span>To</span>
-                    <span className="font-black text-black">{rangeEnd}</span>
-                  </div>
-                  <input
-                    type="range"
-                    min={rangeStart + 1}
-                    max={100}
-                    value={rangeEnd}
-                    onChange={(e) => setRangeEnd(Number(e.target.value))}
-                    className="w-full accent-black h-2"
-                  />
-                </div>
-              </div>
-            ) : (
-              <div>
-                <div className="flex justify-between text-xs font-mono text-black/50 mb-1">
-                  <span>{mode === 'over' ? `Roll > ${target}` : `Roll < ${target}`}</span>
-                  <span className="font-black text-black">{target}</span>
-                </div>
-                <input
-                  type="range"
-                  min={2}
-                  max={98}
-                  value={target}
-                  onChange={(e) => setTarget(Number(e.target.value))}
-                  className="w-full accent-black h-2"
-                />
-              </div>
-            )}
           </div>
 
           {/* probability + payout stats */}
@@ -294,7 +406,7 @@ export default function Range() {
                 {[10, 50, 100, 500].map((amt) => (
                   <button
                     key={amt}
-                    onClick={() => setBetAmount(String(amt))}
+                    onClick={() => { play('click'); setBetAmount(String(amt)) }}
                     className={cnm(
                       'flex-1 py-2 text-xs font-black border-2 border-black rounded-lg transition-transform hover:translate-x-0.5 hover:translate-y-0.5',
                       betAmount === String(amt)
@@ -338,15 +450,15 @@ export default function Range() {
             )}
           </div>
         </div>
-      </div>
+      </AnimateComponent>
 
-      <div className="lg:col-span-2">
+      <AnimateComponent delay={150} className="lg:col-span-2">
         <SdkPanel
           gameType="pick-number"
           description="Range uses the pick-number primitive. Player sets a target and predicts if the result lands over, under, or within a range. Payout scales inversely with win probability. Protocol enforces the math."
           tabs={SDK_TABS}
         />
-      </div>
+      </AnimateComponent>
     </div>
   )
 }

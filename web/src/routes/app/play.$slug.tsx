@@ -1,4 +1,5 @@
 import { createFileRoute, Link } from '@tanstack/react-router'
+import AnimatedText from '@/components/elements/AnimatedText'
 import AnimateComponent from '@/components/elements/AnimateComponent'
 import DoubleOrNothing from '@/components/games/DoubleOrNothing'
 import Death from '@/components/games/Death'
@@ -13,22 +14,26 @@ const GAME_CONFIG: Record<
   {
     name: string
     type: string
+    color: string
     Component: React.ComponentType
   }
 > = {
   'double-or-nothing': {
     name: 'Double or Nothing',
     type: 'cash-out',
+    color: '#CDFF57',
     Component: DoubleOrNothing,
   },
   death: {
     name: 'Death',
     type: 'reveal-tiles',
+    color: '#FF6B9D',
     Component: Death,
   },
   range: {
     name: 'Range',
     type: 'pick-number',
+    color: '#dcb865',
     Component: Range,
   },
 }
@@ -39,55 +44,42 @@ function GamePage() {
 
   if (!game) {
     return (
-      <div className="pb-12">
-        <div className="mx-auto max-w-6xl">
-          <div className="flex h-[40vh] flex-col items-center justify-center text-center">
-            <h1 className="mb-4 text-3xl font-black text-black">Game not found</h1>
-            <Link
-              to="/app/play"
-              className="text-sm font-black text-black/50 hover:text-black transition-colors"
-            >
-              Back to games
-            </Link>
-          </div>
-        </div>
+      <div className="flex h-[40vh] flex-col items-center justify-center text-center">
+        <h1 className="mb-4 text-3xl font-black text-black">Game not found</h1>
+        <Link
+          to="/app/play"
+          className="text-sm font-black text-black/50 hover:text-black transition-colors"
+        >
+          Back to games
+        </Link>
       </div>
     )
   }
 
   const GameComponent = game.Component
 
-  return (
-    <div className="pb-12">
-      <div className="mx-auto max-w-6xl">
-        {/* header */}
-        <AnimateComponent delay={50}>
-          <div className="mb-8">
-            <Link
-              to="/app/play"
-              className="inline-block text-xs font-black text-black/40 hover:text-black transition-colors uppercase tracking-wider mb-4"
-            >
-              &larr; Games
-            </Link>
-            <div className="flex items-center gap-3">
-              <h1 className="text-3xl md:text-4xl font-black tracking-tight text-black">
-                {game.name}
-              </h1>
-              <span
-                className="px-3 py-1 text-[10px] font-black uppercase rounded-full border-2 border-black bg-[#CDFF57]"
-                style={{ boxShadow: '2px 2px 0px black' }}
-              >
-                {game.type}
-              </span>
-            </div>
-          </div>
-        </AnimateComponent>
+  // key forces full remount on game change so animations replay
+  const letterCount = game.name.length
 
-        {/* game content */}
-        <AnimateComponent delay={150}>
-          <GameComponent />
+  return (
+    <div key={slug}>
+      <div className="mb-6 flex items-center gap-3">
+        <h1 className="text-2xl md:text-3xl font-black tracking-tight text-black">
+          <span className="block overflow-hidden">
+            <AnimatedText text={game.name.toUpperCase()} delay={0} stagger={12} />
+          </span>
+        </h1>
+        <AnimateComponent delay={letterCount * 12 + 50} variant="scaleIn" duration={0.25}>
+          <span
+            className="px-2.5 py-0.5 text-[10px] font-black uppercase rounded-full border-2 border-black text-black"
+            style={{ backgroundColor: game.color, boxShadow: '2px 2px 0px black' }}
+          >
+            {game.type}
+          </span>
         </AnimateComponent>
       </div>
+
+      <GameComponent />
     </div>
   )
 }

@@ -25,7 +25,7 @@ export default function AppLayout({ children, noPadding }: AppLayoutProps) {
             />
           </Link>
 
-          <div className="hidden md:flex items-center gap-6">
+          <div className="hidden md:flex items-center gap-2">
             <NavLink to="/app/stake" active={path.includes('/stake')}>
               STAKERS
             </NavLink>
@@ -79,7 +79,7 @@ function NavLink({
     <Link
       to={to}
       className={cnm(
-        'text-sm font-black uppercase tracking-wide transition-colors',
+        'text-[15px] font-black uppercase tracking-wide transition-colors px-4 py-2.5 rounded-xl',
         active ? 'text-black' : 'text-black/50 hover:text-black'
       )}
     >

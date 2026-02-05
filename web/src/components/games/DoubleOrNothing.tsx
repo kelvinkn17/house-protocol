@@ -1,5 +1,7 @@
 import { useState } from 'react'
 import { cnm } from '@/utils/style'
+import { useSound } from '@/providers/SoundProvider'
+import AnimateComponent from '@/components/elements/AnimateComponent'
 import SdkPanel from './SdkPanel'
 
 type Phase = 'idle' | 'flipping' | 'won' | 'lost'
@@ -53,26 +55,31 @@ await session.cashOut()`,
 ]
 
 export default function DoubleOrNothing() {
+  const { play } = useSound()
   const [phase, setPhase] = useState<Phase>('idle')
   const [streak, setStreak] = useState(0)
   const [betAmount, setBetAmount] = useState('100')
 
   const multiplier = Math.pow(2, streak)
-  const cashoutValue = parseFloat(betAmount || '0') * multiplier * 2
+  const cashoutValue = parseFloat(betAmount || '0') * multiplier
 
   const flip = () => {
+    play('action')
     setPhase('flipping')
     setTimeout(() => {
       if (Math.random() < 0.49) {
         setStreak((s) => s + 1)
         setPhase('won')
+        play('win')
       } else {
         setPhase('lost')
+        play('lose')
       }
     }, 600)
   }
 
   const cashOut = () => {
+    play('cashout')
     setPhase('idle')
     setStreak(0)
   }
@@ -84,7 +91,7 @@ export default function DoubleOrNothing() {
 
   return (
     <div className="grid lg:grid-cols-5 gap-6">
-      <div className="lg:col-span-3">
+      <AnimateComponent delay={50} className="lg:col-span-3">
         <div
           className="bg-white border-2 border-black rounded-2xl p-6"
           style={{ boxShadow: '6px 6px 0px black' }}
@@ -107,7 +114,7 @@ export default function DoubleOrNothing() {
                   : phase === 'lost'
                     ? '0x'
                     : phase === 'won'
-                      ? `${multiplier * 2}x`
+                      ? `${multiplier}x`
                       : '2x'}
               </span>
             </div>
@@ -144,7 +151,7 @@ export default function DoubleOrNothing() {
                   {[10, 50, 100, 500].map((amt) => (
                     <button
                       key={amt}
-                      onClick={() => setBetAmount(String(amt))}
+                      onClick={() => { play('click'); setBetAmount(String(amt)) }}
                       className={cnm(
                         'flex-1 py-2 text-xs font-black border-2 border-black rounded-lg transition-transform hover:translate-x-0.5 hover:translate-y-0.5',
                         betAmount === String(amt)
@@ -186,13 +193,31 @@ export default function DoubleOrNothing() {
             )}
 
             {phase === 'lost' && (
-              <button
-                onClick={reset}
-                className="w-full py-4 text-sm font-black uppercase bg-black text-white border-2 border-black rounded-xl transition-transform hover:translate-x-1 hover:translate-y-1"
-                style={{ boxShadow: '4px 4px 0px #FF6B9D' }}
-              >
-                Play Again
-              </button>
+              <>
+                <div className="flex gap-2 mb-4">
+                  {[10, 50, 100, 500].map((amt) => (
+                    <button
+                      key={amt}
+                      onClick={() => { play('click'); setBetAmount(String(amt)) }}
+                      className={cnm(
+                        'flex-1 py-2 text-xs font-black border-2 border-black rounded-lg transition-transform hover:translate-x-0.5 hover:translate-y-0.5',
+                        betAmount === String(amt)
+                          ? 'bg-black text-white'
+                          : 'bg-white text-black',
+                      )}
+                    >
+                      ${amt}
+                    </button>
+                  ))}
+                </div>
+                <button
+                  onClick={flip}
+                  className="w-full py-4 text-sm font-black uppercase bg-black text-white border-2 border-black rounded-xl transition-transform hover:translate-x-1 hover:translate-y-1"
+                  style={{ boxShadow: '4px 4px 0px #FF6B9D' }}
+                >
+                  Flip Again
+                </button>
+              </>
             )}
 
             {phase === 'flipping' && (
@@ -202,15 +227,15 @@ export default function DoubleOrNothing() {
             )}
           </div>
         </div>
-      </div>
+      </AnimateComponent>
 
-      <div className="lg:col-span-2">
+      <AnimateComponent delay={150} className="lg:col-span-2">
         <SdkPanel
           gameType="cash-out"
           description="Double or Nothing uses the cash-out primitive. Player bets, wins 2x, and chooses to keep doubling or cash out. House edge applied per round. Session stays open via state channels, zero gas per flip."
           tabs={SDK_TABS}
         />
-      </div>
+      </AnimateComponent>
     </div>
   )
 }
