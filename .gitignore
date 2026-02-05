@@ -3,6 +3,11 @@ node_modules/
 .pnp
 .pnp.js
 
+# Foundry deps, install via: cd contract && forge install
+contract/lib/
+contract/out/
+contract/cache/
+
 # Build outputs
 dist/
 .output/

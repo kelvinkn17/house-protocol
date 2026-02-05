@@ -3,7 +3,6 @@ import { useState, useEffect } from 'react'
 import AnimateComponent from '@/components/elements/AnimateComponent'
 import AnimatedText from '@/components/elements/AnimatedText'
 import AnimatedMascot from '@/components/elements/AnimatedMascot'
-import { cssTransition } from '@/lib/styling'
 
 const mascotQuotes = [
   'The House always wins!',
@@ -68,6 +67,17 @@ export default function HeroSection() {
       <div className="mx-auto max-w-7xl w-full relative">
         {/* main hero content */}
         <div className="relative mb-16">
+          {/* hackathon badge */}
+          <AnimateComponent delay={0}>
+            <div
+              className="inline-flex items-center gap-2 px-4 py-2 bg-[#CDFF57] text-black text-xs font-black uppercase tracking-wide rounded-full border-2 border-black mb-6"
+              style={{ boxShadow: '3px 3px 0px black' }}
+            >
+              <span className="w-2 h-2 rounded-full bg-black" />
+              ETHGlobal HackMoney 2026 Submission
+            </div>
+          </AnimateComponent>
+
           {/* staggered artistic title */}
           <h1
             className="font-black tracking-[-0.04em] text-black leading-[0.9] mb-8"
@@ -125,19 +135,14 @@ export default function HeroSection() {
                 </p>
               </AnimateComponent>
               <AnimateComponent delay={720}>
-                {/* tilted pill with shadow */}
-                <Link
-                  to="/app/stake"
-                  className="inline-flex items-center gap-2 px-6 py-3 bg-[#CDFF57] text-black text-sm font-black uppercase tracking-wide rounded-full hover:scale-105 border-2 border-black"
-                  style={{
-                    transform: 'rotate(-2deg)',
-                    boxShadow: '4px 4px 0px black',
-                    transition: cssTransition.button,
-                  }}
-                >
-                  <span className="w-2 h-2 rounded-full bg-black" />
-                  ETHGlobal HackMoney 2025 Submission
-                </Link>
+                <div className="inline-flex flex-col items-start gap-1 px-4 py-3 bg-white text-black rounded-2xl border-2 border-black" style={{ boxShadow: '4px 4px 0px black' }}>
+                  <span className="text-[10px] font-mono opacity-60 uppercase tracking-wider mb-2">Powered by</span>
+                  <div className="flex items-center gap-3">
+                    <img src="/assets/images/erc7824.png" alt="Yellow Nitrolite" className="h-10 w-auto" />
+                    <div className="w-px h-6 bg-black/30" />
+                    <span className="text-xs font-bold opacity-70">Gasless & Instant</span>
+                  </div>
+                </div>
               </AnimateComponent>
             </div>
 
