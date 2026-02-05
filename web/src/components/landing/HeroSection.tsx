@@ -63,7 +63,7 @@ export default function HeroSection() {
   ]
 
   return (
-    <section className="relative min-h-screen flex flex-col px-4 md:px-8 pt-20 pb-16 overflow-hidden bg-[#EDEBE6]">
+    <section className="relative min-h-screen flex flex-col px-4 sm:px-6 md:px-8 pt-12 sm:pt-20 pb-12 sm:pb-16 overflow-hidden bg-[#EDEBE6]">
       <div className="mx-auto max-w-7xl w-full relative">
         {/* main hero content */}
         <div className="relative mb-16">
@@ -80,8 +80,8 @@ export default function HeroSection() {
 
           {/* staggered artistic title */}
           <h1
-            className="font-black tracking-[-0.04em] text-black leading-[0.9] mb-8"
-            style={{ fontSize: 'clamp(3rem, 10vw, 9rem)' }}
+            className="font-black tracking-[-0.04em] text-black leading-[0.9] mb-6 sm:mb-8"
+            style={{ fontSize: 'clamp(2.25rem, 10vw, 9rem)' }}
           >
             <span className="block overflow-hidden">
               <AnimatedText text="EVERYONE" delay={50} stagger={30} />
