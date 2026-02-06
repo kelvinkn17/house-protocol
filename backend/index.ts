@@ -7,9 +7,11 @@ import { APP_PORT } from './src/config/main-config.ts';
 // Routes
 import { exampletRoute } from './src/routes/exampleRoutes.ts';
 import { authRoutes } from './src/routes/authRoutes.ts';
+import { vaultRoutes } from './src/routes/vaultRoutes.ts';
 
 // Workers
 import { startErrorLogCleanupWorker } from './src/workers/errorLogCleanup.ts';
+import { startVaultIndexer } from './src/workers/vaultIndexer.ts';
 
 console.log(
   '======================\n======================\nMY BACKEND SYSTEM STARTED!\n======================\n======================\n'
@@ -38,11 +40,13 @@ fastify.get('/', async (_request: FastifyRequest, reply: FastifyReply) => {
 // Register routes with prefixes
 fastify.register(authRoutes, { prefix: '/auth' });
 fastify.register(exampletRoute, { prefix: '/example' });
+fastify.register(vaultRoutes, { prefix: '/vault' });
 
 const start = async (): Promise<void> => {
   try {
     // Start workers
     startErrorLogCleanupWorker();
+    startVaultIndexer();
 
     await fastify.listen({
       port: APP_PORT,

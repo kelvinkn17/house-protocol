@@ -9,10 +9,10 @@ import {
 } from 'viem';
 import { sepolia } from 'viem/chains';
 
-// deployed on sepolia
-const VAULT_ADDRESS: Address = '0x2b63e27750E51Af9067e85eF903603B908123f7A';
-const USDH_ADDRESS: Address = '0x25FfCCE632a03898c2ecB0EF9bb6a86177a363Ed';
-const CUSTODY_ADDRESS: Address = '0xEC94b4039237ac9490377FDB8A65e884eD6154A0';
+// contract addresses from env
+const VAULT_ADDRESS = (process.env.HOUSE_VAULT_ADDRESS || '') as Address;
+const USDH_ADDRESS = (process.env.USDH_TOKEN_ADDRESS || '') as Address;
+const CUSTODY_ADDRESS = (process.env.NITROLITE_CUSTODY_ADDRESS || '') as Address;
 
 // ERC-4626 vault ABI, only what we actually use
 const VAULT_ABI = parseAbi([

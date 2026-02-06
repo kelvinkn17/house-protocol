@@ -30,6 +30,12 @@ export const JWT_EXPIRES_IN: string = process.env.JWT_EXPIRES_IN || '7d';
 export const PRIVY_APP_ID: string = process.env.PRIVY_APP_ID as string;
 export const PRIVY_APP_SECRET: string = process.env.PRIVY_APP_SECRET as string;
 
+// Vault / Chain Configuration
+export const SEPOLIA_RPC_URL: string = process.env.SEPOLIA_RPC_URL || '';
+export const HOUSE_VAULT_ADDRESS: string = process.env.HOUSE_VAULT_ADDRESS || '';
+export const USDH_TOKEN_ADDRESS: string = process.env.USDH_TOKEN_ADDRESS || '';
+export const NITROLITE_CUSTODY_ADDRESS: string = process.env.NITROLITE_CUSTODY_ADDRESS || '';
+
 // Error Log Configuration
 export const ERROR_LOG_MAX_RECORDS: number = 10000;
 export const ERROR_LOG_CLEANUP_INTERVAL: string = '0 * * * *'; // Every hour
