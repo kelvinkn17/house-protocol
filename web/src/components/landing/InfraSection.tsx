@@ -43,15 +43,15 @@ export default function InfraSection() {
             </h2>
           </div>
 
-          <div className="grid grid-cols-2 md:grid-cols-3 gap-5">
+          <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-5">
             {infra.map((item, i) => (
               <AnimateComponent key={item.name} onScroll delay={200 + i * 70}>
                 <div
-                  className="bg-white p-6 rounded-2xl border-2 border-black flex items-center justify-between hover:translate-x-1 hover:translate-y-1 transition-transform duration-200"
+                  className="bg-white p-5 sm:p-6 rounded-2xl border-2 border-black flex items-center justify-between gap-3 hover:translate-x-1 hover:translate-y-1 transition-transform duration-200"
                   style={{ boxShadow: '5px 5px 0px black' }}
                 >
-                  <span className="text-lg font-black text-black tracking-tight">{item.name}</span>
-                  <span className="text-xs font-mono text-black/60 px-3 py-1.5 border-2 border-black rounded-full bg-[#EDEBE6]">
+                  <span className="text-base sm:text-lg font-black text-black tracking-tight">{item.name}</span>
+                  <span className="text-xs font-mono text-black/60 px-3 py-1.5 border-2 border-black rounded-full bg-[#EDEBE6] shrink-0">
                     {item.tech}
                   </span>
                 </div>
@@ -103,7 +103,7 @@ export default function InfraSection() {
         <div className="absolute inset-0 flex items-center justify-center">
           <AnimateComponent onScroll variant="fadeInUp">
             <div
-              className="bg-white text-black px-12 md:px-16 py-5 md:py-6 rounded-full border-3 border-black font-black text-2xl md:text-4xl uppercase tracking-tight"
+              className="bg-white text-black px-8 sm:px-12 md:px-16 py-4 sm:py-5 md:py-6 rounded-full border-3 border-black font-black text-xl sm:text-2xl md:text-4xl uppercase tracking-tight"
               style={{
                 boxShadow: '6px 6px 0px rgba(0,0,0,0.4)',
                 transform: `rotate(${DIAGONAL_ANGLE}deg)`,

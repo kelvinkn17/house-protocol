@@ -42,7 +42,7 @@ export default function StatsSection() {
                 style={{ boxShadow: '6px 6px 0px black' }}
               >
                 <span className="text-xs font-mono text-black/40 mb-4">0{i + 1}</span>
-                <span className="text-4xl md:text-5xl lg:text-6xl font-black tracking-tight mb-2 text-black tabular-nums">
+                <span className="text-3xl sm:text-4xl md:text-5xl lg:text-6xl font-black tracking-tight mb-2 text-black tabular-nums">
                   {stat.prefix}
                   <CountUp end={stat.value} decimals={stat.suffix === 'M' ? 1 : 0} shouldAnimate={hasAnimated} />
                   {stat.suffix}

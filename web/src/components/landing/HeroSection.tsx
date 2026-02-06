@@ -63,7 +63,7 @@ export default function HeroSection() {
   ]
 
   return (
-    <section className="relative min-h-screen flex flex-col px-4 md:px-8 pt-20 pb-16 overflow-hidden bg-[#EDEBE6]">
+    <section className="relative min-h-screen flex flex-col px-4 sm:px-6 md:px-8 pt-12 sm:pt-20 pb-12 sm:pb-16 overflow-hidden bg-[#EDEBE6]">
       <div className="mx-auto max-w-7xl w-full relative">
         {/* main hero content */}
         <div className="relative mb-16">
@@ -80,8 +80,8 @@ export default function HeroSection() {
 
           {/* staggered artistic title */}
           <h1
-            className="font-black tracking-[-0.04em] text-black leading-[0.9] mb-8"
-            style={{ fontSize: 'clamp(3rem, 10vw, 9rem)' }}
+            className="font-black tracking-[-0.04em] text-black leading-[0.9] mb-6 sm:mb-8"
+            style={{ fontSize: 'clamp(2.25rem, 10vw, 9rem)' }}
           >
             <span className="block overflow-hidden">
               <AnimatedText text="EVERYONE" delay={50} stagger={30} />
@@ -103,17 +103,17 @@ export default function HeroSection() {
             </span>
           </h1>
 
-          {/* mascot with speech bubble */}
-          <div className="absolute -right-8 xl:right-4 top-12 hidden lg:flex flex-col items-center">
-            {/* speech bubble - pops in/out */}
+          {/* mascot with speech bubble, inline on mobile, absolute on desktop */}
+          <div className="flex flex-col items-center my-6 lg:my-0 lg:absolute lg:right-0 xl:right-4 lg:top-12">
+            {/* speech bubble, fixed height so face doesn't jump */}
             <AnimateComponent variant="fadeInUp" delay={750}>
               <div
-                className={`relative bg-[#CDFF57] px-5 py-4 rounded-2xl border-3 border-black w-[220px] xl:w-[240px] mb-3 ml-8 transition-all duration-300 ease-out origin-bottom ${
+                className={`relative bg-[#CDFF57] px-5 rounded-2xl border-3 border-black w-[200px] lg:w-[220px] xl:w-[240px] h-[72px] lg:h-[80px] flex items-center justify-center mb-3 lg:ml-8 transition-all duration-300 ease-out origin-bottom ${
                   isVisible ? 'scale-100 opacity-100 rotate-[5deg]' : 'scale-75 opacity-0 rotate-0'
                 }`}
                 style={{ boxShadow: '5px 5px 0px black' }}
               >
-                <p className="text-sm xl:text-base font-black text-black text-center">
+                <p className="text-sm xl:text-base font-black text-black text-center leading-tight">
                   "{mascotQuotes[quoteIndex]}"
                 </p>
                 {/* speech bubble tail pointing down */}
@@ -123,7 +123,7 @@ export default function HeroSection() {
             </AnimateComponent>
             {/* mascot face */}
             <AnimateComponent variant="fadeInUp" delay={600}>
-              <AnimatedMascot className="w-44 h-44 xl:w-64 xl:h-64 animate-mascot-sway drop-shadow-[6px_6px_0px_rgba(0,0,0,0.3)]" />
+              <AnimatedMascot className="w-28 h-28 sm:w-36 sm:h-36 lg:w-44 lg:h-44 xl:w-64 xl:h-64 animate-mascot-sway drop-shadow-[6px_6px_0px_rgba(0,0,0,0.3)]" />
             </AnimateComponent>
           </div>
 
