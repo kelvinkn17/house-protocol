@@ -40,3 +40,36 @@ model ErrorLog {
   @@index([errorCode])
   @@index([createdAt])
 }
+
+model VaultEvent {
+  id          String   @id @default(cuid())
+  txHash      String
+  logIndex    Int
+  blockNumber BigInt
+  eventType   String   // "deposit" | "withdraw"
+  sender      String
+  owner       String
+  assets      String   // raw bigint as string
+  shares      String   // raw bigint as string
+  timestamp   DateTime
+  createdAt   DateTime @default(now())
+
+  @@unique([txHash, logIndex])
+  @@index([eventType])
+  @@index([owner])
+  @@index([blockNumber])
+  @@index([timestamp])
+}
+
+model VaultSnapshot {
+  id             String   @id @default(cuid())
+  totalAssets    String   // TVL in USDH (raw bigint as string)
+  totalSupply    String   // sUSDH total supply
+  sharePrice     Float    // totalAssets / totalSupply (human readable)
+  custodyBalance String   // operator custody balance
+  blockNumber    BigInt
+  timestamp      DateTime
+  createdAt      DateTime @default(now())
+
+  @@index([timestamp])
+}
