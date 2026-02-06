@@ -5,7 +5,9 @@ import {
   getVaultLogs,
   getBlockNumber,
   getBlockTimestamp,
+  VAULT_ADDRESS,
 } from '../services/vault.service.ts';
+import { ETHERSCAN_API_KEY } from '../config/main-config.ts';
 
 let isRunning = false;
 let lastIndexedBlock: bigint | null = null;
@@ -16,6 +18,42 @@ let lastSnapshotTime = 0;
 const SNAPSHOT_INTERVAL_MS = 5 * 60 * 1000;
 // price change threshold to force a snapshot (0.01%)
 const PRICE_CHANGE_THRESHOLD = 0.0001;
+// rpc max block range for getLogs
+const MAX_BLOCK_RANGE = 1000n;
+
+// fetch deployment block from etherscan v2 api
+async function getDeploymentBlock(contractAddress: string): Promise<bigint | null> {
+  if (!ETHERSCAN_API_KEY) {
+    console.warn('[VaultIndexer] No ETHERSCAN_API_KEY, cannot fetch deployment block');
+    return null;
+  }
+
+  try {
+    const url = `https://api.etherscan.io/v2/api?chainid=11155111&module=contract&action=getcontractcreation&contractaddresses=${contractAddress}&apikey=${ETHERSCAN_API_KEY}`;
+    const res = await fetch(url);
+    const data = await res.json() as any;
+
+    if (data.status === '1' && data.result?.length > 0) {
+      const txHash = data.result[0].txHash;
+      // now get the tx receipt to find the block number
+      const txUrl = `https://api.etherscan.io/v2/api?chainid=11155111&module=proxy&action=eth_getTransactionReceipt&txhash=${txHash}&apikey=${ETHERSCAN_API_KEY}`;
+      const txRes = await fetch(txUrl);
+      const txData = await txRes.json() as any;
+
+      if (txData.result?.blockNumber) {
+        const block = BigInt(txData.result.blockNumber);
+        console.log(`[VaultIndexer] Vault deployed at block ${block}`);
+        return block;
+      }
+    }
+
+    console.warn('[VaultIndexer] Could not parse deployment block from etherscan response');
+    return null;
+  } catch (err) {
+    console.error('[VaultIndexer] Failed to fetch deployment block:', err);
+    return null;
+  }
+}
 
 async function initLastBlock() {
   if (lastIndexedBlock !== null) return;
@@ -30,9 +68,15 @@ async function initLastBlock() {
     lastIndexedBlock = BigInt(latest.blockNumber) + 1n;
     console.log(`[VaultIndexer] Resuming from block ${lastIndexedBlock}`);
   } else {
-    // start from a recent block, don't scan the entire chain
-    const current = await getBlockNumber();
-    lastIndexedBlock = current - 10000n; // ~1.5 days of sepolia blocks
+    // fetch the actual deployment block from etherscan
+    const deployBlock = await getDeploymentBlock(VAULT_ADDRESS);
+    if (deployBlock) {
+      lastIndexedBlock = deployBlock;
+    } else {
+      // fallback: start from recent
+      const current = await getBlockNumber();
+      lastIndexedBlock = current - 500n;
+    }
     console.log(`[VaultIndexer] Starting fresh from block ${lastIndexedBlock}`);
   }
 }
@@ -43,9 +87,9 @@ async function indexEvents() {
   const currentBlock = await getBlockNumber();
   if (lastIndexedBlock! >= currentBlock) return;
 
-  // cap range to avoid huge queries
-  const toBlock = lastIndexedBlock! + 2000n < currentBlock
-    ? lastIndexedBlock! + 2000n
+  // cap range to stay within rpc limits
+  const toBlock = lastIndexedBlock! + MAX_BLOCK_RANGE < currentBlock
+    ? lastIndexedBlock! + MAX_BLOCK_RANGE
     : currentBlock;
 
   const { depositLogs, withdrawLogs } = await getVaultLogs(lastIndexedBlock!, toBlock);

@@ -21,6 +21,16 @@ const fastify = Fastify({
   logger: false,
 });
 
+// allow empty body on POST/PUT/DELETE requests
+fastify.addContentTypeParser('application/json', { parseAs: 'string' }, (_req, body, done) => {
+  try {
+    const str = (body as string).trim();
+    done(null, str === '' ? {} : JSON.parse(str));
+  } catch (err) {
+    done(err as Error, undefined);
+  }
+});
+
 fastify.register(FastifyCors, {
   origin: '*',
   methods: ['GET', 'POST', 'PUT', 'DELETE'],
