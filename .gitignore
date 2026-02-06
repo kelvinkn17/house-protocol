@@ -29,6 +29,7 @@ build/
 !.vscode/settings.json
 
 plans/
+web/video/out
 
 # OS
 .DS_Store

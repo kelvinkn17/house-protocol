@@ -1,0 +1,23 @@
+{
+  "name": "usdh-price-video",
+  "version": "1.0.0",
+  "private": true,
+  "scripts": {
+    "preview": "remotion preview src/index.ts",
+    "render": "remotion render src/index.ts USDHPriceChart out/usdh-price.mp4",
+    "render:roles": "remotion render src/index.ts RoleCards out/role-cards.mp4",
+    "render:range": "remotion render src/index.ts RangeGame out/range-game.mp4",
+    "render:oldway": "remotion render src/index.ts OldWay out/old-way.mp4"
+  },
+  "dependencies": {
+    "@remotion/cli": "^4.0.0",
+    "@remotion/google-fonts": "^4.0.0",
+    "react": "^19.0.0",
+    "react-dom": "^19.0.0",
+    "remotion": "^4.0.0"
+  },
+  "devDependencies": {
+    "@types/react": "^19.0.0",
+    "typescript": "^5.0.0"
+  }
+}
