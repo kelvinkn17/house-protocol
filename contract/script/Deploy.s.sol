@@ -12,6 +12,7 @@ contract DeployScript is Script {
     function run() public {
         uint256 deployerPk = vm.envUint("DEPLOYER_PK");
         address deployer = vm.addr(deployerPk);
+        address operator = 0x06Db9AE8E14Ef791bbb0427aD7a631eedc62e5Cf;
 
         console.log("Deployer:", deployer);
 
@@ -32,26 +33,23 @@ contract DeployScript is Script {
         IERC20 usdh = IERC20(0x25FfCCE632a03898c2ecB0EF9bb6a86177a363Ed);
         console.log("USDH balance of deployer:", usdh.balanceOf(deployer));
 
-        // Deploy HouseVault
-        HouseVault vault = new HouseVault(IERC20(usdh), deployer, custody);
+        // Deploy HouseVault (deployer is also operator for now)
+        HouseVault vault = new HouseVault(
+            IERC20(usdh),
+            deployer,
+            custody,
+            operator
+        );
         console.log("HouseVault deployed to:", address(vault));
         console.log("Custody:", custody);
+        console.log("Vault total assets:", vault.totalAssets());
+        console.log("Custody balance of vault:", vault.getCustodyBalance());
 
         // deployer deposit and check shares and custody balance of vault
         usdh.approve(address(vault), 100 * 10 ** 6);
         uint256 shares = vault.deposit(100 * 10 ** 6, deployer);
-        console.log("Deposited 100 USDH, received shares:", shares);
-        console.log("Vault total assets:", vault.totalAssets());
-        console.log("Custody balance of vault:", vault.getCustodyBalance());
 
-        // depoloyer direct transfer to vault and sweep to custody
-        usdh.transfer(address(vault), 50 * 10 ** 6);
-        console.log("Transferred 50 USDH directly to vault");
-        vault.sweepToCustody();
-        console.log(
-            "After sweeping 50 USDH, received shares:",
-            vault.balanceOf(deployer) - shares
-        );
+        console.log("Deposited 100 USDH, received shares:", shares);
         console.log("Vault total assets:", vault.totalAssets());
         console.log("Custody balance of vault:", vault.getCustodyBalance());
 

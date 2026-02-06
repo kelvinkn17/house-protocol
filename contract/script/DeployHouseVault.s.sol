@@ -30,11 +30,12 @@ contract DeployHouseVaultScript is Script {
 
         vm.startBroadcast(deployerPk);
 
-        // Deploy HouseVault
+        // Deploy HouseVault (deployer is also operator for now)
         HouseVault vault = new HouseVault(
             IERC20(USDH),
             deployer,
-            CUSTODY
+            CUSTODY,
+            deployer
         );
 
         console.log("");

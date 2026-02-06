@@ -19,30 +19,40 @@ contract HouseVault is ERC4626, Ownable {
     using SafeERC20 for IERC20;
 
     ICustody public custody;
+    address public operator;
 
     event CustodyUpdated(
         address indexed oldCustody,
         address indexed newCustody
     );
-    event SweptToCustody(
-        address indexed caller,
-        uint256 amount,
-        uint256 shares
+    event OperatorUpdated(
+        address indexed oldOperator,
+        address indexed newOperator
     );
+    event SweptToCustody(uint256 amount);
 
     error CustodyNotSet();
     error NothingToSweep();
     error ZeroAddress();
+    error OnlyOperator();
+
+    modifier onlyOperator() {
+        if (msg.sender != operator) revert OnlyOperator();
+        _;
+    }
 
     /// @param _asset underlying asset (USDH) token address
     /// @param _owner vault owner
     /// @param _custody Nitrolite custody contract
+    /// @param _operator EOA that signs off-chain app sessions on behalf of the vault
     constructor(
         IERC20 _asset,
         address _owner,
-        address _custody
-    ) ERC4626(_asset) ERC20("House USDH", "hUSDH") Ownable(_owner) {
+        address _custody,
+        address _operator
+    ) ERC4626(_asset) ERC20("sHouse USDH", "sUSDH") Ownable(_owner) {
         custody = ICustody(_custody);
+        operator = _operator;
     }
 
     function _decimalsOffset() internal pure override returns (uint8) {
@@ -62,7 +72,7 @@ contract HouseVault is ERC4626, Ownable {
     function getCustodyBalance() public view returns (uint256) {
         if (address(custody) == address(0)) return 0;
         address[] memory accounts = new address[](1);
-        accounts[0] = address(this);
+        accounts[0] = operator;
         address[] memory tokens = new address[](1);
         tokens[0] = asset();
         uint256[][] memory balances = custody.getAccountsBalances(
@@ -83,23 +93,27 @@ contract HouseVault is ERC4626, Ownable {
         custody = ICustody(_custody);
     }
 
+    /// @notice Update operator (off-chain signer for app sessions)
+    function setOperator(address _operator) external onlyOwner {
+        if (_operator == address(0)) revert ZeroAddress();
+        emit OperatorUpdated(operator, _operator);
+        operator = _operator;
+    }
+
     // =========================================================================
     // SWEEP
     // =========================================================================
 
-    /// @notice Sweep idle USDH in the vault to custody, minting shares to caller
-    /// @dev Rescue for tokens sent via raw transfer instead of deposit()
+    /// @notice Sweep idle USDH in the vault to custody
+    /// @dev Moves tokens sent via raw transfer into custody, benefiting all LPs
     function sweepToCustody() external {
         if (address(custody) == address(0)) revert CustodyNotSet();
         uint256 idle = IERC20(asset()).balanceOf(address(this));
         if (idle == 0) revert NothingToSweep();
 
-        uint256 shares = previewDeposit(idle);
-        _mint(msg.sender, shares);
-
         IERC20(asset()).safeIncreaseAllowance(address(custody), idle);
-        custody.deposit(address(this), asset(), idle);
-        emit SweptToCustody(msg.sender, idle, shares);
+        custody.deposit(operator, asset(), idle);
+        emit SweptToCustody(idle);
     }
 
     // =========================================================================
@@ -116,24 +130,18 @@ contract HouseVault is ERC4626, Ownable {
         super._deposit(caller, receiver, assets, shares);
         if (address(custody) != address(0)) {
             IERC20(asset()).safeIncreaseAllowance(address(custody), assets);
-            custody.deposit(address(this), asset(), assets);
+            custody.deposit(operator, asset(), assets);
         }
     }
 
-    /// @dev Auto-withdraw from custody before LP withdrawal
+    /// @dev Withdraws from idle USDH in vault. Operator must return funds from custody first.
     function _withdraw(
         address caller,
         address receiver,
-        address owner,
+        address _owner,
         uint256 assets,
         uint256 shares
     ) internal override {
-        if (address(custody) != address(0)) {
-            uint256 vaultBalance = IERC20(asset()).balanceOf(address(this));
-            if (vaultBalance < assets) {
-                custody.withdraw(asset(), assets - vaultBalance);
-            }
-        }
-        super._withdraw(caller, receiver, owner, assets, shares);
+        super._withdraw(caller, receiver, _owner, assets, shares);
     }
 }

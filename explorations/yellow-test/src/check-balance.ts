@@ -13,6 +13,7 @@ import { USDH_ADDRESS, CUSTODY_ADDRESS, BROKER_ADDRESS } from './types'
 
 const PRIVATE_KEY = process.env.PRIVATE_KEY as Hex
 const BROKER_PRIVATE_KEY = process.env.BROKER_PRIVATE_KEY as Hex
+const OPERATOR_PRIVATE_KEY = process.env.OPERATOR_PRIVATE_KEY as Hex
 const RPC_URL = process.env.RPC_URL || 'https://ethereum-sepolia-rpc.publicnode.com'
 
 if (!PRIVATE_KEY) {
@@ -22,6 +23,7 @@ if (!PRIVATE_KEY) {
 
 const mainAccount = privateKeyToAccount(PRIVATE_KEY)
 const brokerAccount = BROKER_PRIVATE_KEY ? privateKeyToAccount(BROKER_PRIVATE_KEY) : null
+const operatorAccount = OPERATOR_PRIVATE_KEY ? privateKeyToAccount(OPERATOR_PRIVATE_KEY) : null
 
 const publicClient = createPublicClient({
   chain: sepolia,
@@ -105,11 +107,28 @@ async function main() {
   console.log(`  USDH (custody): ${formatUnits(brokerCustody, 6)} USDH`)
   console.log('')
 
+  // Operator balances
+  if (operatorAccount) {
+    console.log('OPERATOR (broker):')
+    console.log(`  Address: ${operatorAccount.address}`)
+    const operatorETH = await getETHBalance(operatorAccount.address)
+    const operatorUSDH = await getUSDHBalance(operatorAccount.address)
+    const operatorCustody = await getCustodyBalance(operatorAccount.address)
+    console.log(`  ETH (wallet):   ${formatEther(operatorETH)} ETH`)
+    console.log(`  USDH (wallet):  ${formatUnits(operatorUSDH, 6)} USDH`)
+    console.log(`  USDH (custody): ${formatUnits(operatorCustody, 6)} USDH`)
+    console.log('')
+  }
+
   // Summary
   console.log('SUMMARY:')
   console.log(`  Total USDH in custody: ${formatUnits(playerCustody + brokerCustody, 6)} USDH`)
   console.log(`  Player custody (ledger units): ${playerCustody / 1000000n}`)
   console.log(`  Broker custody (ledger units): ${brokerCustody / 1000000n}`)
+  if (operatorAccount) {
+    const operatorCustody = await getCustodyBalance(operatorAccount.address)
+    console.log(`  Operator custody (ledger units): ${operatorCustody / 1000000n}`)
+  }
 }
 
 main().catch(console.error)

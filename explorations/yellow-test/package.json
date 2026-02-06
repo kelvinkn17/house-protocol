@@ -7,6 +7,7 @@
     "death-game": "bun run src/death-game.ts",
     "multi-game": "bun run src/multi-game.ts",
     "mint-usdh": "bun run src/mint-usdh.ts",
+    "channel-flow": "bun run src/channel-flow.ts",
     "build:contracts": "forge build"
   },
   "dependencies": {

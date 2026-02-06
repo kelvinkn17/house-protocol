@@ -345,7 +345,7 @@ async function openSession(
       application: APP_NAME,
       scope: APP_NAME,
       expires_at: BigInt(Math.floor(Date.now() / 1000) + 3600),
-      allowances: [{ asset: ASSET_SYMBOL, amount: '1000000000' }],
+      allowances: [{ asset: ASSET_SYMBOL, amount: (brokerAmount + playerAmount).toString() }],
     }
 
     ws.on('open', async () => {
@@ -513,12 +513,11 @@ async function main() {
   console.log('=== Full Flow Test ===')
   console.log('')
   console.log('Flow:')
-  console.log('  1. Deposit 10 USDH to custody (player & broker)')
-  console.log('  2. Open session: player=5, broker=5')
-  console.log('  3. (Off-chain transfers happen via session allocations)')
-  console.log('  4. Broker deposits 5 more USDH while session open')
-  console.log('  5. Close session: player=6 (gained 1), broker=4 (lost 1)')
-  console.log('  6. Each withdraws 2 USDH from custody')
+  console.log('  1. Deposit USDH to custody (player=20, broker=200)')
+  console.log('  2. Open session: player=20, broker=200')
+  console.log('  3. Off-chain transfers: p→b 2, b→p 10, p→b 30, b→p 4')
+  console.log('  4. Close session: player=2, broker=218')
+  console.log('  5. Each withdraws 2 USDH from custody')
   console.log('')
   console.log(`Player: ${playerAccount.address}`)
   console.log(`Broker: ${brokerAccount.address}`)
@@ -526,47 +525,43 @@ async function main() {
   // Initial balances
   await printBalances('INITIAL')
 
-  // Step 1: Deposit 10 USDH each
-  console.log('\n=== STEP 1: Deposit 10 USDH each ===')
-  await depositToCustody(playerWalletClient, playerAccount.address, 10n, 'Player')
-  await depositToCustody(brokerWalletClient, brokerAccount.address, 10n, 'Broker')
+  // Step 1: Deposit USDH to custody
+  console.log('\n=== STEP 1: Deposit USDH to custody (player=20, broker=200) ===')
+  await depositToCustody(playerWalletClient, playerAccount.address, 20n, 'Player')
+  await depositToCustody(brokerWalletClient, brokerAccount.address, 200n, 'Broker')
 
   console.log('  Waiting for ledger sync (5s)...')
   await new Promise(r => setTimeout(r, 5000))
   await printBalances('After Deposit')
 
   // Step 2: Open session with initial allocations
-  // Player puts 5, broker puts 5 = total pool of 10
-  console.log('\n=== STEP 2: Open Session (player=5, broker=5) ===')
-  const session = await openSession(5n, 5n)
+  // Player puts 20, broker puts 200 = total pool of 220
+  console.log('\n=== STEP 2: Open Session (player=20, broker=200) ===')
+  const session = await openSession(20n, 200n)
   await printBalances('After Session Open')
 
   // Step 3: Off-chain transfers happen via session
   // The session tracks allocations. When we close, final allocations determine who gets what.
-  // Simulating: player sends 1 to broker, broker sends 2 to player
-  // Net: player gains 1 (1 received - 0 sent via net), broker loses 1
-  // Final: player=6, broker=4
+  // player→broker 2, broker→player 10, player→broker 30, broker→player 4
+  // Net: player = 20 - 2 + 10 - 30 + 4 = 2
+  // Net: broker = 200 + 2 - 10 + 30 - 4 = 218
   console.log('\n=== STEP 3: Off-chain transfer simulation ===')
   console.log('  (Transfers happen via session close allocations)')
-  console.log('  Player: 5 - 1 (send) + 2 (receive) = 6')
-  console.log('  Broker: 5 + 1 (receive) - 2 (send) = 4')
+  console.log('  player→broker 2:  player=18, broker=202')
+  console.log('  broker→player 10: player=28, broker=192')
+  console.log('  player→broker 30: player=-2 (net), broker=222 (net)')
+  console.log('  broker→player 4:  player=2, broker=218')
 
-  // Step 4: Broker deposits 5 more USDH while session is open
-  console.log('\n=== STEP 4: Broker deposits 5 more USDH (session still open) ===')
-  await depositToCustody(brokerWalletClient, brokerAccount.address, 5n, 'Broker')
-  await new Promise(r => setTimeout(r, 3000))
-  await printBalances('After Broker Deposit')
-
-  // Step 5: Close session with final allocations
-  // Player gets 6, broker gets 4 (from the original 10 pool)
-  console.log('\n=== STEP 5: Close Session (player=6, broker=4) ===')
-  await closeSession(session, 6n, 4n)
+  // Step 4: Close session with final allocations
+  // Player gets 2, broker gets 218 (from the original 220 pool)
+  console.log('\n=== STEP 4: Close Session (player=2, broker=218) ===')
+  await closeSession(session, 2n, 218n)
   session.ws.close()
   await new Promise(r => setTimeout(r, 3000))
   await printBalances('After Session Close')
 
-  // Step 6: Each withdraws 2 USDH
-  console.log('\n=== STEP 6: Each withdraws 2 USDH ===')
+  // Step 5: Each withdraws 2 USDH
+  console.log('\n=== STEP 5: Each withdraws 2 USDH ===')
   await withdrawFromCustody(playerWalletClient, 2n, 'Player')
   await withdrawFromCustody(brokerWalletClient, 2n, 'Broker')
   await printBalances('After Withdraw')
