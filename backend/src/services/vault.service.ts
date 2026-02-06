@@ -1,290 +1,184 @@
 import {
   createPublicClient,
-  createWalletClient,
   http,
   parseAbi,
+  parseAbiItem,
+  formatUnits,
   type PublicClient,
-  type WalletClient,
   type Address,
-  type Hash,
-  type Account,
 } from 'viem';
-import { sepolia, mainnet } from 'viem/chains';
-import { privateKeyToAccount } from 'viem/accounts';
+import { sepolia } from 'viem/chains';
 
-const HOUSE_VAULT_ABI = parseAbi([
+// contract addresses from env
+const VAULT_ADDRESS = (process.env.HOUSE_VAULT_ADDRESS || '') as Address;
+const USDH_ADDRESS = (process.env.USDH_TOKEN_ADDRESS || '') as Address;
+const CUSTODY_ADDRESS = (process.env.NITROLITE_CUSTODY_ADDRESS || '') as Address;
+
+// ERC-4626 vault ABI, only what we actually use
+const VAULT_ABI = parseAbi([
   'function asset() view returns (address)',
   'function totalAssets() view returns (uint256)',
-  'function availableLiquidity() view returns (uint256)',
-  'function totalAllocated() view returns (uint256)',
-  'function channelAllocations(bytes32) view returns (uint256)',
-  'function maxAllocationPercent() view returns (uint256)',
-  'function maxPerChannel() view returns (uint256)',
-  'function operator() view returns (address)',
-  'function allocateToChannel(bytes32 channelId, uint256 amount)',
-  'function settleChannel(bytes32 channelId, uint256 returnAmount)',
-  'event ChannelAllocated(bytes32 indexed channelId, uint256 amount)',
-  'event ChannelSettled(bytes32 indexed channelId, uint256 returned, int256 pnl)',
+  'function totalSupply() view returns (uint256)',
+  'function balanceOf(address) view returns (uint256)',
+  'function convertToAssets(uint256 shares) view returns (uint256)',
+  'function convertToShares(uint256 assets) view returns (uint256)',
+  'function previewDeposit(uint256 assets) view returns (uint256)',
+  'function previewRedeem(uint256 shares) view returns (uint256)',
+  'function decimals() view returns (uint8)',
+  'event Deposit(address indexed sender, address indexed owner, uint256 assets, uint256 shares)',
+  'event Withdraw(address indexed sender, address indexed receiver, address indexed owner, uint256 assets, uint256 shares)',
 ]);
+
+// extracted event ABIs so we don't rely on fragile array indices
+const DEPOSIT_EVENT = parseAbiItem(
+  'event Deposit(address indexed sender, address indexed owner, uint256 assets, uint256 shares)'
+);
+const WITHDRAW_EVENT = parseAbiItem(
+  'event Withdraw(address indexed sender, address indexed receiver, address indexed owner, uint256 assets, uint256 shares)'
+);
 
 const ERC20_ABI = parseAbi([
   'function balanceOf(address) view returns (uint256)',
   'function allowance(address owner, address spender) view returns (uint256)',
-  'function approve(address spender, uint256 amount) returns (bool)',
   'function decimals() view returns (uint8)',
   'function symbol() view returns (string)',
 ]);
 
-const VAULT_ADDRESS = process.env.HOUSE_VAULT_ADDRESS as Address;
-const OPERATOR_PK = process.env.OPERATOR_PK as `0x${string}`;
-const NETWORK = process.env.NETWORK || 'sepolia';
-
-function getChain() {
-  if (NETWORK === 'mainnet') return mainnet;
-  return sepolia;
-}
-
-function getRpcUrl() {
-  if (NETWORK === 'mainnet') return process.env.MAINNET_RPC_URL;
-  return process.env.SEPOLIA_RPC_URL;
-}
-
+// lazy singleton
 let publicClient: PublicClient | null = null;
-let walletClient: WalletClient | null = null;
-let operatorAccount: Account | null = null;
 
 function getPublicClient(): PublicClient {
   if (!publicClient) {
+    const rpcUrl = process.env.SEPOLIA_RPC_URL;
     publicClient = createPublicClient({
-      chain: getChain(),
-      transport: http(getRpcUrl()),
+      chain: sepolia,
+      transport: http(rpcUrl),
     });
   }
   return publicClient;
 }
 
-function getAccount(): Account {
-  if (!operatorAccount) {
-    if (!OPERATOR_PK) {
-      throw new Error('OPERATOR_PK not configured');
-    }
-    operatorAccount = privateKeyToAccount(OPERATOR_PK);
-  }
-  return operatorAccount;
-}
-
-function getWalletClient(): WalletClient {
-  if (!walletClient) {
-    const account = getAccount();
-    walletClient = createWalletClient({
-      account,
-      chain: getChain(),
-      transport: http(getRpcUrl()),
-    });
-  }
-  return walletClient;
-}
-
-export async function getVaultInfo() {
+// read vault state in one go
+export async function getVaultState() {
   const client = getPublicClient();
 
-  const [totalAssets, availableLiquidity, totalAllocated, maxAllocationPercent, maxPerChannel, operator, asset] =
-    await Promise.all([
-      client.readContract({
-        address: VAULT_ADDRESS,
-        abi: HOUSE_VAULT_ABI,
-        functionName: 'totalAssets',
-      }),
-      client.readContract({
-        address: VAULT_ADDRESS,
-        abi: HOUSE_VAULT_ABI,
-        functionName: 'availableLiquidity',
-      }),
-      client.readContract({
-        address: VAULT_ADDRESS,
-        abi: HOUSE_VAULT_ABI,
-        functionName: 'totalAllocated',
-      }),
-      client.readContract({
-        address: VAULT_ADDRESS,
-        abi: HOUSE_VAULT_ABI,
-        functionName: 'maxAllocationPercent',
-      }),
-      client.readContract({
-        address: VAULT_ADDRESS,
-        abi: HOUSE_VAULT_ABI,
-        functionName: 'maxPerChannel',
-      }),
-      client.readContract({
-        address: VAULT_ADDRESS,
-        abi: HOUSE_VAULT_ABI,
-        functionName: 'operator',
-      }),
-      client.readContract({
-        address: VAULT_ADDRESS,
-        abi: HOUSE_VAULT_ABI,
-        functionName: 'asset',
-      }),
-    ]);
+  const [totalAssets, totalSupply, custodyBalance] = await Promise.all([
+    client.readContract({
+      address: VAULT_ADDRESS,
+      abi: VAULT_ABI,
+      functionName: 'totalAssets',
+    }) as Promise<bigint>,
+    client.readContract({
+      address: VAULT_ADDRESS,
+      abi: VAULT_ABI,
+      functionName: 'totalSupply',
+    }) as Promise<bigint>,
+    client.readContract({
+      address: USDH_ADDRESS,
+      abi: ERC20_ABI,
+      functionName: 'balanceOf',
+      args: [CUSTODY_ADDRESS],
+    }) as Promise<bigint>,
+  ]);
+
+  // share price = totalAssets / totalSupply, handle zero supply
+  const sharePrice = totalSupply > 0n
+    ? Number(formatUnits(totalAssets, 6)) / Number(formatUnits(totalSupply, 6))
+    : 1.0;
 
   return {
-    totalAssets: totalAssets as bigint,
-    availableLiquidity: availableLiquidity as bigint,
-    totalAllocated: totalAllocated as bigint,
-    maxAllocationPercent: maxAllocationPercent as bigint,
-    maxPerChannel: maxPerChannel as bigint,
-    operator: operator as Address,
-    asset: asset as Address,
+    totalAssets,
+    totalSupply,
+    custodyBalance,
+    sharePrice,
   };
 }
 
-export async function getChannelAllocation(channelId: `0x${string}`): Promise<bigint> {
+// get user position data from chain
+export async function getUserPosition(userAddress: Address) {
   const client = getPublicClient();
-  const allocation = await client.readContract({
+
+  const shares = await client.readContract({
     address: VAULT_ADDRESS,
-    abi: HOUSE_VAULT_ABI,
-    functionName: 'channelAllocations',
-    args: [channelId],
-  });
-  return allocation as bigint;
-}
+    abi: VAULT_ABI,
+    functionName: 'balanceOf',
+    args: [userAddress],
+  }) as bigint;
 
-export async function getAssetInfo() {
-  const client = getPublicClient();
-  const vaultInfo = await getVaultInfo();
-
-  const [decimals, symbol] = await Promise.all([
+  // batch the rest
+  const [assetsValue, usdhBalance, allowance] = await Promise.all([
+    shares > 0n
+      ? client.readContract({
+          address: VAULT_ADDRESS,
+          abi: VAULT_ABI,
+          functionName: 'convertToAssets',
+          args: [shares],
+        }) as Promise<bigint>
+      : Promise.resolve(0n),
     client.readContract({
-      address: vaultInfo.asset,
+      address: USDH_ADDRESS,
       abi: ERC20_ABI,
-      functionName: 'decimals',
-    }),
+      functionName: 'balanceOf',
+      args: [userAddress],
+    }) as Promise<bigint>,
     client.readContract({
-      address: vaultInfo.asset,
+      address: USDH_ADDRESS,
       abi: ERC20_ABI,
-      functionName: 'symbol',
-    }),
+      functionName: 'allowance',
+      args: [userAddress, VAULT_ADDRESS],
+    }) as Promise<bigint>,
   ]);
 
   return {
-    address: vaultInfo.asset,
-    decimals: decimals as number,
-    symbol: symbol as string,
+    shares,
+    assetsValue,
+    usdhBalance,
+    allowance,
   };
 }
 
-export async function getOperatorAssetBalance(): Promise<bigint> {
-  const client = getPublicClient();
-  const vaultInfo = await getVaultInfo();
-
-  const balance = await client.readContract({
-    address: vaultInfo.asset,
-    abi: ERC20_ABI,
-    functionName: 'balanceOf',
-    args: [vaultInfo.operator],
-  });
-
-  return balance as bigint;
-}
-
-export async function getOperatorAllowance(): Promise<bigint> {
-  const client = getPublicClient();
-  const vaultInfo = await getVaultInfo();
-
-  const allowance = await client.readContract({
-    address: vaultInfo.asset,
-    abi: ERC20_ABI,
-    functionName: 'allowance',
-    args: [vaultInfo.operator, VAULT_ADDRESS],
-  });
-
-  return allowance as bigint;
-}
-
-export async function allocateToChannel(channelId: `0x${string}`, amount: bigint): Promise<Hash> {
-  const wallet = getWalletClient();
+// fetch vault event logs in a block range
+export async function getVaultLogs(fromBlock: bigint, toBlock: bigint) {
   const client = getPublicClient();
 
-  const available = await client.readContract({
-    address: VAULT_ADDRESS,
-    abi: HOUSE_VAULT_ABI,
-    functionName: 'availableLiquidity',
-  });
+  const [depositLogs, withdrawLogs] = await Promise.all([
+    client.getLogs({
+      address: VAULT_ADDRESS,
+      event: DEPOSIT_EVENT,
+      fromBlock,
+      toBlock,
+    }),
+    client.getLogs({
+      address: VAULT_ADDRESS,
+      event: WITHDRAW_EVENT,
+      fromBlock,
+      toBlock,
+    }),
+  ]);
 
-  if ((available as bigint) < amount) {
-    throw new Error(`Insufficient liquidity: ${available} < ${amount}`);
-  }
-
-  const hash = await wallet.writeContract({
-    address: VAULT_ADDRESS,
-    abi: HOUSE_VAULT_ABI,
-    functionName: 'allocateToChannel',
-    args: [channelId, amount],
-    chain: getChain(),
-    account: getAccount(),
-  });
-
-  return hash;
+  return { depositLogs, withdrawLogs };
 }
 
-export async function settleChannel(channelId: `0x${string}`, returnAmount: bigint): Promise<Hash> {
-  const wallet = getWalletClient();
+// get current block number
+export async function getBlockNumber(): Promise<bigint> {
   const client = getPublicClient();
-
-  const allocation = await client.readContract({
-    address: VAULT_ADDRESS,
-    abi: HOUSE_VAULT_ABI,
-    functionName: 'channelAllocations',
-    args: [channelId],
-  });
-
-  if ((allocation as bigint) === 0n) {
-    throw new Error(`Channel not found: ${channelId}`);
-  }
-
-  if (returnAmount > 0n) {
-    const vaultInfo = await getVaultInfo();
-    const allowance = await getOperatorAllowance();
-
-    if (allowance < returnAmount) {
-      const approveHash = await wallet.writeContract({
-        address: vaultInfo.asset,
-        abi: ERC20_ABI,
-        functionName: 'approve',
-        args: [VAULT_ADDRESS, returnAmount],
-        chain: getChain(),
-        account: getAccount(),
-      });
-      await client.waitForTransactionReceipt({ hash: approveHash });
-    }
-  }
-
-  const hash = await wallet.writeContract({
-    address: VAULT_ADDRESS,
-    abi: HOUSE_VAULT_ABI,
-    functionName: 'settleChannel',
-    args: [channelId, returnAmount],
-    chain: getChain(),
-    account: getAccount(),
-  });
-
-  return hash;
+  return client.getBlockNumber();
 }
 
-export function sessionIdToChannelId(sessionId: string): `0x${string}` {
-  const buffer = Buffer.alloc(32);
-  const idBuffer = Buffer.from(sessionId, 'utf8');
-  idBuffer.copy(buffer, 0, 0, Math.min(32, idBuffer.length));
-  return `0x${buffer.toString('hex')}`;
+// get block timestamp
+export async function getBlockTimestamp(blockNumber: bigint): Promise<bigint> {
+  const client = getPublicClient();
+  const block = await client.getBlock({ blockNumber });
+  return block.timestamp;
 }
 
-export const VaultService = {
-  getVaultInfo,
-  getChannelAllocation,
-  getAssetInfo,
-  getOperatorAssetBalance,
-  getOperatorAllowance,
-  allocateToChannel,
-  settleChannel,
-  sessionIdToChannelId,
+export {
+  VAULT_ADDRESS,
+  USDH_ADDRESS,
+  CUSTODY_ADDRESS,
+  VAULT_ABI,
+  ERC20_ABI,
+  DEPOSIT_EVENT,
+  WITHDRAW_EVENT,
+  getPublicClient,
 };

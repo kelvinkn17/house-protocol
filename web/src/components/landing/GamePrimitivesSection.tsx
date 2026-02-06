@@ -22,7 +22,7 @@ export default function GamePrimitivesSection() {
                 [004] Game Primitives
               </span>
             </AnimateComponent>
-            <h2 className="text-5xl md:text-7xl font-black tracking-tight text-black overflow-hidden">
+            <h2 className="text-3xl sm:text-5xl md:text-7xl font-black tracking-tight text-black overflow-hidden">
               <AnimatedText text="Pre-built mechanics." delay={100} stagger={25} onScroll />
             </h2>
           </div>
@@ -34,7 +34,7 @@ export default function GamePrimitivesSection() {
         </div>
 
         {/* grid */}
-        <div className="grid grid-cols-2 md:grid-cols-3 gap-6">
+        <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-4 sm:gap-6">
           {primitives.map((p, i) => (
             <AnimateComponent key={p.type} onScroll delay={400 + i * 80}>
               <div

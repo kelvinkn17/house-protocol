@@ -66,7 +66,7 @@ function DiagonalDivider({
       <div className="absolute inset-0 flex items-center justify-center">
         <AnimateComponent onScroll variant="fadeInUp">
           <div
-            className={`${titleColor} ${textColor} px-12 md:px-16 py-5 md:py-6 rounded-full border-3 border-black font-black text-2xl md:text-4xl uppercase tracking-tight`}
+            className={`${titleColor} ${textColor} px-8 sm:px-12 md:px-16 py-4 sm:py-5 md:py-6 rounded-full border-3 border-black font-black text-xl sm:text-2xl md:text-4xl uppercase tracking-tight`}
             style={{
               boxShadow: '6px 6px 0px rgba(0,0,0,0.4)',
               transform: `rotate(${DIAGONAL_ANGLE}deg)`,
@@ -127,7 +127,7 @@ export default function HowItWorksSection() {
                   <div
                     className={`bg-[#1A1A1A] p-8 md:p-12 flex flex-col ${i === 0 ? '' : 'md:border-l border-white/10'}`}
                   >
-                    <span className="text-[8rem] md:text-[10rem] font-black leading-none text-[#FF6B9D] mb-4">
+                    <span className="text-[5rem] sm:text-[8rem] md:text-[10rem] font-black leading-none text-[#FF6B9D] mb-4">
                       {step.num}
                     </span>
                     <h3 className="text-xl font-black text-white mb-4 tracking-tight uppercase">

@@ -39,7 +39,7 @@ import {
   formatMultiplier,
   encodeGameState,
   calculateMaxPayout,
-} from './game-logic'
+} from './game-logic.js'
 
 import {
   type GameState,
@@ -51,7 +51,7 @@ import {
   BROKER_ADDRESS,
   USDH_ADDRESS,
   CUSTODY_ADDRESS,
-} from './types'
+} from './types.js'
 
 // =============================================================================
 // CONTRACT ABIS (minimal)

@@ -40,3 +40,112 @@ model ErrorLog {
   @@index([errorCode])
   @@index([createdAt])
 }
+
+model VaultEvent {
+  id          String   @id @default(cuid())
+  txHash      String
+  logIndex    Int
+  blockNumber BigInt
+  eventType   String   // "deposit" | "withdraw"
+  sender      String
+  owner       String
+  assets      String   // raw bigint as string
+  shares      String   // raw bigint as string
+  timestamp   DateTime
+  createdAt   DateTime @default(now())
+
+  @@unique([txHash, logIndex])
+  @@index([eventType])
+  @@index([owner])
+  @@index([blockNumber])
+  @@index([timestamp])
+}
+
+model VaultSnapshot {
+  id             String   @id @default(cuid())
+  totalAssets    String   // TVL in USDH (raw bigint as string)
+  totalSupply    String   // sUSDH total supply
+  sharePrice     Float    // totalAssets / totalSupply (human readable)
+  custodyBalance String   // operator custody balance
+  blockNumber    BigInt
+  timestamp      DateTime
+  createdAt      DateTime @default(now())
+
+  @@index([timestamp])
+}
+
+// game config: registered game types (our 3 demos + future builder games)
+// configs live in memory via configs.ts for now, this table is for future builder dashboard
+model GameConfig {
+  slug        String   @id // "double-or-nothing", "death", "range"
+  name        String
+  gameType    String   // "cash-out", "reveal-tiles", "pick-number"
+  houseEdgeBps Int     @default(200)
+  params      Json     // builder params (rows, tiles, etc.)
+  isActive    Boolean  @default(true)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  @@index([gameType])
+}
+
+// game session: one per player per active game
+model Session {
+  id            String    @id @default(cuid())
+  playerId      String    // wallet address
+  channelId     String?   // nitrolite channel id
+  gameConfigSlug String?  // current active game slug, null when between games
+  playerDeposit String    // raw bigint
+  houseDeposit  String    // raw bigint
+  status        String    @default("ACTIVE") // ACTIVE, CLOSED, EXPIRED
+  gameState     Json?     // serialized GameSessionState
+  closedAt      DateTime?
+  createdAt     DateTime  @default(now())
+  updatedAt     DateTime  @updatedAt
+
+  rounds        Round[]
+  states        ChannelState[]
+
+  @@index([playerId])
+  @@index([status])
+}
+
+// individual round within a session
+model Round {
+  id               String    @id @default(cuid())
+  sessionId        String
+  session          Session   @relation(fields: [sessionId], references: [id])
+  roundNumber      Int
+  gameType         String
+  betAmount        String    // raw bigint
+  choiceData       String?   @db.Text // JSON serialized player choice
+  playerCommitment String?
+  playerNonce      String?
+  houseCommitment  String?
+  houseNonce       String?
+  result           String?   @db.Text // JSON serialized outcome
+  playerWon        Boolean?
+  payout           String?   // raw bigint
+  createdAt        DateTime  @default(now())
+
+  @@index([sessionId])
+  @@index([sessionId, roundNumber])
+}
+
+// state channel snapshots
+model ChannelState {
+  id            String   @id @default(cuid())
+  sessionId     String
+  session       Session  @relation(fields: [sessionId], references: [id])
+  version       Int
+  intent        String   // "initialize", "operate", "close"
+  playerBalance String   // raw bigint
+  houseBalance  String   // raw bigint
+  data          String   @db.Text
+  playerSig     String   @db.Text
+  houseSig      String   @db.Text
+  createdAt     DateTime @default(now())
+
+  @@index([sessionId])
+  @@index([sessionId, version])
+}

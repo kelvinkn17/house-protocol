@@ -11,7 +11,9 @@ import LenisSmoothScrollProvider from '../providers/LenisSmoothScrollProvider'
 import { ThemeProvider } from '../providers/ThemeProvider'
 import PrivyProvider from '../providers/PrivyProvider'
 import { AuthProvider } from '../providers/AuthProvider'
+import { SoundProvider } from '../providers/SoundProvider'
 import ErrorPage from '../components/ErrorPage'
+import MobileOverlay from '../components/MobileOverlay'
 
 import TanStackQueryDevtools from '../integrations/tanstack-query/devtools'
 
@@ -82,10 +84,12 @@ function RootDocument({ children }: { children: React.ReactNode }) {
         />
       </head>
       <body className="bg-neutral-50 text-neutral-900 dark:bg-neutral-900 dark:text-neutral-100 antialiased transition-colors duration-300">
+        <MobileOverlay />
         <ThemeProvider>
           <HeroUIProvider>
             <PrivyProvider>
               <AuthProvider>
+                <SoundProvider>
                 <LenisSmoothScrollProvider />
                 {children}
                 <TanStackDevtools
@@ -100,6 +104,7 @@ function RootDocument({ children }: { children: React.ReactNode }) {
                     TanStackQueryDevtools,
                   ]}
                 />
+                </SoundProvider>
               </AuthProvider>
             </PrivyProvider>
           </HeroUIProvider>

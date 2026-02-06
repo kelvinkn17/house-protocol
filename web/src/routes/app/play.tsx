@@ -1,71 +1,348 @@
-import { createFileRoute, Link } from '@tanstack/react-router'
+import { createFileRoute, Outlet, Link, useLocation } from '@tanstack/react-router'
+import { Coins, Skull, Target, type LucideIcon } from 'lucide-react'
+import { cnm } from '@/utils/style'
+import { SessionProvider, useSession } from '@/providers/SessionProvider'
+import { useAuthContext } from '@/providers/AuthProvider'
+import { useSound } from '@/providers/SoundProvider'
+import { useState } from 'react'
+import { parseUnits, formatUnits } from 'viem'
 
-export const Route = createFileRoute('/app/play')({
-  component: PlayPage,
-})
-
-// dummy games data
-const GAMES = [
-  { slug: 'coinflip', name: 'Coinflip', type: 'pick-one', volume: '124K', players: 89 },
-  { slug: 'dice', name: 'Dice', type: 'pick-number', volume: '89K', players: 56 },
-  { slug: 'crash', name: 'Crash', type: 'cash-out', volume: '234K', players: 142 },
-  { slug: 'mines', name: 'Mines', type: 'reveal-tiles', volume: '67K', players: 34 },
+const GAMES: { slug: string; name: string; type: string; color: string; Icon: LucideIcon }[] = [
+  { slug: 'double-or-nothing', name: 'Double or Nothing', type: 'cash-out', color: '#CDFF57', Icon: Coins },
+  { slug: 'death', name: 'Death', type: 'reveal-tiles', color: '#FF6B9D', Icon: Skull },
+  { slug: 'range', name: 'Range', type: 'pick-number', color: '#dcb865', Icon: Target },
 ]
 
-function PlayPage() {
-  return (
-    <div className="pb-12">
-      <div className="mx-auto max-w-6xl">
-        <div className="mb-8">
-          <h1 className="text-4xl md:text-5xl font-black tracking-tight text-black mb-2">PLAY</h1>
-          <p className="text-black/60 font-mono text-sm">** Gasless betting with state channels. Open a session, play unlimited rounds.</p>
-        </div>
+export const Route = createFileRoute('/app/play')({
+  component: PlayLayout,
+})
 
-        {/* session status */}
-        <div
-          className="mb-8 bg-white border-2 border-black rounded-2xl p-6"
-          style={{ boxShadow: '6px 6px 0px black' }}
-        >
-          <div className="flex items-center justify-between">
-            <div>
-              <p className="text-xs font-mono text-black/50 uppercase">Session Status</p>
-              <p className="text-lg font-black text-black">No active session</p>
+function PlayLayout() {
+  return (
+    <SessionProvider>
+      <PlayLayoutInner />
+    </SessionProvider>
+  )
+}
+
+function PlayLayoutInner() {
+  const location = useLocation()
+  const path = location.pathname
+
+  return (
+    <div className="flex gap-6">
+      {/* sidebar */}
+      <aside className="hidden lg:block w-56 shrink-0">
+        <div className="sticky top-24">
+          <div
+            className="bg-white border-2 border-black rounded-2xl overflow-hidden"
+            style={{ boxShadow: '5px 5px 0px black' }}
+          >
+            <div className="px-4 py-3 border-b-2 border-black/10">
+              <h2 className="text-sm font-black text-black uppercase tracking-wider">Games</h2>
             </div>
-            <button
-              className="px-6 py-3 text-sm font-black uppercase bg-black text-white border-2 border-black rounded-xl transition-transform hover:translate-x-1 hover:translate-y-1"
-              style={{ boxShadow: '4px 4px 0px #FF6B9D' }}
-            >
-              Open Session
-            </button>
+            <div className="p-2">
+              {GAMES.map((game) => {
+                const isActive = path.includes(`/play/${game.slug}`)
+                return (
+                  <Link
+                    key={game.slug}
+                    to="/app/play/$slug"
+                    params={{ slug: game.slug }}
+                    className={cnm(
+                      'flex items-center gap-3 px-3 py-2.5 rounded-xl transition-all mb-0.5',
+                      isActive
+                        ? 'text-black'
+                        : 'text-black/70 hover:bg-black/5',
+                    )}
+                    style={
+                      isActive
+                        ? { backgroundColor: `${game.color}25`, boxShadow: `3px 3px 0px ${game.color}` }
+                        : undefined
+                    }
+                  >
+                    <div
+                      className="w-8 h-8 rounded-lg border-2 flex items-center justify-center shrink-0"
+                      style={{
+                        backgroundColor: isActive ? game.color : `${game.color}20`,
+                        borderColor: isActive ? 'black' : `${game.color}50`,
+                      }}
+                    >
+                      <game.Icon size={14} className="text-black" />
+                    </div>
+                    <div className="min-w-0">
+                      <p
+                        className={cnm(
+                          'text-sm font-bold truncate',
+                          isActive ? 'text-black' : 'text-black/70',
+                        )}
+                      >
+                        {game.name}
+                      </p>
+                      <p className="text-[10px] font-mono text-black/40 truncate">
+                        {game.type}
+                      </p>
+                    </div>
+                  </Link>
+                )
+              })}
+            </div>
+          </div>
+
+          {/* builder CTA */}
+          <Link
+            to="/build"
+            className="mt-4 block bg-black border-2 border-black rounded-2xl p-4 transition-transform hover:translate-x-0.5 hover:translate-y-0.5"
+            style={{ boxShadow: '4px 4px 0px #FF6B9D' }}
+          >
+            <p className="text-[10px] font-mono text-white/40 uppercase mb-1">For Builders</p>
+            <p className="text-xs text-white/80">Build your own game with the SDK</p>
+          </Link>
+        </div>
+      </aside>
+
+      {/* content */}
+      <div className="flex-1 min-w-0">
+        {/* mobile game tabs */}
+        <div className="lg:hidden mb-6">
+          <div className="flex gap-2 overflow-x-auto pb-1">
+            {GAMES.map((game) => {
+              const isActive = path.includes(`/play/${game.slug}`)
+              return (
+                <Link
+                  key={game.slug}
+                  to="/app/play/$slug"
+                  params={{ slug: game.slug }}
+                  className={cnm(
+                    'shrink-0 flex items-center gap-1.5 px-4 py-2 text-xs font-black uppercase border-2 border-black rounded-xl transition-all',
+                    isActive ? 'text-black' : 'bg-white text-black/50',
+                  )}
+                  style={
+                    isActive
+                      ? { backgroundColor: game.color, boxShadow: '3px 3px 0px black' }
+                      : undefined
+                  }
+                >
+                  <game.Icon size={12} />
+                  {game.name}
+                </Link>
+              )
+            })}
           </div>
         </div>
 
-        {/* games grid */}
-        <div className="grid gap-6 sm:grid-cols-2 lg:grid-cols-4">
-          {GAMES.map((game) => (
-            <Link
-              key={game.slug}
-              to="/app/play/$slug"
-              params={{ slug: game.slug }}
-              className="group bg-white border-2 border-black rounded-2xl p-5 transition-transform hover:translate-x-1 hover:translate-y-1"
-              style={{ boxShadow: '6px 6px 0px black' }}
-            >
-              {/* placeholder for game visual */}
-              <div className="mb-4 flex h-24 items-center justify-center rounded-xl bg-black/5 border-2 border-black/10 text-black/40 text-xs font-mono uppercase">
-                {game.type}
-              </div>
+        {/* session bar */}
+        <SessionBar />
 
-              <h3 className="mb-1 font-black text-black group-hover:text-black">
-                {game.name}
-              </h3>
-              <div className="flex items-center justify-between text-xs font-mono text-black/50">
-                <span>${game.volume} vol</span>
-                <span>{game.players} playing</span>
-              </div>
-            </Link>
-          ))}
+        <Outlet />
+      </div>
+    </div>
+  )
+}
+
+function SessionBar() {
+  const { login, walletAddress } = useAuthContext()
+  const { play } = useSound()
+  const session = useSession()
+  const [betInput, setBetInput] = useState('100')
+
+  const { sessionPhase, playerBalance, depositAmount, sessionError, stats, sessionId } = session
+
+  const balanceFormatted = playerBalance !== '0'
+    ? parseFloat(formatUnits(BigInt(playerBalance), 6)).toFixed(2)
+    : '0.00'
+
+  const depositFormatted = depositAmount !== '0'
+    ? parseFloat(formatUnits(BigInt(depositAmount), 6)).toFixed(2)
+    : '0.00'
+
+  // no wallet
+  if (sessionPhase === 'no_wallet') {
+    return (
+      <div
+        className="mb-6 bg-white border-2 border-black rounded-2xl p-5 flex items-center justify-between"
+        style={{ boxShadow: '4px 4px 0px black' }}
+      >
+        <div>
+          <p className="text-xs font-mono text-black/40 uppercase mb-0.5">Session</p>
+          <p className="text-sm font-bold text-black/60">Connect wallet to play</p>
+        </div>
+        <button
+          onClick={() => login()}
+          className="px-6 py-2.5 text-xs font-black uppercase bg-black text-white border-2 border-black rounded-xl transition-transform hover:translate-x-0.5 hover:translate-y-0.5"
+          style={{ boxShadow: '3px 3px 0px #CDFF57' }}
+        >
+          Connect Wallet
+        </button>
+      </div>
+    )
+  }
+
+  // idle: deposit prompt
+  if (sessionPhase === 'idle') {
+    return (
+      <div
+        className="mb-6 bg-white border-2 border-black rounded-2xl p-5"
+        style={{ boxShadow: '4px 4px 0px black' }}
+      >
+        <div className="flex items-center justify-between mb-3">
+          <div>
+            <p className="text-xs font-mono text-black/40 uppercase mb-0.5">Open Session</p>
+            <p className="text-sm text-black/50">Deposit USDH to start playing any game</p>
+          </div>
+          {walletAddress && (
+            <p className="text-[10px] font-mono text-black/30">
+              {walletAddress.slice(0, 6)}...{walletAddress.slice(-4)}
+            </p>
+          )}
+        </div>
+        <div className="flex items-center gap-3">
+          <div className="flex gap-1.5">
+            {[10, 50, 100, 500].map((amt) => (
+              <button
+                key={amt}
+                onClick={() => { play('click'); setBetInput(String(amt)) }}
+                className={cnm(
+                  'px-3 py-1.5 text-xs font-black border-2 border-black rounded-lg transition-transform hover:translate-x-0.5 hover:translate-y-0.5',
+                  betInput === String(amt) ? 'bg-black text-white' : 'bg-white text-black',
+                )}
+              >
+                ${amt}
+              </button>
+            ))}
+          </div>
+          <button
+            onClick={() => {
+              play('action')
+              const amount = parseUnits(betInput, 6).toString()
+              session.openSession(amount)
+            }}
+            className="ml-auto px-6 py-2.5 text-xs font-black uppercase bg-black text-white border-2 border-black rounded-xl transition-transform hover:translate-x-0.5 hover:translate-y-0.5"
+            style={{ boxShadow: '3px 3px 0px #CDFF57' }}
+          >
+            Open Session (${betInput})
+          </button>
         </div>
       </div>
+    )
+  }
+
+  // connecting / creating
+  if (sessionPhase === 'connecting' || sessionPhase === 'creating') {
+    return (
+      <div
+        className="mb-6 bg-white border-2 border-black rounded-2xl p-5 flex items-center gap-3"
+        style={{ boxShadow: '4px 4px 0px black' }}
+      >
+        <div className="w-5 h-5 border-2 border-black border-t-transparent rounded-full animate-spin" />
+        <p className="text-sm font-mono text-black/50">
+          {sessionPhase === 'connecting' ? 'Connecting...' : 'Creating session...'}
+        </p>
+      </div>
+    )
+  }
+
+  // error
+  if (sessionPhase === 'error') {
+    return (
+      <div
+        className="mb-6 bg-white border-2 border-black rounded-2xl p-5 flex items-center justify-between"
+        style={{ boxShadow: '4px 4px 0px #FF6B9D' }}
+      >
+        <div>
+          <p className="text-xs font-mono text-[#FF6B9D] uppercase mb-0.5">Error</p>
+          <p className="text-sm font-bold text-black/70">{sessionError || 'Something went wrong'}</p>
+        </div>
+        <button
+          onClick={() => session.reset()}
+          className="px-6 py-2.5 text-xs font-black uppercase bg-black text-white border-2 border-black rounded-xl"
+        >
+          Try Again
+        </button>
+      </div>
+    )
+  }
+
+  // closed: session summary
+  if (sessionPhase === 'closed') {
+    const netResult = parseFloat(balanceFormatted) - parseFloat(depositFormatted)
+    const isProfit = netResult > 0
+
+    return (
+      <div
+        className="mb-6 bg-white border-2 border-black rounded-2xl p-5"
+        style={{ boxShadow: '4px 4px 0px black' }}
+      >
+        <div className="flex items-center justify-between mb-3">
+          <div>
+            <p className="text-xs font-mono text-black/40 uppercase mb-0.5">Session Complete</p>
+            <p className={cnm(
+              'text-xl font-black',
+              isProfit ? 'text-[#7BA318]' : 'text-[#FF6B9D]',
+            )}>
+              {isProfit ? '+' : ''}${netResult.toFixed(2)}
+            </p>
+          </div>
+          <div className="flex items-center gap-4 text-[10px] font-mono text-black/40">
+            <span>R{stats.totalRounds}</span>
+            <span className="text-[#7BA318]">W{stats.wins}</span>
+            <span className="text-[#FF6B9D]">L{stats.losses}</span>
+          </div>
+        </div>
+
+        <div className="flex items-center justify-between">
+          {sessionId && (
+            <div className="flex items-center gap-2">
+              <span className="text-[10px] font-mono text-black/30 uppercase">Provably Fair</span>
+              <span className="text-[10px] font-mono text-black/20">
+                {sessionId.slice(0, 8)}...{sessionId.slice(-4)}
+              </span>
+            </div>
+          )}
+          <button
+            onClick={() => { play('action'); session.reset() }}
+            className="px-6 py-2.5 text-xs font-black uppercase bg-black text-white border-2 border-black rounded-xl transition-transform hover:translate-x-0.5 hover:translate-y-0.5"
+            style={{ boxShadow: '3px 3px 0px #CDFF57' }}
+          >
+            New Session
+          </button>
+        </div>
+      </div>
+    )
+  }
+
+  const isClosing = sessionPhase === 'closing'
+
+  // active session: show balance bar
+  return (
+    <div
+      className="mb-6 bg-white border-2 border-black rounded-2xl px-5 py-3 flex items-center justify-between"
+      style={{ boxShadow: '4px 4px 0px black' }}
+    >
+      <div className="flex items-center gap-5">
+        <div>
+          <p className="text-[10px] font-mono text-black/40 uppercase">Balance</p>
+          <p className="text-lg font-black text-black">${balanceFormatted}</p>
+        </div>
+        <div className="h-6 w-px bg-black/10" />
+        <div className="flex items-center gap-3 text-[10px] font-mono text-black/40">
+          <span>R{stats.totalRounds}</span>
+          <span className="text-[#7BA318]">W{stats.wins}</span>
+          <span className="text-[#FF6B9D]">L{stats.losses}</span>
+        </div>
+      </div>
+
+      {sessionError && (
+        <p className="text-xs font-mono text-[#FF6B9D] mx-4">{sessionError}</p>
+      )}
+
+      <button
+        onClick={() => session.closeSession()}
+        disabled={isClosing}
+        className="px-5 py-2 text-xs font-black uppercase bg-black/5 text-black/60 border-2 border-black/20 rounded-xl transition-all hover:bg-black hover:text-white hover:border-black disabled:opacity-50"
+      >
+        {isClosing ? 'Closing...' : 'Close Session'}
+      </button>
     </div>
   )
 }

@@ -11,7 +11,7 @@ export default function FinalCTA() {
             className="p-8 md:p-16 rounded-3xl border-4 border-[#CDFF57]"
             style={{ backgroundColor: '#1A1A1A' }}
           >
-            <h2 className="text-4xl md:text-5xl lg:text-6xl font-black tracking-tight text-white mb-6 overflow-hidden">
+            <h2 className="text-2xl sm:text-4xl md:text-5xl lg:text-6xl font-black tracking-tight text-white mb-6 overflow-hidden">
               <AnimatedText text="THE PITCH IN ONE BREATH" delay={100} stagger={20} onScroll />
             </h2>
             <AnimateComponent variant="fadeInUp" delay={500}>

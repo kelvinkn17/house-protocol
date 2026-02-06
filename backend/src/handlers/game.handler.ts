@@ -1,13 +1,43 @@
+// websocket game handler, session-first architecture
+// session = deposit once, play any game. games start/end within a session.
+// integrates with Nitrolite clearnode for real state channel deposits.
+// backend signs as broker, frontend signs as player and talks to clearnode.
+
 import type { FastifyInstance } from 'fastify';
 import type { WebSocket } from 'ws';
-import {
-  GameService,
-  type CoinChoice,
-} from '../services/game.service.ts';
-import { YellowService } from '../services/yellow.service.ts';
-import { VaultService } from '../services/vault.service.ts';
+import { GameService } from '../services/game.service.ts';
+import { getVaultState } from '../services/vault.service.ts';
+import { getPrimitive } from '../services/primitives/registry.ts';
+import { getGameConfig } from '../services/primitives/configs.ts';
 import { prismaQuery } from '../lib/prisma.ts';
+import type { GameSessionState, GameConfig } from '../services/primitives/types.ts';
+import { HOUSE_EDGE_BPS, BPS_BASE } from '../services/primitives/types.ts';
+import {
+  createECDSAMessageSigner,
+  createAppSessionMessage,
+  RPCProtocolVersion,
+} from '@erc7824/nitrolite';
+import { privateKeyToAccount } from 'viem/accounts';
+import { OPERATOR_PRIVATE_KEY } from '../config/main-config.ts';
 import type { Hex, Address } from 'viem';
+
+const db = prismaQuery;
+
+const ASSET_SYMBOL = 'usdh';
+const APP_NAME = 'the-house-protocol';
+
+// broker signer (lazy init from operator private key)
+let _brokerSigner: ReturnType<typeof createECDSAMessageSigner> | null = null;
+let _brokerAddress: Address | null = null;
+
+function getBrokerSigner() {
+  if (!_brokerSigner) {
+    if (!OPERATOR_PRIVATE_KEY) throw new Error('OPERATOR_PRIVATE_KEY not configured');
+    _brokerSigner = createECDSAMessageSigner(OPERATOR_PRIVATE_KEY as Hex);
+    _brokerAddress = privateKeyToAccount(OPERATOR_PRIVATE_KEY as Hex).address;
+  }
+  return { signer: _brokerSigner, address: _brokerAddress! };
+}
 
 interface ClientMessage {
   type: string;
@@ -15,31 +45,65 @@ interface ClientMessage {
 }
 
 interface CreateSessionPayload {
-  playerAddress: Address;
-  depositAmount: string; 
-  tokenAddress: Address;
+  depositAmount: string;
+  tokenAddress?: string;
+}
+
+interface ConfirmSessionPayload {
+  sessionId: string;
+  appSessionId: string;
+}
+
+interface StartGamePayload {
+  sessionId: string;
+  gameSlug: string;
+}
+
+interface EndGamePayload {
+  sessionId: string;
 }
 
 interface PlaceBetPayload {
   sessionId: string;
   amount: string;
-  choice: CoinChoice;
+  choiceData: string;
   commitment: string;
 }
 
 interface RevealPayload {
   sessionId: string;
   roundId: string;
-  choice: CoinChoice;
+  choiceData: string;
   nonce: string;
+}
+
+interface CashOutPayload {
+  sessionId: string;
 }
 
 interface CloseSessionPayload {
   sessionId: string;
 }
 
+interface ConfirmClosePayload {
+  sessionId: string;
+}
+
 const connections = new Map<string, WebSocket>();
-const sessionPlayers = new Map<string, string>();
+
+// session-level state (persists across games within a session)
+const sessions = new Map<string, {
+  playerId: string;
+  playerBalance: bigint;
+  houseBalance: bigint;
+  isActive: boolean;
+}>();
+
+// game-level state (reset when switching games)
+const activeGames = new Map<string, {
+  config: GameConfig;
+  state: GameSessionState;
+}>();
 
 function send(ws: WebSocket, type: string, payload: unknown) {
   if (ws.readyState === ws.OPEN) {
@@ -59,27 +123,36 @@ async function handleMessage(ws: WebSocket, playerId: string, message: ClientMes
       case 'create_session':
         await handleCreateSession(ws, playerId, payload as CreateSessionPayload);
         break;
-
+      case 'confirm_session':
+        await handleConfirmSession(ws, playerId, payload as ConfirmSessionPayload);
+        break;
+      case 'start_game':
+        await handleStartGame(ws, playerId, payload as StartGamePayload);
+        break;
+      case 'end_game':
+        await handleEndGame(ws, playerId, payload as EndGamePayload);
+        break;
       case 'place_bet':
         await handlePlaceBet(ws, playerId, payload as PlaceBetPayload);
         break;
-
       case 'reveal':
         await handleReveal(ws, playerId, payload as RevealPayload);
         break;
-
+      case 'cashout':
+        await handleCashOut(ws, playerId, payload as CashOutPayload);
+        break;
       case 'close_session':
         await handleCloseSession(ws, playerId, payload as CloseSessionPayload);
         break;
-
+      case 'confirm_close':
+        await handleConfirmClose(ws, playerId, payload as ConfirmClosePayload);
+        break;
       case 'get_session':
         await handleGetSession(ws, payload as { sessionId: string });
         break;
-
       case 'ping':
         send(ws, 'pong', { time: Date.now() });
         break;
-
       default:
         sendError(ws, `Unknown message type: ${type}`, 'UNKNOWN_TYPE');
     }
@@ -90,85 +163,255 @@ async function handleMessage(ws: WebSocket, playerId: string, message: ClientMes
   }
 }
 
+// step 1: validate deposit, sign as broker, send params to frontend
+// frontend will create the app session on the clearnode then call confirm_session
 async function handleCreateSession(ws: WebSocket, playerId: string, payload: CreateSessionPayload) {
-  const { playerAddress, depositAmount, tokenAddress } = payload;
-
-  if (playerAddress.toLowerCase() !== playerId.toLowerCase()) {
-    sendError(ws, 'Player address mismatch', 'AUTH_ERROR');
-    return;
-  }
-
+  const { depositAmount } = payload;
   const playerDeposit = BigInt(depositAmount);
 
-  const vaultInfo = await VaultService.getVaultInfo();
-  const houseDeposit = playerDeposit; 
-
-  if (vaultInfo.availableLiquidity < houseDeposit) {
-    sendError(ws, 'Insufficient house liquidity', 'LIQUIDITY_ERROR');
+  // house deposit = player * 10, capped by custody
+  let vaultState;
+  try {
+    vaultState = await getVaultState();
+  } catch (err) {
+    console.error('Failed to fetch vault state:', err);
+    sendError(ws, 'Could not verify house liquidity', 'VAULT_ERROR');
     return;
   }
 
-  const { channelId, sessionId } = await YellowService.createChannel({
-    playerAddress,
-    playerDeposit,
-    houseDeposit,
-    tokenAddress,
+  // max deposit = 1% of custody
+  const maxDeposit = vaultState.custodyBalance / 100n;
+  if (playerDeposit > maxDeposit) {
+    sendError(ws, `Max deposit is ${maxDeposit.toString()} (1% of custody ${vaultState.custodyBalance})`, 'MAX_BET_EXCEEDED');
+    return;
+  }
+
+  let houseDeposit = playerDeposit * 10n;
+  if (houseDeposit > vaultState.custodyBalance) {
+    houseDeposit = vaultState.custodyBalance;
+  }
+
+  if (vaultState.custodyBalance < houseDeposit) {
+    sendError(ws, `Insufficient house liquidity. Custody has ${vaultState.custodyBalance}, needs ${houseDeposit}`, 'LIQUIDITY_ERROR');
+    return;
+  }
+
+  console.log(`[session] preparing for ${playerId}, deposit=${playerDeposit} house=${houseDeposit}`);
+
+  // create session in DB as PENDING (waiting for clearnode confirmation)
+  const session = await db.session.create({
+    data: {
+      playerId,
+      gameConfigSlug: null,
+      playerDeposit: playerDeposit.toString(),
+      houseDeposit: houseDeposit.toString(),
+      status: 'PENDING',
+    },
   });
 
-  const txHash = await VaultService.allocateToChannel(
-    VaultService.sessionIdToChannelId(sessionId),
-    houseDeposit
+  // store session state (not active yet)
+  sessions.set(session.id, {
+    playerId,
+    playerBalance: playerDeposit,
+    houseBalance: houseDeposit,
+    isActive: false,
+  });
+
+  // build nitrolite app session definition
+  const { signer, address: brokerAddr } = getBrokerSigner();
+
+  const definition = {
+    protocol: RPCProtocolVersion.NitroRPC_0_4,
+    participants: [playerId as Address, brokerAddr],
+    weights: [100, 0],
+    quorum: 100,
+    challenge: 0,
+    nonce: Date.now(),
+    application: APP_NAME,
+  };
+
+  const allocations = [
+    { participant: playerId as Address, asset: ASSET_SYMBOL, amount: playerDeposit.toString() },
+    { participant: brokerAddr, asset: ASSET_SYMBOL, amount: houseDeposit.toString() },
+  ];
+
+  const requestId = Math.floor(Math.random() * 1000000);
+  const timestamp = Date.now();
+
+  // broker signs the app session message
+  const brokerMsg = await createAppSessionMessage(
+    signer,
+    { definition, allocations } as any,
+    requestId,
+    timestamp,
   );
+  const brokerParsed = JSON.parse(brokerMsg);
+  const brokerSigs = brokerParsed.sig;
 
-  sessionPlayers.set(sessionId, playerId);
+  console.log(`[session] ${session.id} params ready, waiting for clearnode confirmation`);
 
-  send(ws, 'session_created', {
-    sessionId,
-    channelId,
+  // send params to frontend so it can create the session on clearnode
+  send(ws, 'session_params', {
+    sessionId: session.id,
     playerDeposit: playerDeposit.toString(),
     houseDeposit: houseDeposit.toString(),
-    allocationTx: txHash,
+    brokerAddress: brokerAddr,
+    definition,
+    allocations,
+    brokerSigs,
+    requestId,
+    timestamp,
   });
 }
 
-async function handlePlaceBet(ws: WebSocket, playerId: string, payload: PlaceBetPayload) {
-  const { sessionId, amount, commitment } = payload;
+// step 2: frontend confirmed the clearnode app session was created
+async function handleConfirmSession(ws: WebSocket, playerId: string, payload: ConfirmSessionPayload) {
+  const { sessionId, appSessionId } = payload;
 
-  if (sessionPlayers.get(sessionId) !== playerId) {
+  const session = sessions.get(sessionId);
+  if (!session || session.playerId !== playerId) {
+    sendError(ws, 'Session not found or not authorized', 'AUTH_ERROR');
+    return;
+  }
+
+  // mark session active
+  session.isActive = true;
+
+  await db.session.update({
+    where: { id: sessionId },
+    data: {
+      channelId: appSessionId,
+      status: 'ACTIVE',
+    },
+  });
+
+  console.log(`[session] ${sessionId} confirmed, appSession=${appSessionId}`);
+
+  send(ws, 'session_created', {
+    sessionId,
+    playerDeposit: session.playerBalance.toString(),
+    houseDeposit: session.houseBalance.toString(),
+  });
+}
+
+async function handleStartGame(ws: WebSocket, playerId: string, payload: StartGamePayload) {
+  const { sessionId, gameSlug } = payload;
+
+  const session = sessions.get(sessionId);
+  if (!session || session.playerId !== playerId) {
+    sendError(ws, 'Session not found or not authorized', 'AUTH_ERROR');
+    return;
+  }
+
+  if (!session.isActive) {
+    sendError(ws, 'Session not active', 'SESSION_CLOSED');
+    return;
+  }
+
+  // check no game already running
+  if (activeGames.has(sessionId)) {
+    sendError(ws, 'A game is already running in this session. End it first.', 'GAME_ACTIVE');
+    return;
+  }
+
+  const config = getGameConfig(gameSlug);
+  if (!config) {
+    sendError(ws, `Unknown game: ${gameSlug}`, 'INVALID_GAME');
+    return;
+  }
+
+  const primitive = getPrimitive(config.gameType);
+  const gameState = primitive.initializeState(config, session.playerBalance);
+  gameState.playerBalance = session.playerBalance;
+  gameState.houseBalance = session.houseBalance;
+
+  // store in activeGames
+  activeGames.set(sessionId, { config, state: gameState });
+
+  // update session in DB with current game slug
+  await db.session.update({
+    where: { id: sessionId },
+    data: { gameConfigSlug: gameSlug },
+  });
+
+  send(ws, 'game_started', {
+    gameSlug,
+    gameType: config.gameType,
+    maxRounds: gameState.maxRounds,
+    primitiveState: gameState.primitiveState,
+  });
+}
+
+async function handleEndGame(ws: WebSocket, playerId: string, payload: EndGamePayload) {
+  const { sessionId } = payload;
+
+  const session = sessions.get(sessionId);
+  if (!session || session.playerId !== playerId) {
+    sendError(ws, 'Session not found or not authorized', 'AUTH_ERROR');
+    return;
+  }
+
+  // clear active game, session stays open
+  activeGames.delete(sessionId);
+
+  // clear game slug in DB
+  await db.session.update({
+    where: { id: sessionId },
+    data: { gameConfigSlug: null },
+  });
+
+  send(ws, 'game_ended', { sessionId });
+}
+
+async function handlePlaceBet(ws: WebSocket, playerId: string, payload: PlaceBetPayload) {
+  const { sessionId, amount, commitment, choiceData } = payload;
+
+  const session = sessions.get(sessionId);
+  if (!session || session.playerId !== playerId) {
     sendError(ws, 'Not authorized for this session', 'AUTH_ERROR');
     return;
   }
 
-  const state = await YellowService.getSessionState(sessionId);
-  if (!state) {
-    sendError(ws, 'Session not found', 'NOT_FOUND');
+  const game = activeGames.get(sessionId);
+  if (!game) {
+    sendError(ws, 'No active game in this session', 'NO_GAME');
     return;
   }
 
-  if (state.status !== 'ACTIVE') {
-    sendError(ws, 'Session not active', 'SESSION_CLOSED');
+  const { config, state } = game;
+
+  if (!state.isActive) {
+    sendError(ws, 'Game not active', 'GAME_CLOSED');
     return;
   }
 
   const betAmount = BigInt(amount);
 
-  if (state.playerBalance < betAmount) {
-    sendError(ws, 'Insufficient balance', 'INSUFFICIENT_BALANCE');
+  // validate choice using primitive
+  const primitive = getPrimitive(config.gameType);
+  const choice = JSON.parse(choiceData);
+  const validation = primitive.validateChoice(choice, state, config);
+  if (!validation.valid) {
+    sendError(ws, validation.error || 'Invalid choice', 'INVALID_CHOICE');
     return;
   }
 
-  const roundNumber = state.stats.totalRounds + 1;
+  // track per-round bet amount
+  state.betAmount = betAmount;
 
+  const roundNumber = state.currentRound + 1;
+
+  // commit-reveal: player commits
   const round = await GameService.playerCommit({
     sessionId,
     roundNumber,
+    gameType: config.gameType,
     betAmount,
     commitment,
   });
 
-  const { houseCommitment } = await GameService.houseCommit({
-    roundId: round.id,
-  });
+  // house commits
+  const { houseCommitment } = await GameService.houseCommit(round.id);
 
   send(ws, 'bet_accepted', {
     roundId: round.id,
@@ -178,122 +421,262 @@ async function handlePlaceBet(ws: WebSocket, playerId: string, payload: PlaceBet
 }
 
 async function handleReveal(ws: WebSocket, playerId: string, payload: RevealPayload) {
-  const { sessionId, roundId, choice, nonce } = payload;
+  const { sessionId, roundId, choiceData, nonce } = payload;
 
-  if (sessionPlayers.get(sessionId) !== playerId) {
+  const session = sessions.get(sessionId);
+  if (!session || session.playerId !== playerId) {
     sendError(ws, 'Not authorized for this session', 'AUTH_ERROR');
     return;
   }
 
+  const game = activeGames.get(sessionId);
+  if (!game) {
+    sendError(ws, 'No active game in this session', 'NO_GAME');
+    return;
+  }
+
+  const { config, state } = game;
+
+  // player reveals
   try {
-    await GameService.playerReveal({
-      roundId,
-      choice,
-      nonce,
-    });
+    await GameService.playerReveal(roundId, choiceData, nonce);
   } catch (err) {
     const error = err as Error;
     sendError(ws, error.message, 'REVEAL_ERROR');
     return;
   }
 
-  const result = await GameService.houseRevealAndSettle({ roundId });
+  // house reveals and settles via primitive
+  const { outcome, updatedState } = await GameService.houseRevealAndSettle(roundId, state, config);
 
-  const state = await YellowService.getSessionState(sessionId);
-  if (!state) {
-    sendError(ws, 'Session state lost', 'STATE_ERROR');
-    return;
+  const betAmount = state.betAmount;
+  let newPlayerBalance = session.playerBalance;
+  let newHouseBalance = session.houseBalance;
+
+  if (outcome.gameOver) {
+    if (outcome.playerWon && outcome.payout > 0n) {
+      newPlayerBalance = session.playerBalance - betAmount + outcome.payout;
+      newHouseBalance = session.houseBalance + betAmount - outcome.payout;
+    } else if (!outcome.playerWon) {
+      newPlayerBalance = session.playerBalance - betAmount;
+      newHouseBalance = session.houseBalance + betAmount;
+    }
+  } else if (config.gameType === 'pick-number') {
+    // range: each round is independent
+    if (outcome.playerWon && outcome.payout > 0n) {
+      newPlayerBalance = session.playerBalance - betAmount + outcome.payout;
+      newHouseBalance = session.houseBalance + betAmount - outcome.payout;
+    } else {
+      newPlayerBalance = session.playerBalance - betAmount;
+      newHouseBalance = session.houseBalance + betAmount;
+    }
+
+    // bust detection
+    if (newPlayerBalance < betAmount) {
+      updatedState.isActive = false;
+    }
   }
 
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  const round = await (prismaQuery as any).round.findUnique({ where: { id: roundId } });
-  if (!round) {
-    sendError(ws, 'Round not found', 'NOT_FOUND');
-    return;
-  }
+  updatedState.playerBalance = newPlayerBalance;
+  updatedState.houseBalance = newHouseBalance;
 
-  const betAmount = BigInt(round.betAmount.toString());
-  let newPlayerBalance = state.playerBalance;
-  let newHouseBalance = state.houseBalance;
+  // update session-level balances
+  session.playerBalance = newPlayerBalance;
+  session.houseBalance = newHouseBalance;
 
-  if (result.playerWon) {
-    const payout = result.payout;
-    newPlayerBalance = state.playerBalance + payout - betAmount;
-    newHouseBalance = state.houseBalance - payout + betAmount;
-  } else {
-    newPlayerBalance = state.playerBalance - betAmount;
-    newHouseBalance = state.houseBalance + betAmount;
-  }
+  // update game state
+  game.state = updatedState;
 
-  const stateData = `0x${Buffer.from(JSON.stringify({
-    roundId,
-    result: result.result,
-  })).toString('hex')}` as Hex;
+  // persist to DB
+  await db.session.update({
+    where: { id: sessionId },
+    data: {
+      gameState: JSON.parse(JSON.stringify(updatedState, (_k, v) =>
+        typeof v === 'bigint' ? v.toString() : v
+      )),
+      status: session.isActive ? 'ACTIVE' : 'CLOSED',
+    },
+  });
 
-  await YellowService.updateChannelState(sessionId, newPlayerBalance, newHouseBalance, stateData);
+  const round = await db.round.findUnique({ where: { id: roundId } });
 
   send(ws, 'round_result', {
     roundId,
-    result: result.result,
-    playerWon: result.playerWon,
-    payout: result.payout.toString(),
+    outcome: {
+      rawValue: outcome.rawValue,
+      playerWon: outcome.playerWon,
+      payout: outcome.payout.toString(),
+      gameOver: outcome.gameOver,
+      canCashOut: outcome.canCashOut,
+      metadata: outcome.metadata,
+    },
     newPlayerBalance: newPlayerBalance.toString(),
     newHouseBalance: newHouseBalance.toString(),
-    houseNonce: round.houseNonce,
+    houseNonce: round?.houseNonce,
+    currentRound: updatedState.currentRound,
+    cumulativeMultiplier: updatedState.cumulativeMultiplier,
+    isActive: updatedState.isActive,
   });
 }
 
-async function handleCloseSession(ws: WebSocket, playerId: string, payload: CloseSessionPayload) {
+async function handleCashOut(ws: WebSocket, playerId: string, payload: CashOutPayload) {
   const { sessionId } = payload;
 
-  if (sessionPlayers.get(sessionId) !== playerId) {
+  const session = sessions.get(sessionId);
+  if (!session || session.playerId !== playerId) {
     sendError(ws, 'Not authorized for this session', 'AUTH_ERROR');
     return;
   }
 
-  const state = await YellowService.getSessionState(sessionId);
-  if (!state) {
-    sendError(ws, 'Session not found', 'NOT_FOUND');
+  const game = activeGames.get(sessionId);
+  if (!game) {
+    sendError(ws, 'No active game to cash out from', 'NO_GAME');
     return;
   }
 
-  const txHash = await YellowService.closeChannel(sessionId);
+  const { state } = game;
 
-  const channelId = VaultService.sessionIdToChannelId(sessionId);
-  const returnAmount = state.houseBalance;
+  if (!state.isActive) {
+    sendError(ws, 'Game not active', 'GAME_CLOSED');
+    return;
+  }
 
-  const settleTx = await VaultService.settleChannel(channelId, returnAmount);
+  // calculate cashout payout with house edge
+  const grossPayout = (state.betAmount * BigInt(Math.floor(state.cumulativeMultiplier * 10000))) / 10000n;
+  const netPayout = (grossPayout * BigInt(BPS_BASE - HOUSE_EDGE_BPS)) / BigInt(BPS_BASE);
 
-  sessionPlayers.delete(sessionId);
+  const newPlayerBalance = session.playerBalance - state.betAmount + netPayout;
+  const newHouseBalance = session.houseBalance + state.betAmount - netPayout;
+
+  // update session balances
+  session.playerBalance = newPlayerBalance;
+  session.houseBalance = newHouseBalance;
+
+  // end the game, but keep session open
+  activeGames.delete(sessionId);
+
+  // clear game slug in DB, session stays ACTIVE
+  await db.session.update({
+    where: { id: sessionId },
+    data: {
+      gameConfigSlug: null,
+      gameState: null,
+    },
+  });
+
+  send(ws, 'cashout_result', {
+    sessionId,
+    payout: netPayout.toString(),
+    multiplier: state.cumulativeMultiplier,
+    newPlayerBalance: newPlayerBalance.toString(),
+    newHouseBalance: newHouseBalance.toString(),
+  });
+}
+
+// step 1 of close: send final balances to frontend so it can close the clearnode session
+async function handleCloseSession(ws: WebSocket, playerId: string, payload: CloseSessionPayload) {
+  const { sessionId } = payload;
+
+  const session = sessions.get(sessionId);
+  if (!session || session.playerId !== playerId) {
+    sendError(ws, 'Session not found or not authorized', 'AUTH_ERROR');
+    return;
+  }
+
+  // if a game is running, end it (forfeit)
+  activeGames.delete(sessionId);
+
+  // get appSessionId from DB
+  const dbSession = await db.session.findUnique({ where: { id: sessionId } });
+  const { address: brokerAddr } = getBrokerSigner();
+
+  // send params so frontend can close the clearnode session
+  send(ws, 'close_params', {
+    sessionId,
+    appSessionId: dbSession?.channelId || null,
+    finalPlayerBalance: session.playerBalance.toString(),
+    finalHouseBalance: session.houseBalance.toString(),
+    brokerAddress: brokerAddr,
+  });
+}
+
+// step 2 of close: frontend confirmed clearnode session closed
+async function handleConfirmClose(ws: WebSocket, playerId: string, payload: ConfirmClosePayload) {
+  const { sessionId } = payload;
+
+  const session = sessions.get(sessionId);
+  if (!session || session.playerId !== playerId) {
+    sendError(ws, 'Session not found or not authorized', 'AUTH_ERROR');
+    return;
+  }
+
+  session.isActive = false;
+
+  await db.session.update({
+    where: { id: sessionId },
+    data: {
+      status: 'CLOSED',
+      closedAt: new Date(),
+      gameConfigSlug: null,
+    },
+  });
+
+  const finalPlayer = session.playerBalance.toString();
+  const finalHouse = session.houseBalance.toString();
+
+  // cleanup
+  sessions.delete(sessionId);
+
+  console.log(`[session] ${sessionId} closed, player=${finalPlayer} house=${finalHouse}`);
 
   send(ws, 'session_closed', {
     sessionId,
-    closeTx: txHash,
-    settleTx,
-    finalPlayerBalance: state.playerBalance.toString(),
-    finalHouseBalance: state.houseBalance.toString(),
-    stats: state.stats,
+    finalPlayerBalance: finalPlayer,
+    finalHouseBalance: finalHouse,
   });
 }
 
 async function handleGetSession(ws: WebSocket, payload: { sessionId: string }) {
-  const state = await YellowService.getSessionState(payload.sessionId);
+  const session = sessions.get(payload.sessionId);
+  const game = activeGames.get(payload.sessionId);
 
-  if (!state) {
-    sendError(ws, 'Session not found', 'NOT_FOUND');
+  if (!session) {
+    // try loading from DB
+    const dbSession = await db.session.findUnique({ where: { id: payload.sessionId } });
+    if (!dbSession) {
+      sendError(ws, 'Session not found', 'NOT_FOUND');
+      return;
+    }
+
+    send(ws, 'session_state', {
+      sessionId: dbSession.id,
+      status: dbSession.status,
+      playerBalance: dbSession.playerDeposit,
+      houseBalance: dbSession.houseDeposit,
+      gameState: dbSession.gameState,
+    });
     return;
   }
 
   send(ws, 'session_state', {
-    ...state,
-    playerBalance: state.playerBalance.toString(),
-    houseBalance: state.houseBalance.toString(),
+    sessionId: payload.sessionId,
+    status: session.isActive ? 'ACTIVE' : 'CLOSED',
+    playerBalance: session.playerBalance.toString(),
+    houseBalance: session.houseBalance.toString(),
+    activeGame: game ? {
+      gameType: game.config.gameType,
+      currentRound: game.state.currentRound,
+      cumulativeMultiplier: game.state.cumulativeMultiplier,
+      primitiveState: game.state.primitiveState,
+    } : null,
   });
 }
 
-export function registerGameHandler(fastify: FastifyInstance) {
+// registered as a fastify plugin so WS decorator is available
+export const gameHandlerPlugin = async (fastify: FastifyInstance) => {
   fastify.get('/ws/game', { websocket: true }, (socket, req) => {
-    const playerId = req.headers['x-player-address'] as string || 'anonymous';
+    const query = req.query as Record<string, string>;
+    const playerId = query.address || 'anonymous';
 
     console.log(`Player connected: ${playerId}`);
     connections.set(playerId, socket);
@@ -322,8 +705,8 @@ export function registerGameHandler(fastify: FastifyInstance) {
       console.error(`Socket error for ${playerId}:`, err);
     });
   });
-}
+};
 
 export const GameHandler = {
-  registerGameHandler,
+  gameHandlerPlugin,
 };

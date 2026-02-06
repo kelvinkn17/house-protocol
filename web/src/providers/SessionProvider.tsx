@@ -1,0 +1,471 @@
+// session-first provider: one deposit, play any game
+// wraps the play layout so all game components share the same session
+// integrates with Nitrolite clearnode for real state channel deposits
+
+import {
+  createContext,
+  useContext,
+  useState,
+  useRef,
+  useCallback,
+  type ReactNode,
+} from 'react'
+import { GameSocket } from '@/hooks/useGameSocket'
+import { ClearnodeClient } from '@/lib/clearnode'
+import { generateNonce, createCommitment } from '@/lib/game'
+import { useAuthContext } from '@/providers/AuthProvider'
+import { useWallets } from '@privy-io/react-auth'
+import { createWalletClient, custom } from 'viem'
+import { sepolia } from 'viem/chains'
+import type { Address } from 'viem'
+
+// session lifecycle
+export type SessionPhase =
+  | 'no_wallet'
+  | 'idle'
+  | 'connecting'
+  | 'creating'
+  | 'active'
+  | 'closing'
+  | 'closed'
+  | 'error'
+
+// game lifecycle within a session
+export type GamePhase =
+  | 'none'
+  | 'starting'
+  | 'active'
+  | 'playing_round'
+
+export interface RoundResult {
+  roundId: string
+  playerWon: boolean
+  payout: string
+  gameOver: boolean
+  canCashOut: boolean
+  metadata: Record<string, unknown>
+  houseNonce: string
+}
+
+export interface ActiveGame {
+  slug: string
+  gameType: string
+  maxRounds: number
+  primitiveState: Record<string, unknown>
+  currentRound: number
+  cumulativeMultiplier: number
+}
+
+export interface SessionStats {
+  wins: number
+  losses: number
+  totalRounds: number
+}
+
+interface SessionContextValue {
+  // session level
+  sessionPhase: SessionPhase
+  sessionId: string | null
+  playerBalance: string
+  houseBalance: string
+  depositAmount: string
+  sessionError: string | null
+
+  // game level
+  activeGame: ActiveGame | null
+  gamePhase: GamePhase
+  lastResult: RoundResult | null
+  stats: SessionStats
+
+  // methods
+  openSession: (deposit: string) => Promise<void>
+  startGame: (slug: string) => Promise<void>
+  endGame: () => Promise<void>
+  playRound: (choice: Record<string, unknown>, betAmount?: string) => Promise<RoundResult | null>
+  cashOut: () => Promise<void>
+  closeSession: () => Promise<void>
+  reset: () => void
+}
+
+const SessionContext = createContext<SessionContextValue | null>(null)
+
+export function useSession() {
+  const ctx = useContext(SessionContext)
+  if (!ctx) throw new Error('useSession must be used within SessionProvider')
+  return ctx
+}
+
+export function SessionProvider({ children }: { children: ReactNode }) {
+  const { walletAddress } = useAuthContext()
+  const { wallets } = useWallets()
+
+  // session state
+  const [sessionPhase, setSessionPhase] = useState<SessionPhase>(walletAddress ? 'idle' : 'no_wallet')
+  const [sessionId, setSessionId] = useState<string | null>(null)
+  const [playerBalance, setPlayerBalance] = useState('0')
+  const [houseBalance, setHouseBalance] = useState('0')
+  const [depositAmount, setDepositAmount] = useState('0')
+  const [sessionError, setSessionError] = useState<string | null>(null)
+
+  // game state
+  const [activeGame, setActiveGame] = useState<ActiveGame | null>(null)
+  const [gamePhase, setGamePhase] = useState<GamePhase>('none')
+  const [lastResult, setLastResult] = useState<RoundResult | null>(null)
+  const [stats, setStats] = useState<SessionStats>({ wins: 0, losses: 0, totalRounds: 0 })
+
+  // ephemeral round data
+  const roundRef = useRef<{ nonce: string; choiceData: string; roundId: string | null }>({
+    nonce: '', choiceData: '', roundId: null,
+  })
+  const errorUnsub = useRef<(() => void) | null>(null)
+
+  // get a viem walletClient from the Privy wallet (for clearnode EIP712 auth)
+  const getWalletClient = useCallback(async () => {
+    const wallet = wallets[0]
+    if (!wallet) throw new Error('No wallet available')
+
+    const provider = await wallet.getEthereumProvider()
+    return createWalletClient({
+      account: wallet.address as Address,
+      chain: sepolia,
+      transport: custom(provider),
+    })
+  }, [wallets])
+
+  // full flow: backend validates + signs as broker, frontend creates app session on clearnode
+  const openSession = useCallback(async (deposit: string) => {
+    if (!walletAddress) {
+      setSessionPhase('no_wallet')
+      return
+    }
+
+    setSessionError(null)
+    setSessionPhase('connecting')
+
+    try {
+      // connect to our backend WS
+      await GameSocket.connect(walletAddress)
+
+      if (errorUnsub.current) errorUnsub.current()
+      errorUnsub.current = GameSocket.subscribe('error', (payload: unknown) => {
+        const p = payload as { error: string }
+        setSessionError(p.error)
+      })
+
+      setSessionPhase('creating')
+
+      // step 1: ask backend to validate deposit and sign as broker
+      GameSocket.send('create_session', { depositAmount: deposit })
+
+      const params = await GameSocket.waitForOrError<{
+        sessionId: string
+        playerDeposit: string
+        houseDeposit: string
+        brokerAddress: string
+        definition: Record<string, unknown>
+        allocations: Array<{ participant: string; asset: string; amount: string }>
+        brokerSigs: string[]
+        requestId: number
+        timestamp: number
+      }>('session_params')
+
+      // step 2: authenticate with clearnode using player's wallet
+      const wc = await getWalletClient()
+      await ClearnodeClient.authenticate(walletAddress as Address, wc)
+
+      // step 3: create app session on clearnode (player signs + broker sigs combined)
+      const appSessionId = await ClearnodeClient.openAppSession(
+        params.definition,
+        params.allocations,
+        params.brokerSigs,
+        params.requestId,
+        params.timestamp,
+      )
+
+      // step 4: tell backend the clearnode session is confirmed
+      GameSocket.send('confirm_session', {
+        sessionId: params.sessionId,
+        appSessionId,
+      })
+
+      // step 5: wait for backend to acknowledge
+      const result = await GameSocket.waitForOrError<{
+        sessionId: string
+        playerDeposit: string
+        houseDeposit: string
+      }>('session_created')
+
+      setSessionId(result.sessionId)
+      setPlayerBalance(result.playerDeposit)
+      setHouseBalance(result.houseDeposit)
+      setDepositAmount(result.playerDeposit)
+      setStats({ wins: 0, losses: 0, totalRounds: 0 })
+      setLastResult(null)
+      setActiveGame(null)
+      setGamePhase('none')
+      setSessionPhase('active')
+    } catch (err) {
+      setSessionError((err as Error).message)
+      setSessionPhase('error')
+    }
+  }, [walletAddress, getWalletClient])
+
+  const startGame = useCallback(async (slug: string) => {
+    if (!sessionId || sessionPhase !== 'active') return
+
+    setSessionError(null)
+    setGamePhase('starting')
+
+    try {
+      GameSocket.send('start_game', { sessionId, gameSlug: slug })
+
+      const result = await GameSocket.waitForOrError<{
+        gameSlug: string
+        gameType: string
+        maxRounds: number
+        primitiveState: Record<string, unknown>
+      }>('game_started')
+
+      setActiveGame({
+        slug,
+        gameType: result.gameType,
+        maxRounds: result.maxRounds,
+        primitiveState: result.primitiveState || {},
+        currentRound: 0,
+        cumulativeMultiplier: 1,
+      })
+      setLastResult(null)
+      setGamePhase('active')
+    } catch (err) {
+      setSessionError((err as Error).message)
+      setGamePhase('none')
+    }
+  }, [sessionId, sessionPhase])
+
+  const endGame = useCallback(async () => {
+    if (!sessionId) return
+
+    try {
+      GameSocket.send('end_game', { sessionId })
+      await GameSocket.waitForOrError('game_ended')
+    } catch {
+      // best effort
+    }
+
+    setActiveGame(null)
+    setGamePhase('none')
+    setLastResult(null)
+  }, [sessionId])
+
+  const playRound = useCallback(async (choice: Record<string, unknown>, betAmount?: string) => {
+    if (!sessionId || gamePhase !== 'active') return null
+
+    setGamePhase('playing_round')
+    setSessionError(null)
+
+    try {
+      const choiceData = JSON.stringify(choice)
+      const nonce = generateNonce()
+      const commitment = createCommitment(choiceData, nonce)
+
+      roundRef.current = { nonce, choiceData, roundId: null }
+
+      // commit
+      GameSocket.send('place_bet', {
+        sessionId,
+        amount: betAmount || playerBalance,
+        choiceData,
+        commitment,
+      })
+
+      const betResult = await GameSocket.waitForOrError<{
+        roundId: string
+        roundNumber: number
+        houseCommitment: string
+      }>('bet_accepted')
+
+      roundRef.current.roundId = betResult.roundId
+
+      // reveal
+      GameSocket.send('reveal', {
+        sessionId,
+        roundId: betResult.roundId,
+        choiceData,
+        nonce,
+      })
+
+      const roundResult = await GameSocket.waitForOrError<{
+        roundId: string
+        outcome: {
+          rawValue: number
+          playerWon: boolean
+          payout: string
+          gameOver: boolean
+          canCashOut: boolean
+          metadata: Record<string, unknown>
+        }
+        newPlayerBalance: string
+        newHouseBalance: string
+        houseNonce: string
+        currentRound: number
+        cumulativeMultiplier: number
+        isActive: boolean
+      }>('round_result')
+
+      const result: RoundResult = {
+        roundId: roundResult.roundId,
+        playerWon: roundResult.outcome.playerWon,
+        payout: roundResult.outcome.payout,
+        gameOver: roundResult.outcome.gameOver,
+        canCashOut: roundResult.outcome.canCashOut,
+        metadata: roundResult.outcome.metadata,
+        houseNonce: roundResult.houseNonce,
+      }
+
+      setLastResult(result)
+      setPlayerBalance(roundResult.newPlayerBalance)
+      setHouseBalance(roundResult.newHouseBalance)
+      setActiveGame(prev => prev ? {
+        ...prev,
+        currentRound: roundResult.currentRound,
+        cumulativeMultiplier: roundResult.cumulativeMultiplier,
+      } : null)
+      setStats(prev => ({
+        wins: prev.wins + (result.playerWon ? 1 : 0),
+        losses: prev.losses + (result.playerWon ? 0 : 1),
+        totalRounds: prev.totalRounds + 1,
+      }))
+
+      if (!roundResult.isActive) {
+        setGamePhase('none')
+      } else {
+        setGamePhase('active')
+      }
+
+      return result
+    } catch (err) {
+      setSessionError((err as Error).message)
+      setGamePhase('active')
+      return null
+    }
+  }, [sessionId, playerBalance, gamePhase])
+
+  const cashOut = useCallback(async () => {
+    if (!sessionId) return
+
+    setSessionError(null)
+
+    try {
+      GameSocket.send('cashout', { sessionId })
+
+      const result = await GameSocket.waitForOrError<{
+        sessionId: string
+        payout: string
+        multiplier: number
+        newPlayerBalance: string
+        newHouseBalance: string
+      }>('cashout_result')
+
+      setPlayerBalance(result.newPlayerBalance)
+      setHouseBalance(result.newHouseBalance)
+
+      // game ended, session stays active
+      setActiveGame(null)
+      setGamePhase('none')
+    } catch (err) {
+      setSessionError((err as Error).message)
+    }
+  }, [sessionId])
+
+  // close flow: backend sends close_params, frontend closes clearnode session, confirms back
+  const closeSession = useCallback(async () => {
+    if (!sessionId) return
+
+    setSessionPhase('closing')
+    try {
+      // step 1: ask backend for final balances + appSessionId
+      GameSocket.send('close_session', { sessionId })
+
+      const closeParams = await GameSocket.waitForOrError<{
+        sessionId: string
+        appSessionId: string | null
+        finalPlayerBalance: string
+        finalHouseBalance: string
+        brokerAddress: string
+      }>('close_params')
+
+      // step 2: close the clearnode app session (if we have one)
+      if (closeParams.appSessionId && walletAddress) {
+        try {
+          await ClearnodeClient.closeAppSession(
+            closeParams.appSessionId,
+            walletAddress as Address,
+            closeParams.brokerAddress as Address,
+            closeParams.finalPlayerBalance,
+            closeParams.finalHouseBalance,
+          )
+        } catch (err) {
+          // clearnode close failed, but we still confirm with backend
+          // the clearnode session might already be closed or expired
+          console.warn('[session] clearnode close failed:', (err as Error).message)
+        }
+      }
+
+      // step 3: tell backend to finalize
+      GameSocket.send('confirm_close', { sessionId: closeParams.sessionId })
+
+      const result = await GameSocket.waitForOrError<{
+        sessionId: string
+        finalPlayerBalance: string
+        finalHouseBalance: string
+      }>('session_closed')
+
+      setPlayerBalance(result.finalPlayerBalance)
+      setHouseBalance(result.finalHouseBalance)
+      setActiveGame(null)
+      setGamePhase('none')
+      setSessionPhase('closed')
+    } catch (err) {
+      setSessionError((err as Error).message)
+      setSessionPhase('error')
+    }
+  }, [sessionId, walletAddress])
+
+  const reset = useCallback(() => {
+    ClearnodeClient.disconnect()
+    setSessionPhase(walletAddress ? 'idle' : 'no_wallet')
+    setSessionError(null)
+    setSessionId(null)
+    setPlayerBalance('0')
+    setHouseBalance('0')
+    setDepositAmount('0')
+    setActiveGame(null)
+    setGamePhase('none')
+    setLastResult(null)
+    setStats({ wins: 0, losses: 0, totalRounds: 0 })
+  }, [walletAddress])
+
+  return (
+    <SessionContext.Provider value={{
+      sessionPhase,
+      sessionId,
+      playerBalance,
+      houseBalance,
+      depositAmount,
+      sessionError,
+      activeGame,
+      gamePhase,
+      lastResult,
+      stats,
+      openSession,
+      startGame,
+      endGame,
+      playRound,
+      cashOut,
+      closeSession,
+      reset,
+    }}>
+      {children}
+    </SessionContext.Provider>
+  )
+}
