@@ -451,12 +451,17 @@ export function SessionProvider({ children }: { children: ReactNode }) {
       // step 2: close the clearnode app session (if we have one)
       if (closeParams.appSessionId && walletAddress) {
         try {
+          // clearnode uses human-readable amounts, backend sends 6-decimal raw values
+          const DECIMALS = 1000000n
+          const playerAmt = (BigInt(closeParams.finalPlayerBalance) / DECIMALS).toString()
+          const houseAmt = (BigInt(closeParams.finalHouseBalance) / DECIMALS).toString()
+
           await ClearnodeClient.closeAppSession(
             closeParams.appSessionId,
             walletAddress as Address,
             closeParams.brokerAddress as Address,
-            closeParams.finalPlayerBalance,
-            closeParams.finalHouseBalance,
+            playerAmt,
+            houseAmt,
           )
         } catch (err) {
           // clearnode close failed, but we still confirm with backend

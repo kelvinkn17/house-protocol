@@ -219,7 +219,10 @@ function SessionBar() {
               className="w-20 px-2 py-1.5 text-xs font-black text-black bg-white outline-none [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none"
               min="1"
             />
-            <span className="px-2 py-1.5 text-[10px] font-mono text-black/40 bg-black/5 border-l-2 border-black">USDH</span>
+            <span className="px-2 py-1.5 text-[10px] font-mono text-black/40 bg-black/5 border-l-2 border-black flex items-center gap-1">
+              <img src="/assets/images/usdh.png" alt="USDH" className="w-4.5 h-4.5 rounded-full" />
+              USDH
+            </span>
           </div>
           <button
             onClick={() => {
@@ -293,9 +296,10 @@ function SessionBar() {
           <div>
             <p className="text-xs font-mono text-black/40 uppercase mb-0.5">Session Complete</p>
             <p className={cnm(
-              'text-xl font-black',
+              'text-xl font-black flex items-center gap-1.5',
               isProfit ? 'text-[#7BA318]' : 'text-[#FF6B9D]',
             )}>
+              <img src="/assets/images/usdh.png" alt="USDH" className="w-6 h-6 rounded-full" />
               {isProfit ? '+' : ''}{netResult.toFixed(2)} USDH
             </p>
           </div>
@@ -338,7 +342,10 @@ function SessionBar() {
       <div className="flex items-center gap-5">
         <div>
           <p className="text-[10px] font-mono text-black/40 uppercase">Balance</p>
-          <p className="text-lg font-black text-black">{balanceFormatted} USDH</p>
+          <p className="text-lg font-black text-black flex items-center gap-1.5">
+            <img src="/assets/images/usdh.png" alt="USDH" className="w-6 h-6 rounded-full" />
+            {balanceFormatted} USDH
+          </p>
         </div>
         <div className="h-6 w-px bg-black/10" />
         <div className="flex items-center gap-3 text-[10px] font-mono text-black/40">

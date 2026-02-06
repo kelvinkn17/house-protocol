@@ -12,6 +12,7 @@ import { ThemeProvider } from '../providers/ThemeProvider'
 import PrivyProvider from '../providers/PrivyProvider'
 import { AuthProvider } from '../providers/AuthProvider'
 import { SoundProvider } from '../providers/SoundProvider'
+import { ToastProvider } from '../components/Toast'
 import ErrorPage from '../components/ErrorPage'
 import MobileOverlay from '../components/MobileOverlay'
 
@@ -90,6 +91,7 @@ function RootDocument({ children }: { children: React.ReactNode }) {
             <PrivyProvider>
               <AuthProvider>
                 <SoundProvider>
+                <ToastProvider>
                 <LenisSmoothScrollProvider />
                 {children}
                 <TanStackDevtools
@@ -104,6 +106,7 @@ function RootDocument({ children }: { children: React.ReactNode }) {
                     TanStackQueryDevtools,
                   ]}
                 />
+                </ToastProvider>
                 </SoundProvider>
               </AuthProvider>
             </PrivyProvider>

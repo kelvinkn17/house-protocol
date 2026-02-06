@@ -230,9 +230,11 @@ async function handleCreateSession(ws: WebSocket, playerId: string, payload: Cre
     application: APP_NAME,
   };
 
+  // clearnode expects human-readable amounts, not 6-decimal on-chain units
+  const DECIMALS = 1000000n;
   const allocations = [
-    { participant: playerId as Address, asset: ASSET_SYMBOL, amount: playerDeposit.toString() },
-    { participant: brokerAddr, asset: ASSET_SYMBOL, amount: houseDeposit.toString() },
+    { participant: playerId as Address, asset: ASSET_SYMBOL, amount: (playerDeposit / DECIMALS).toString() },
+    { participant: brokerAddr, asset: ASSET_SYMBOL, amount: (houseDeposit / DECIMALS).toString() },
   ];
 
   const requestId = Math.floor(Math.random() * 1000000);
@@ -305,6 +307,11 @@ async function handleStartGame(ws: WebSocket, playerId: string, payload: StartGa
 
   if (!session.isActive) {
     sendError(ws, 'Session not active', 'SESSION_CLOSED');
+    return;
+  }
+
+  if (session.playerBalance <= 0n) {
+    sendError(ws, 'No balance remaining. Close your session to withdraw.', 'INSUFFICIENT_BALANCE');
     return;
   }
 
@@ -387,6 +394,16 @@ async function handlePlaceBet(ws: WebSocket, playerId: string, payload: PlaceBet
 
   const betAmount = BigInt(amount);
 
+  if (betAmount <= 0n) {
+    sendError(ws, 'Bet amount must be greater than zero', 'INVALID_BET');
+    return;
+  }
+
+  if (betAmount > session.playerBalance) {
+    sendError(ws, `Bet ${betAmount} exceeds balance ${session.playerBalance}`, 'INSUFFICIENT_BALANCE');
+    return;
+  }
+
   // validate choice using primitive
   const primitive = getPrimitive(config.gameType);
   const choice = JSON.parse(choiceData);
@@ -453,7 +470,8 @@ async function handleReveal(ws: WebSocket, playerId: string, payload: RevealPayl
   let newPlayerBalance = session.playerBalance;
   let newHouseBalance = session.houseBalance;
 
-  if (outcome.gameOver) {
+  // settle balances for all game types uniformly
+  if (outcome.gameOver || outcome.playerWon !== undefined) {
     if (outcome.playerWon && outcome.payout > 0n) {
       newPlayerBalance = session.playerBalance - betAmount + outcome.payout;
       newHouseBalance = session.houseBalance + betAmount - outcome.payout;
@@ -461,20 +479,11 @@ async function handleReveal(ws: WebSocket, playerId: string, payload: RevealPayl
       newPlayerBalance = session.playerBalance - betAmount;
       newHouseBalance = session.houseBalance + betAmount;
     }
-  } else if (config.gameType === 'pick-number') {
-    // range: each round is independent
-    if (outcome.playerWon && outcome.payout > 0n) {
-      newPlayerBalance = session.playerBalance - betAmount + outcome.payout;
-      newHouseBalance = session.houseBalance + betAmount - outcome.payout;
-    } else {
-      newPlayerBalance = session.playerBalance - betAmount;
-      newHouseBalance = session.houseBalance + betAmount;
-    }
+  }
 
-    // bust detection
-    if (newPlayerBalance < betAmount) {
-      updatedState.isActive = false;
-    }
+  // universal bust detection, applies to every game type
+  if (newPlayerBalance <= 0n) {
+    updatedState.isActive = false;
   }
 
   updatedState.playerBalance = newPlayerBalance;
@@ -612,17 +621,19 @@ async function handleConfirmClose(ws: WebSocket, playerId: string, payload: Conf
 
   session.isActive = false;
 
+  const finalPlayer = session.playerBalance.toString();
+  const finalHouse = session.houseBalance.toString();
+
   await db.session.update({
     where: { id: sessionId },
     data: {
       status: 'CLOSED',
       closedAt: new Date(),
       gameConfigSlug: null,
+      finalPlayerBalance: finalPlayer,
+      finalHouseBalance: finalHouse,
     },
   });
-
-  const finalPlayer = session.playerBalance.toString();
-  const finalHouse = session.houseBalance.toString();
 
   // cleanup
   sessions.delete(sessionId);

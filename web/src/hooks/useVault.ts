@@ -120,15 +120,18 @@ export function useDeposit() {
   const { wallets } = useWallets()
   const [txStatus, setTxStatus] = useState<TxStatus>('idle')
   const [txError, setTxError] = useState<string | null>(null)
+  const [txHash, setTxHash] = useState<string | null>(null)
 
   const reset = useCallback(() => {
     setTxStatus('idle')
     setTxError(null)
+    setTxHash(null)
   }, [])
 
   const mutation = useMutation({
     mutationFn: async ({ amount, userAddress }: { amount: string; userAddress: Address }) => {
       setTxError(null)
+      setTxHash(null)
       if (!VAULT_ADDRESS || !USDH_ADDRESS) throw new Error('Contract addresses not configured. Check VITE_HOUSE_VAULT_ADDRESS and VITE_USDH_TOKEN_ADDRESS in .env')
 
       const wallet = wallets.find(w => w.address?.toLowerCase() === userAddress.toLowerCase()) || wallets[0]
@@ -179,6 +182,7 @@ export function useDeposit() {
       setTxStatus('confirming')
       await publicClient.waitForTransactionReceipt({ hash: depositHash })
 
+      setTxHash(depositHash)
       setTxStatus('success')
       return depositHash
     },
@@ -191,7 +195,7 @@ export function useDeposit() {
     },
   })
 
-  return { ...mutation, txStatus, txError, reset }
+  return { ...mutation, txStatus, txError, txHash, reset }
 }
 
 export function useWithdraw() {
@@ -199,15 +203,18 @@ export function useWithdraw() {
   const { wallets } = useWallets()
   const [txStatus, setTxStatus] = useState<TxStatus>('idle')
   const [txError, setTxError] = useState<string | null>(null)
+  const [txHash, setTxHash] = useState<string | null>(null)
 
   const reset = useCallback(() => {
     setTxStatus('idle')
     setTxError(null)
+    setTxHash(null)
   }, [])
 
   const mutation = useMutation({
     mutationFn: async ({ shares, userAddress }: { shares: string; userAddress: Address }) => {
       setTxError(null)
+      setTxHash(null)
       if (!VAULT_ADDRESS) throw new Error('Contract address not configured. Check VITE_HOUSE_VAULT_ADDRESS in .env')
 
       const wallet = wallets.find(w => w.address?.toLowerCase() === userAddress.toLowerCase()) || wallets[0]
@@ -222,7 +229,7 @@ export function useWithdraw() {
         transport: custom(provider),
       })
 
-      const shareAmount = parseUnits(shares, 6)
+      const shareAmount = parseUnits(shares, 9)
 
       setTxStatus('withdrawing')
       const redeemHash = await walletClient.writeContract({
@@ -235,6 +242,7 @@ export function useWithdraw() {
       setTxStatus('confirming')
       await getPublicClient().waitForTransactionReceipt({ hash: redeemHash })
 
+      setTxHash(redeemHash)
       setTxStatus('success')
       return redeemHash
     },
@@ -247,5 +255,5 @@ export function useWithdraw() {
     },
   })
 
-  return { ...mutation, txStatus, txError, reset }
+  return { ...mutation, txStatus, txError, txHash, reset }
 }

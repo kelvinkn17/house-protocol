@@ -99,6 +99,8 @@ model Session {
   houseDeposit  String    // raw bigint
   status        String    @default("ACTIVE") // ACTIVE, CLOSED, EXPIRED
   gameState     Json?     // serialized GameSessionState
+  finalPlayerBalance String? // persisted on session close
+  finalHouseBalance  String? // persisted on session close
   closedAt      DateTime?
   createdAt     DateTime  @default(now())
   updatedAt     DateTime  @updatedAt
