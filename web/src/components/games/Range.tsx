@@ -3,9 +3,11 @@ import { cnm } from '@/utils/style'
 import { useSound } from '@/providers/SoundProvider'
 import AnimateComponent from '@/components/elements/AnimateComponent'
 import SdkPanel from './SdkPanel'
+import SessionGate from './SessionGate'
+import { useGameSession } from '@/hooks/useGameSession'
 
 type Mode = 'over' | 'under' | 'range'
-type Phase = 'idle' | 'rolling' | 'result'
+type AnimPhase = 'idle' | 'rolling' | 'result'
 
 const SDK_TABS = [
   {
@@ -64,15 +66,18 @@ console.log(result.payout) // amount won`,
 
 export default function Range() {
   const { play } = useSound()
+  const gameSession = useGameSession()
   const [mode, setMode] = useState<Mode>('over')
   const [target, setTarget] = useState(50)
   const [rangeStart, setRangeStart] = useState(30)
   const [rangeEnd, setRangeEnd] = useState(70)
-  const [phase, setPhase] = useState<Phase>('idle')
-  const [result, setResult] = useState<number | null>(null)
+  const [animPhase, setAnimPhase] = useState<AnimPhase>('idle')
+  const [displayResult, setDisplayResult] = useState<number | null>(null)
   const [won, setWon] = useState(false)
-  const [betAmount, setBetAmount] = useState('100')
   const intervalRef = useRef<ReturnType<typeof setInterval> | null>(null)
+
+  const { phase, session, stats, lastResult } = gameSession
+  const isActive = phase === 'active' || phase === 'playing_round'
 
   // slider drag state
   const barRef = useRef<HTMLDivElement>(null)
@@ -83,7 +88,7 @@ export default function Range() {
       case 'over':
         return (100 - target) / 100
       case 'under':
-        return target / 100
+        return (target - 1) / 100
       case 'range':
         return Math.max(0, rangeEnd - rangeStart + 1) / 100
     }
@@ -157,41 +162,49 @@ export default function Range() {
     [mode, rangeStart, rangeEnd, getValueFromPosition],
   )
 
-  const roll = useCallback(() => {
+  const roll = useCallback(async () => {
     play('action')
-    setPhase('rolling')
-    setResult(null)
+    setAnimPhase('rolling')
+    setDisplayResult(null)
 
+    // ticker animation while waiting for backend
     let count = 0
     intervalRef.current = setInterval(() => {
-      setResult(Math.floor(Math.random() * 100) + 1)
+      setDisplayResult(Math.floor(Math.random() * 100) + 1)
       play('tick')
       count++
-      if (count >= 15) {
+      if (count >= 30) {
         if (intervalRef.current) clearInterval(intervalRef.current)
-        const finalResult = Math.floor(Math.random() * 100) + 1
-        setResult(finalResult)
-
-        const isWin = (() => {
-          switch (mode) {
-            case 'over':
-              return finalResult > target
-            case 'under':
-              return finalResult < target
-            case 'range':
-              return finalResult >= rangeStart && finalResult <= rangeEnd
-          }
-        })()
-
-        setWon(isWin)
-        setPhase('result')
-        play(isWin ? 'win' : 'lose')
       }
     }, 50)
-  }, [mode, target, rangeStart, rangeEnd, play])
 
-  const reset = () => {
-    roll()
+    // send to backend
+    const choice: Record<string, unknown> = { mode, target }
+    if (mode === 'range') {
+      choice.rangeStart = rangeStart
+      choice.rangeEnd = rangeEnd
+    }
+
+    const result = await gameSession.playRound(choice)
+
+    // stop ticker
+    if (intervalRef.current) clearInterval(intervalRef.current)
+
+    if (result) {
+      const rollValue = (result.metadata.roll as number) || 50
+      setDisplayResult(rollValue)
+      setWon(result.playerWon)
+      setAnimPhase('result')
+      play(result.playerWon ? 'win' : 'lose')
+    } else {
+      setAnimPhase('idle')
+    }
+  }, [mode, target, rangeStart, rangeEnd, play, gameSession])
+
+  const handleReset = () => {
+    gameSession.reset()
+    setAnimPhase('idle')
+    setDisplayResult(null)
   }
 
   return (
@@ -201,254 +214,247 @@ export default function Range() {
           className="bg-white border-2 border-black rounded-2xl p-6"
           style={{ boxShadow: '6px 6px 0px black' }}
         >
-          {/* result number */}
-          <div className="flex flex-col items-center justify-center py-6">
-            <div
-              className={cnm(
-                'w-28 h-28 rounded-2xl border-4 border-black flex items-center justify-center mb-4 transition-all duration-200',
-                phase === 'result' && won && 'bg-[#CDFF57]',
-                phase === 'result' && !won && 'bg-[#FF6B9D]',
-                phase === 'rolling' && 'bg-black/10',
-                phase === 'idle' && 'bg-black/5',
-              )}
-              style={{ boxShadow: '4px 4px 0px black' }}
-            >
-              <span
+          <SessionGate
+            phase={phase}
+            error={gameSession.error}
+            stats={stats}
+            playerBalance={session.playerBalance}
+            cumulativeMultiplier={1}
+            sessionId={session.sessionId}
+            onOpenSession={(amount) => gameSession.openSession('range', amount)}
+            onReset={handleReset}
+            accentColor="#dcb865"
+          >
+            {/* result number */}
+            <div className="flex flex-col items-center justify-center py-6">
+              <div
                 className={cnm(
-                  'text-4xl font-black',
-                  phase === 'rolling' ? 'text-black/30' : 'text-black',
+                  'w-28 h-28 rounded-2xl border-4 border-black flex items-center justify-center mb-4 transition-all duration-200',
+                  animPhase === 'result' && won && 'bg-[#CDFF57]',
+                  animPhase === 'result' && !won && 'bg-[#FF6B9D]',
+                  animPhase === 'rolling' && 'bg-black/10',
+                  animPhase === 'idle' && 'bg-black/5',
                 )}
+                style={{ boxShadow: '4px 4px 0px black' }}
               >
-                {result ?? '?'}
-              </span>
+                <span
+                  className={cnm(
+                    'text-4xl font-black',
+                    animPhase === 'rolling' ? 'text-black/30' : 'text-black',
+                  )}
+                >
+                  {displayResult ?? '?'}
+                </span>
+              </div>
+
+              {animPhase === 'result' && (
+                <p
+                  className={cnm(
+                    'text-sm font-black',
+                    won ? 'text-[#7BA318]' : 'text-[#FF6B9D]',
+                  )}
+                >
+                  {won ? `WIN ${payout.toFixed(2)}x` : 'MISS'}
+                </p>
+              )}
             </div>
 
-            {phase === 'result' && (
-              <p
-                className={cnm(
-                  'text-sm font-black',
-                  won ? 'text-[#7BA318]' : 'text-[#FF6B9D]',
-                )}
+            {/* integrated range slider */}
+            <div className="mb-5 select-none" style={{ touchAction: 'none' }}>
+              <div
+                ref={barRef}
+                className="relative h-10 flex items-center cursor-pointer"
+                onMouseDown={(e) => handleBarInteraction(e.clientX)}
+                onTouchStart={(e) => {
+                  e.preventDefault()
+                  handleBarInteraction(e.touches[0].clientX)
+                }}
               >
-                {won
-                  ? `WIN +$${(parseFloat(betAmount || '0') * (payout - 1)).toFixed(2)}`
-                  : 'MISS'}
-              </p>
-            )}
-          </div>
+                {/* visual bar track */}
+                <div className="absolute left-0 right-0 h-3.5 rounded-full overflow-hidden border-2 border-black">
+                  {/* losing zone background */}
+                  <div className="absolute inset-0 bg-[#FF6B9D]" />
 
-          {/* integrated range slider */}
-          <div className="mb-5 select-none" style={{ touchAction: 'none' }}>
-            <div
-              ref={barRef}
-              className="relative h-10 flex items-center cursor-pointer"
-              onMouseDown={(e) => handleBarInteraction(e.clientX)}
-              onTouchStart={(e) => {
-                e.preventDefault()
-                handleBarInteraction(e.touches[0].clientX)
-              }}
-            >
-              {/* visual bar track */}
-              <div className="absolute left-0 right-0 h-3.5 rounded-full overflow-hidden border-2 border-black">
-                {/* losing zone background */}
-                <div className="absolute inset-0 bg-[#FF6B9D]" />
+                  {/* winning zone */}
+                  {mode === 'over' && (
+                    <div
+                      className="absolute top-0 bottom-0 bg-[#CDFF57]"
+                      style={{ left: `${target}%`, right: 0 }}
+                    />
+                  )}
+                  {mode === 'under' && (
+                    <div
+                      className="absolute top-0 bottom-0 bg-[#CDFF57]"
+                      style={{ left: 0, width: `${target}%` }}
+                    />
+                  )}
+                  {mode === 'range' && (
+                    <div
+                      className="absolute top-0 bottom-0 bg-[#CDFF57]"
+                      style={{ left: `${rangeStart}%`, width: `${rangeEnd - rangeStart}%` }}
+                    />
+                  )}
 
-                {/* winning zone */}
-                {mode === 'over' && (
-                  <div
-                    className="absolute top-0 bottom-0 bg-[#CDFF57]"
-                    style={{ left: `${target}%`, right: 0 }}
-                  />
-                )}
-                {mode === 'under' && (
-                  <div
-                    className="absolute top-0 bottom-0 bg-[#CDFF57]"
-                    style={{ left: 0, width: `${target}%` }}
-                  />
-                )}
-                {mode === 'range' && (
-                  <div
-                    className="absolute top-0 bottom-0 bg-[#CDFF57]"
-                    style={{ left: `${rangeStart}%`, width: `${rangeEnd - rangeStart}%` }}
-                  />
-                )}
+                  {/* result indicator line */}
+                  {displayResult !== null && animPhase === 'result' && (
+                    <div
+                      className={cnm(
+                        'absolute top-0 bottom-0 w-1 -ml-0.5',
+                        won ? 'bg-black' : 'bg-white',
+                      )}
+                      style={{ left: `${displayResult}%` }}
+                    />
+                  )}
+                </div>
 
-                {/* result indicator line */}
-                {result !== null && phase === 'result' && (
+                {/* thumb(s) */}
+                {mode !== 'range' ? (
                   <div
-                    className={cnm(
-                      'absolute top-0 bottom-0 w-1 -ml-0.5',
-                      won ? 'bg-black' : 'bg-white',
-                    )}
-                    style={{ left: `${result}%` }}
+                    className="absolute w-6 h-6 bg-black rounded-full border-2 border-white shadow-md z-10 cursor-grab active:cursor-grabbing"
+                    style={{
+                      left: `${target}%`,
+                      top: '50%',
+                      transform: 'translate(-50%, -50%)',
+                    }}
+                    onMouseDown={(e) => {
+                      e.stopPropagation()
+                      setDragging('target')
+                    }}
+                    onTouchStart={(e) => {
+                      e.stopPropagation()
+                      e.preventDefault()
+                      setDragging('target')
+                    }}
                   />
+                ) : (
+                  <>
+                    <div
+                      className="absolute w-6 h-6 bg-black rounded-full border-2 border-white shadow-md z-10 cursor-grab active:cursor-grabbing"
+                      style={{
+                        left: `${rangeStart}%`,
+                        top: '50%',
+                        transform: 'translate(-50%, -50%)',
+                      }}
+                      onMouseDown={(e) => {
+                        e.stopPropagation()
+                        setDragging('start')
+                      }}
+                      onTouchStart={(e) => {
+                        e.stopPropagation()
+                        e.preventDefault()
+                        setDragging('start')
+                      }}
+                    />
+                    <div
+                      className="absolute w-6 h-6 bg-black rounded-full border-2 border-white shadow-md z-10 cursor-grab active:cursor-grabbing"
+                      style={{
+                        left: `${rangeEnd}%`,
+                        top: '50%',
+                        transform: 'translate(-50%, -50%)',
+                      }}
+                      onMouseDown={(e) => {
+                        e.stopPropagation()
+                        setDragging('end')
+                      }}
+                      onTouchStart={(e) => {
+                        e.stopPropagation()
+                        e.preventDefault()
+                        setDragging('end')
+                      }}
+                    />
+                  </>
                 )}
               </div>
 
-              {/* thumb(s) */}
-              {mode !== 'range' ? (
-                <div
-                  className="absolute w-6 h-6 bg-black rounded-full border-2 border-white shadow-md z-10 cursor-grab active:cursor-grabbing"
-                  style={{
-                    left: `${target}%`,
-                    top: '50%',
-                    transform: 'translate(-50%, -50%)',
-                  }}
-                  onMouseDown={(e) => {
-                    e.stopPropagation()
-                    setDragging('target')
-                  }}
-                  onTouchStart={(e) => {
-                    e.stopPropagation()
-                    e.preventDefault()
-                    setDragging('target')
-                  }}
-                />
-              ) : (
-                <>
-                  <div
-                    className="absolute w-6 h-6 bg-black rounded-full border-2 border-white shadow-md z-10 cursor-grab active:cursor-grabbing"
-                    style={{
-                      left: `${rangeStart}%`,
-                      top: '50%',
-                      transform: 'translate(-50%, -50%)',
-                    }}
-                    onMouseDown={(e) => {
-                      e.stopPropagation()
-                      setDragging('start')
-                    }}
-                    onTouchStart={(e) => {
-                      e.stopPropagation()
-                      e.preventDefault()
-                      setDragging('start')
-                    }}
-                  />
-                  <div
-                    className="absolute w-6 h-6 bg-black rounded-full border-2 border-white shadow-md z-10 cursor-grab active:cursor-grabbing"
-                    style={{
-                      left: `${rangeEnd}%`,
-                      top: '50%',
-                      transform: 'translate(-50%, -50%)',
-                    }}
-                    onMouseDown={(e) => {
-                      e.stopPropagation()
-                      setDragging('end')
-                    }}
-                    onTouchStart={(e) => {
-                      e.stopPropagation()
-                      e.preventDefault()
-                      setDragging('end')
-                    }}
-                  />
-                </>
-              )}
+              {/* tick labels */}
+              <div className="flex justify-between mt-1 text-[10px] font-mono text-black/30">
+                {[0, 25, 50, 75, 100].map((v) => (
+                  <span key={v}>{v}</span>
+                ))}
+              </div>
+
+              {/* value display */}
+              <div className="text-center mt-2">
+                <span className="text-xs font-mono text-black/50">
+                  {mode === 'over' && `Roll > ${target}`}
+                  {mode === 'under' && `Roll < ${target}`}
+                  {mode === 'range' && `Roll between ${rangeStart} and ${rangeEnd}`}
+                </span>
+              </div>
             </div>
 
-            {/* tick labels */}
-            <div className="flex justify-between mt-1 text-[10px] font-mono text-black/30">
-              {[0, 25, 50, 75, 100].map((v) => (
-                <span key={v}>{v}</span>
+            {/* mode selector */}
+            <div className="flex gap-2 mb-5">
+              {(['over', 'under', 'range'] as const).map((m) => (
+                <button
+                  key={m}
+                  onClick={() => {
+                    play('click')
+                    setMode(m)
+                    setAnimPhase('idle')
+                    setDisplayResult(null)
+                  }}
+                  className={cnm(
+                    'flex-1 py-3 text-xs font-black uppercase border-2 border-black rounded-xl transition-all',
+                    mode === m
+                      ? 'bg-black text-white'
+                      : 'bg-white text-black/40 hover:text-black',
+                  )}
+                  style={mode === m ? { boxShadow: '3px 3px 0px #dcb865' } : undefined}
+                >
+                  {m}
+                </button>
               ))}
             </div>
 
-            {/* value display */}
-            <div className="text-center mt-2">
-              <span className="text-xs font-mono text-black/50">
-                {mode === 'over' && `Roll > ${target}`}
-                {mode === 'under' && `Roll < ${target}`}
-                {mode === 'range' && `Roll between ${rangeStart} and ${rangeEnd}`}
-              </span>
-            </div>
-          </div>
-
-          {/* mode selector */}
-          <div className="flex gap-2 mb-5">
-            {(['over', 'under', 'range'] as const).map((m) => (
-              <button
-                key={m}
-                onClick={() => {
-                  play('click')
-                  setMode(m)
-                  setPhase('idle')
-                  setResult(null)
-                }}
-                className={cnm(
-                  'flex-1 py-3 text-xs font-black uppercase border-2 border-black rounded-xl transition-all',
-                  mode === m
-                    ? 'bg-black text-white'
-                    : 'bg-white text-black/40 hover:text-black',
-                )}
-                style={mode === m ? { boxShadow: '3px 3px 0px #dcb865' } : undefined}
-              >
-                {m}
-              </button>
-            ))}
-          </div>
-
-          {/* probability + payout stats */}
-          <div className="grid grid-cols-2 gap-3 mb-5 p-4 rounded-xl bg-black/5 border-2 border-black/10">
-            <div>
-              <p className="text-[10px] font-mono text-black/50 uppercase">Win Chance</p>
-              <p className="text-lg font-black text-black">
-                {(winProbability * 100).toFixed(1)}%
-              </p>
-            </div>
-            <div>
-              <p className="text-[10px] font-mono text-black/50 uppercase">Payout</p>
-              <p className="text-lg font-black text-black">{payout.toFixed(2)}x</p>
-            </div>
-          </div>
-
-          {/* controls */}
-          <div className="border-t-2 border-black/10 pt-5">
-            {phase !== 'rolling' && (
-              <div className="flex gap-2 mb-4">
-                {[10, 50, 100, 500].map((amt) => (
-                  <button
-                    key={amt}
-                    onClick={() => { play('click'); setBetAmount(String(amt)) }}
-                    className={cnm(
-                      'flex-1 py-2 text-xs font-black border-2 border-black rounded-lg transition-transform hover:translate-x-0.5 hover:translate-y-0.5',
-                      betAmount === String(amt)
-                        ? 'bg-black text-white'
-                        : 'bg-white text-black',
-                    )}
-                  >
-                    ${amt}
-                  </button>
-                ))}
+            {/* probability + payout stats */}
+            <div className="grid grid-cols-2 gap-3 mb-5 p-4 rounded-xl bg-black/5 border-2 border-black/10">
+              <div>
+                <p className="text-[10px] font-mono text-black/50 uppercase">Win Chance</p>
+                <p className="text-lg font-black text-black">
+                  {(winProbability * 100).toFixed(1)}%
+                </p>
               </div>
-            )}
-
-            {phase === 'idle' && (
-              <button
-                onClick={roll}
-                className="w-full py-4 text-sm font-black uppercase bg-black text-white border-2 border-black rounded-xl transition-transform hover:translate-x-1 hover:translate-y-1"
-                style={{ boxShadow: '4px 4px 0px #dcb865' }}
-              >
-                Roll for {payout.toFixed(2)}x
-              </button>
-            )}
-
-            {phase === 'rolling' && (
-              <div className="w-full py-4 text-sm font-black uppercase text-center text-black/40">
-                Rolling...
+              <div>
+                <p className="text-[10px] font-mono text-black/50 uppercase">Payout</p>
+                <p className="text-lg font-black text-black">{payout.toFixed(2)}x</p>
               </div>
-            )}
+            </div>
 
-            {phase === 'result' && (
-              <button
-                onClick={reset}
-                className={cnm(
-                  'w-full py-4 text-sm font-black uppercase border-2 border-black rounded-xl transition-transform hover:translate-x-1 hover:translate-y-1',
-                  won ? 'bg-[#CDFF57] text-black' : 'bg-black text-white',
-                )}
-                style={{ boxShadow: `4px 4px 0px ${won ? 'black' : '#dcb865'}` }}
-              >
-                Roll Again
-              </button>
-            )}
-          </div>
+            {/* controls */}
+            <div className="border-t-2 border-black/10 pt-5">
+              {animPhase === 'idle' && isActive && (
+                <button
+                  onClick={roll}
+                  disabled={phase === 'playing_round'}
+                  className="w-full py-4 text-sm font-black uppercase bg-black text-white border-2 border-black rounded-xl transition-transform hover:translate-x-1 hover:translate-y-1 disabled:opacity-50"
+                  style={{ boxShadow: '4px 4px 0px #dcb865' }}
+                >
+                  Roll for {payout.toFixed(2)}x
+                </button>
+              )}
+
+              {animPhase === 'rolling' && (
+                <div className="w-full py-4 text-sm font-black uppercase text-center text-black/40">
+                  Rolling...
+                </div>
+              )}
+
+              {animPhase === 'result' && isActive && (
+                <button
+                  onClick={roll}
+                  disabled={phase === 'playing_round'}
+                  className={cnm(
+                    'w-full py-4 text-sm font-black uppercase border-2 border-black rounded-xl transition-transform hover:translate-x-1 hover:translate-y-1 disabled:opacity-50',
+                    won ? 'bg-[#CDFF57] text-black' : 'bg-black text-white',
+                  )}
+                  style={{ boxShadow: `4px 4px 0px ${won ? 'black' : '#dcb865'}` }}
+                >
+                  Roll Again
+                </button>
+              )}
+            </div>
+          </SessionGate>
         </div>
       </AnimateComponent>
 

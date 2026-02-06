@@ -117,7 +117,15 @@ async function handleCreateSession(ws: WebSocket, playerId: string, payload: Cre
   const houseDeposit = maxPayout > playerDeposit ? maxPayout : playerDeposit;
 
   // check vault has enough liquidity
-  const vaultState = await getVaultState();
+  let vaultState;
+  try {
+    vaultState = await getVaultState();
+  } catch (err) {
+    console.error('Failed to fetch vault state:', err);
+    sendError(ws, 'Could not verify house liquidity', 'VAULT_ERROR');
+    return;
+  }
+
   if (vaultState.custodyBalance < houseDeposit) {
     sendError(ws, 'Insufficient house liquidity', 'LIQUIDITY_ERROR');
     return;

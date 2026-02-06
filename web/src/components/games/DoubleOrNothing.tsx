@@ -114,6 +114,7 @@ export default function DoubleOrNothing() {
             stats={stats}
             playerBalance={session.playerBalance}
             cumulativeMultiplier={multiplier}
+            sessionId={session.sessionId}
             onOpenSession={(amount) => gameSession.openSession('double-or-nothing', amount)}
             onReset={handleReset}
             accentColor="#CDFF57"

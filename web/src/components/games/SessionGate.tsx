@@ -14,6 +14,7 @@ interface SessionGateProps {
   stats: SessionStats
   playerBalance: string
   cumulativeMultiplier: number
+  sessionId?: string | null
   onOpenSession: (depositAmount: string) => void
   onReset: () => void
   accentColor?: string // game-specific accent
@@ -26,6 +27,7 @@ export default function SessionGate({
   stats,
   playerBalance,
   cumulativeMultiplier,
+  sessionId,
   onOpenSession,
   onReset,
   accentColor = '#CDFF57',
@@ -125,7 +127,8 @@ export default function SessionGate({
 
   // closed: show summary
   if (phase === 'closed') {
-    const netResult = parseFloat(balanceFormatted) - parseFloat(betInput)
+    // balanceFormatted is already in USDH (human readable), betInput is also in USDH
+    const netResult = parseFloat(balanceFormatted) - parseFloat(betInput || '0')
     const isProfit = netResult > 0
 
     return (
@@ -162,6 +165,21 @@ export default function SessionGate({
         >
           Play Again
         </button>
+
+        {/* provably fair verification */}
+        {sessionId && (
+          <div className="mt-4 p-3 rounded-lg bg-black/5 border border-black/10">
+            <div className="flex items-center justify-between">
+              <span className="text-[10px] font-mono text-black/40 uppercase">Provably Fair</span>
+              <span className="text-[10px] font-mono text-black/30">
+                {sessionId.slice(0, 8)}...{sessionId.slice(-4)}
+              </span>
+            </div>
+            <p className="text-[10px] font-mono text-black/30 mt-1">
+              Each round used commit-reveal with on-chain verifiable nonces. Session outcomes can be verified via HouseSession contract.
+            </p>
+          </div>
+        )}
       </div>
     )
   }
