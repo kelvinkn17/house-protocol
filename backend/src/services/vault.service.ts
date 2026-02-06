@@ -2,10 +2,10 @@ import {
   createPublicClient,
   http,
   parseAbi,
+  parseAbiItem,
   formatUnits,
   type PublicClient,
   type Address,
-  type Log,
 } from 'viem';
 import { sepolia } from 'viem/chains';
 
@@ -28,6 +28,14 @@ const VAULT_ABI = parseAbi([
   'event Deposit(address indexed sender, address indexed owner, uint256 assets, uint256 shares)',
   'event Withdraw(address indexed sender, address indexed receiver, address indexed owner, uint256 assets, uint256 shares)',
 ]);
+
+// extracted event ABIs so we don't rely on fragile array indices
+const DEPOSIT_EVENT = parseAbiItem(
+  'event Deposit(address indexed sender, address indexed owner, uint256 assets, uint256 shares)'
+);
+const WITHDRAW_EVENT = parseAbiItem(
+  'event Withdraw(address indexed sender, address indexed receiver, address indexed owner, uint256 assets, uint256 shares)'
+);
 
 const ERC20_ABI = parseAbi([
   'function balanceOf(address) view returns (uint256)',
@@ -136,13 +144,13 @@ export async function getVaultLogs(fromBlock: bigint, toBlock: bigint) {
   const [depositLogs, withdrawLogs] = await Promise.all([
     client.getLogs({
       address: VAULT_ADDRESS,
-      event: VAULT_ABI[9] as any, // Deposit event
+      event: DEPOSIT_EVENT,
       fromBlock,
       toBlock,
     }),
     client.getLogs({
       address: VAULT_ADDRESS,
-      event: VAULT_ABI[10] as any, // Withdraw event
+      event: WITHDRAW_EVENT,
       fromBlock,
       toBlock,
     }),
@@ -170,5 +178,7 @@ export {
   CUSTODY_ADDRESS,
   VAULT_ABI,
   ERC20_ABI,
+  DEPOSIT_EVENT,
+  WITHDRAW_EVENT,
   getPublicClient,
 };

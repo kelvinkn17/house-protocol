@@ -50,11 +50,19 @@ async function indexEvents() {
 
   const { depositLogs, withdrawLogs } = await getVaultLogs(lastIndexedBlock!, toBlock);
 
+  // collect unique block numbers across all logs, fetch timestamps in one pass
+  const allLogs = [...depositLogs, ...withdrawLogs];
+  const uniqueBlocks = [...new Set(allLogs.map(l => l.blockNumber!))];
+  const tsCache = new Map<bigint, bigint>();
+  for (const bn of uniqueBlocks) {
+    tsCache.set(bn, await getBlockTimestamp(bn));
+  }
+
   const events: any[] = [];
 
   for (const log of depositLogs) {
     const args = log.args as any;
-    const ts = await getBlockTimestamp(log.blockNumber!);
+    const ts = tsCache.get(log.blockNumber!)!;
     events.push({
       txHash: log.transactionHash!,
       logIndex: log.logIndex!,
@@ -70,7 +78,7 @@ async function indexEvents() {
 
   for (const log of withdrawLogs) {
     const args = log.args as any;
-    const ts = await getBlockTimestamp(log.blockNumber!);
+    const ts = tsCache.get(log.blockNumber!)!;
     events.push({
       txHash: log.transactionHash!,
       logIndex: log.logIndex!,

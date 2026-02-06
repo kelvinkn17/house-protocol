@@ -6,8 +6,9 @@ import {
   VAULT_ABI,
   ERC20_ABI,
   SEPOLIA_CHAIN_ID,
+  getPublicClient,
 } from '@/lib/contracts'
-import { createWalletClient, custom, parseUnits, formatUnits, type Address } from 'viem'
+import { createWalletClient, custom, parseUnits, type Address } from 'viem'
 import { sepolia } from 'viem/chains'
 import { useWallets } from '@privy-io/react-auth'
 import { useState, useCallback } from 'react'
@@ -145,13 +146,12 @@ export function useDeposit() {
 
       // check allowance first
       setTxStatus('approving')
-      const allowance = await import('@/lib/contracts').then(m => {
-        return m.getPublicClient().readContract({
-          address: USDH_ADDRESS,
-          abi: ERC20_ABI,
-          functionName: 'allowance',
-          args: [userAddress, VAULT_ADDRESS],
-        })
+      const publicClient = getPublicClient()
+      const allowance = await publicClient.readContract({
+        address: USDH_ADDRESS,
+        abi: ERC20_ABI,
+        functionName: 'allowance',
+        args: [userAddress, VAULT_ADDRESS],
       })
 
       if ((allowance as bigint) < assets) {
@@ -162,9 +162,7 @@ export function useDeposit() {
           args: [VAULT_ADDRESS, assets],
         })
 
-        // wait for approval to confirm
-        const { getPublicClient } = await import('@/lib/contracts')
-        await getPublicClient().waitForTransactionReceipt({ hash: approveHash })
+        await publicClient.waitForTransactionReceipt({ hash: approveHash })
       }
 
       // deposit
@@ -177,8 +175,7 @@ export function useDeposit() {
       })
 
       setTxStatus('confirming')
-      const { getPublicClient } = await import('@/lib/contracts')
-      await getPublicClient().waitForTransactionReceipt({ hash: depositHash })
+      await publicClient.waitForTransactionReceipt({ hash: depositHash })
 
       setTxStatus('success')
       return depositHash
@@ -232,7 +229,6 @@ export function useWithdraw() {
       })
 
       setTxStatus('confirming')
-      const { getPublicClient } = await import('@/lib/contracts')
       await getPublicClient().waitForTransactionReceipt({ hash: redeemHash })
 
       setTxStatus('success')
