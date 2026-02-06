@@ -73,3 +73,81 @@ model VaultSnapshot {
 
   @@index([timestamp])
 }
+
+// game config: registered game types (our 3 demos + future builder games)
+model GameConfig {
+  slug        String   @id // "double-or-nothing", "death", "range"
+  name        String
+  gameType    String   // "cash-out", "reveal-tiles", "pick-number"
+  houseEdgeBps Int     @default(200)
+  params      Json     // builder params (rows, tiles, etc.)
+  isActive    Boolean  @default(true)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  sessions    Session[]
+
+  @@index([gameType])
+}
+
+// game session: one per player per active game
+model Session {
+  id            String    @id @default(cuid())
+  playerId      String    // wallet address
+  channelId     String?   // nitrolite channel id
+  gameConfigSlug String
+  gameConfig    GameConfig @relation(fields: [gameConfigSlug], references: [slug])
+  playerDeposit String    // raw bigint
+  houseDeposit  String    // raw bigint
+  status        String    @default("ACTIVE") // ACTIVE, CLOSED, EXPIRED
+  gameState     Json?     // serialized GameSessionState
+  closedAt      DateTime?
+  createdAt     DateTime  @default(now())
+  updatedAt     DateTime  @updatedAt
+
+  rounds        Round[]
+  states        ChannelState[]
+
+  @@index([playerId])
+  @@index([status])
+}
+
+// individual round within a session
+model Round {
+  id               String    @id @default(cuid())
+  sessionId        String
+  session          Session   @relation(fields: [sessionId], references: [id])
+  roundNumber      Int
+  gameType         String
+  betAmount        String    // raw bigint
+  choiceData       String?   @db.Text // JSON serialized player choice
+  playerCommitment String?
+  playerNonce      String?
+  houseCommitment  String?
+  houseNonce       String?
+  result           String?   @db.Text // JSON serialized outcome
+  playerWon        Boolean?
+  payout           String?   // raw bigint
+  createdAt        DateTime  @default(now())
+
+  @@index([sessionId])
+  @@index([sessionId, roundNumber])
+}
+
+// state channel snapshots
+model ChannelState {
+  id            String   @id @default(cuid())
+  sessionId     String
+  session       Session  @relation(fields: [sessionId], references: [id])
+  version       Int
+  intent        String   // "initialize", "operate", "close"
+  playerBalance String   // raw bigint
+  houseBalance  String   // raw bigint
+  data          String   @db.Text
+  playerSig     String   @db.Text
+  houseSig      String   @db.Text
+  createdAt     DateTime @default(now())
+
+  @@index([sessionId])
+  @@index([sessionId, version])
+}

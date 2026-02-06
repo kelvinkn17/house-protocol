@@ -129,6 +129,8 @@ export function useDeposit() {
   const mutation = useMutation({
     mutationFn: async ({ amount, userAddress }: { amount: string; userAddress: Address }) => {
       setTxError(null)
+      if (!VAULT_ADDRESS || !USDH_ADDRESS) throw new Error('Contract addresses not configured. Check VITE_HOUSE_VAULT_ADDRESS and VITE_USDH_TOKEN_ADDRESS in .env')
+
       const wallet = wallets.find(w => w.address?.toLowerCase() === userAddress.toLowerCase()) || wallets[0]
       if (!wallet) throw new Error('No wallet connected')
 
@@ -206,6 +208,8 @@ export function useWithdraw() {
   const mutation = useMutation({
     mutationFn: async ({ shares, userAddress }: { shares: string; userAddress: Address }) => {
       setTxError(null)
+      if (!VAULT_ADDRESS) throw new Error('Contract address not configured. Check VITE_HOUSE_VAULT_ADDRESS in .env')
+
       const wallet = wallets.find(w => w.address?.toLowerCase() === userAddress.toLowerCase()) || wallets[0]
       if (!wallet) throw new Error('No wallet connected')
 

@@ -19,6 +19,7 @@
   "description": "",
   "dependencies": {
     "@fastify/cors": "^11.0.0",
+    "@fastify/websocket": "^11.2.0",
     "@prisma/adapter-pg": "^7.0.0",
     "@prisma/client": "^7.0.0",
     "@prisma/client-runtime-utils": "^7.3.0",

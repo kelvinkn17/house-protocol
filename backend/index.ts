@@ -2,12 +2,16 @@ import './dotenv.ts';
 
 import Fastify, { type FastifyReply, type FastifyRequest } from 'fastify';
 import FastifyCors from '@fastify/cors';
+import FastifyWebSocket from '@fastify/websocket';
 import { APP_PORT } from './src/config/main-config.ts';
 
 // Routes
 import { exampletRoute } from './src/routes/exampleRoutes.ts';
 import { authRoutes } from './src/routes/authRoutes.ts';
 import { vaultRoutes } from './src/routes/vaultRoutes.ts';
+
+// Game handler
+import { GameHandler } from './src/handlers/game.handler.ts';
 
 // Workers
 import { startErrorLogCleanupWorker } from './src/workers/errorLogCleanup.ts';
@@ -31,6 +35,8 @@ fastify.addContentTypeParser('application/json', { parseAs: 'string' }, (_req, b
   }
 });
 
+fastify.register(FastifyWebSocket);
+
 fastify.register(FastifyCors, {
   origin: '*',
   methods: ['GET', 'POST', 'PUT', 'DELETE'],
@@ -51,6 +57,9 @@ fastify.get('/', async (_request: FastifyRequest, reply: FastifyReply) => {
 fastify.register(authRoutes, { prefix: '/auth' });
 fastify.register(exampletRoute, { prefix: '/example' });
 fastify.register(vaultRoutes, { prefix: '/vault' });
+
+// Register WebSocket game handler
+GameHandler.registerGameHandler(fastify);
 
 const start = async (): Promise<void> => {
   try {
