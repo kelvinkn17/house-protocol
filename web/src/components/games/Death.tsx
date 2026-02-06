@@ -1,10 +1,10 @@
-import { useState, useCallback } from 'react'
+import { useState, useCallback, useEffect, useRef } from 'react'
 import { cnm } from '@/utils/style'
 import { useSound } from '@/providers/SoundProvider'
 import AnimateComponent from '@/components/elements/AnimateComponent'
 import SdkPanel from './SdkPanel'
 import SessionGate from './SessionGate'
-import { useGameSession } from '@/hooks/useGameSession'
+import { useSession } from '@/providers/SessionProvider'
 
 const ROWS = 5
 const MIN_TILES = 2
@@ -87,7 +87,7 @@ function getCumulativeMultiplier(tileCounts: number[], completedRows: number): n
   return m
 }
 
-// fallback tile counts if session hasn't started yet
+// fallback tile counts if game hasn't started yet
 function generateTileCounts(): number[] {
   return Array.from(
     { length: ROWS },
@@ -97,30 +97,56 @@ function generateTileCounts(): number[] {
 
 export default function Death() {
   const { play } = useSound()
-  const gameSession = useGameSession()
+  const session = useSession()
   const [animPhase, setAnimPhase] = useState<AnimPhase>('idle')
   const [currentRow, setCurrentRow] = useState(0)
   const [results, setResults] = useState<RowResult[]>([])
   const [revealingRow, setRevealingRow] = useState(-1)
+  const gameStarted = useRef(false)
 
-  const { phase, session, stats } = gameSession
+  const { sessionPhase, activeGame, gamePhase, stats } = session
 
-  // tile counts come from server (primitiveState) after session creation
-  const tileCounts = (session.primitiveState.tileCounts as number[]) || generateTileCounts()
-  const multiplier = session.cumulativeMultiplier > 1 ? session.cumulativeMultiplier : getCumulativeMultiplier(tileCounts, results.length)
+  // tile counts come from server (primitiveState) after game start
+  const tileCounts = (activeGame?.primitiveState?.tileCounts as number[]) || generateTileCounts()
+  const multiplier = activeGame?.cumulativeMultiplier && activeGame.cumulativeMultiplier > 1
+    ? activeGame.cumulativeMultiplier
+    : getCumulativeMultiplier(tileCounts, results.length)
 
-  const isActive = phase === 'active' || phase === 'playing_round'
+  const isActive = gamePhase === 'active' || gamePhase === 'playing_round'
+
+  // auto-start game when session becomes active
+  useEffect(() => {
+    if (sessionPhase === 'active' && gamePhase === 'none' && !activeGame && !gameStarted.current) {
+      gameStarted.current = true
+      session.startGame('death')
+    }
+  }, [sessionPhase, gamePhase, activeGame, session])
+
+  useEffect(() => {
+    if (sessionPhase !== 'active') {
+      gameStarted.current = false
+    }
+  }, [sessionPhase])
+
+  // when game becomes active, switch to playing
+  useEffect(() => {
+    if (gamePhase === 'active' && animPhase === 'idle' && activeGame) {
+      setAnimPhase('playing')
+      setCurrentRow(0)
+      setResults([])
+      setRevealingRow(-1)
+    }
+  }, [gamePhase, animPhase, activeGame])
 
   const pickTile = useCallback(
     async (tile: number) => {
-      if (animPhase !== 'playing' || revealingRow >= 0 || phase === 'playing_round') return
+      if (animPhase !== 'playing' || revealingRow >= 0 || gamePhase === 'playing_round') return
 
       play('reveal')
       setRevealingRow(currentRow)
 
-      const result = await gameSession.playRound({ tileIndex: tile })
+      const result = await session.playRound({ tileIndex: tile })
 
-      // delay for reveal animation
       setTimeout(() => {
         if (!result) {
           setRevealingRow(-1)
@@ -145,33 +171,23 @@ export default function Death() {
         }
       }, 400)
     },
-    [animPhase, currentRow, results, revealingRow, phase, play, gameSession],
+    [animPhase, currentRow, results, revealingRow, gamePhase, play, session],
   )
 
   const handleCashOut = async () => {
     play('cashout')
-    await gameSession.cashOut()
+    await session.cashOut()
     setAnimPhase('idle')
   }
 
-  const handleStartGame = (amount: string) => {
-    gameSession.openSession('death', amount)
-    setAnimPhase('playing')
-    setCurrentRow(0)
-    setResults([])
-    setRevealingRow(-1)
-  }
-
-  const handleReset = () => {
-    gameSession.reset()
+  const handlePlayAgain = async () => {
     setAnimPhase('idle')
     setCurrentRow(0)
     setResults([])
-  }
-
-  // when session becomes active, switch to playing
-  if (phase === 'active' && animPhase === 'idle' && session.sessionId) {
-    setAnimPhase('playing')
+    if (activeGame) {
+      await session.endGame()
+    }
+    await session.startGame('death')
   }
 
   return (
@@ -181,17 +197,7 @@ export default function Death() {
           className="bg-white border-2 border-black rounded-2xl p-6"
           style={{ boxShadow: '6px 6px 0px black' }}
         >
-          <SessionGate
-            phase={phase}
-            error={gameSession.error}
-            stats={stats}
-            playerBalance={session.playerBalance}
-            cumulativeMultiplier={multiplier}
-            sessionId={session.sessionId}
-            onOpenSession={handleStartGame}
-            onReset={handleReset}
-            accentColor="#FF6B9D"
-          >
+          <SessionGate accentColor="#FF6B9D">
             {/* tile grid, top = highest row, bottom = first row */}
             <div className="space-y-2.5 mb-6">
               {Array.from({ length: ROWS }).map((_, i) => {
@@ -241,7 +247,7 @@ export default function Death() {
                           <button
                             key={tileIdx}
                             onClick={() => isCurrent && !isRevealing && pickTile(tileIdx)}
-                            disabled={!isCurrent || isRevealing || phase === 'playing_round'}
+                            disabled={!isCurrent || isRevealing || gamePhase === 'playing_round'}
                             className={cnm(
                               'flex-1 h-14 rounded-xl border-2 font-black text-sm transition-all',
                               pickedBomb && 'bg-[#FF6B9D] border-black text-black',
@@ -306,7 +312,7 @@ export default function Death() {
               {animPhase === 'playing' && results.length > 0 && isActive && (
                 <button
                   onClick={handleCashOut}
-                  disabled={phase === 'playing_round'}
+                  disabled={gamePhase === 'playing_round'}
                   className="w-full py-4 text-sm font-black uppercase bg-[#CDFF57] text-black border-2 border-black rounded-xl transition-transform hover:translate-x-1 hover:translate-y-1 disabled:opacity-50"
                   style={{ boxShadow: '4px 4px 0px black' }}
                 >
@@ -316,7 +322,7 @@ export default function Death() {
 
               {(animPhase === 'dead' || animPhase === 'survived') && (
                 <button
-                  onClick={handleReset}
+                  onClick={handlePlayAgain}
                   className="w-full py-4 text-sm font-black uppercase bg-black text-white border-2 border-black rounded-xl transition-transform hover:translate-x-1 hover:translate-y-1"
                   style={{ boxShadow: '4px 4px 0px #FF6B9D' }}
                 >

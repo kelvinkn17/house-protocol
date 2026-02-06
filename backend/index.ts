@@ -58,8 +58,8 @@ fastify.register(authRoutes, { prefix: '/auth' });
 fastify.register(exampletRoute, { prefix: '/example' });
 fastify.register(vaultRoutes, { prefix: '/vault' });
 
-// Register WebSocket game handler
-GameHandler.registerGameHandler(fastify);
+// Register WebSocket game handler (must be a plugin so WS decorator is available)
+fastify.register(GameHandler.gameHandlerPlugin);
 
 const start = async (): Promise<void> => {
   try {

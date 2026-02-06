@@ -1,4 +1,5 @@
-// websocket game handler, game type agnostic
+// websocket game handler, session-first architecture
+// session = deposit once, play any game. games start/end within a session.
 // delegates all game logic to primitives via game service
 
 import type { FastifyInstance } from 'fastify';
@@ -11,8 +12,7 @@ import { prismaQuery } from '../lib/prisma.ts';
 import type { GameSessionState, GameConfig } from '../services/primitives/types.ts';
 import { HOUSE_EDGE_BPS, BPS_BASE } from '../services/primitives/types.ts';
 
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
-const db = prismaQuery as any;
+const db = prismaQuery;
 
 interface ClientMessage {
   type: string;
@@ -21,14 +21,22 @@ interface ClientMessage {
 
 interface CreateSessionPayload {
   depositAmount: string;
-  gameSlug: string;
   tokenAddress?: string;
+}
+
+interface StartGamePayload {
+  sessionId: string;
+  gameSlug: string;
+}
+
+interface EndGamePayload {
+  sessionId: string;
 }
 
 interface PlaceBetPayload {
   sessionId: string;
   amount: string;
-  choiceData: string; // JSON stringified PlayerChoice
+  choiceData: string;
   commitment: string;
 }
 
@@ -48,10 +56,20 @@ interface CloseSessionPayload {
 }
 
 const connections = new Map<string, WebSocket>();
-const sessionPlayers = new Map<string, string>();
-// in memory game state per session, mirrors what's in DB but faster to access
-const sessionStates = new Map<string, GameSessionState>();
-const sessionConfigs = new Map<string, GameConfig>();
+
+// session-level state (persists across games within a session)
+const sessions = new Map<string, {
+  playerId: string;
+  playerBalance: bigint;
+  houseBalance: bigint;
+  isActive: boolean;
+}>();
+
+// game-level state (reset when switching games)
+const activeGames = new Map<string, {
+  config: GameConfig;
+  state: GameSessionState;
+}>();
 
 function send(ws: WebSocket, type: string, payload: unknown) {
   if (ws.readyState === ws.OPEN) {
@@ -70,6 +88,12 @@ async function handleMessage(ws: WebSocket, playerId: string, message: ClientMes
     switch (type) {
       case 'create_session':
         await handleCreateSession(ws, playerId, payload as CreateSessionPayload);
+        break;
+      case 'start_game':
+        await handleStartGame(ws, playerId, payload as StartGamePayload);
+        break;
+      case 'end_game':
+        await handleEndGame(ws, playerId, payload as EndGamePayload);
         break;
       case 'place_bet':
         await handlePlaceBet(ws, playerId, payload as PlaceBetPayload);
@@ -100,23 +124,10 @@ async function handleMessage(ws: WebSocket, playerId: string, message: ClientMes
 }
 
 async function handleCreateSession(ws: WebSocket, playerId: string, payload: CreateSessionPayload) {
-  const { depositAmount, gameSlug } = payload;
-
-  // look up game config
-  const config = getGameConfig(gameSlug);
-  if (!config) {
-    sendError(ws, `Unknown game: ${gameSlug}`, 'INVALID_GAME');
-    return;
-  }
-
+  const { depositAmount } = payload;
   const playerDeposit = BigInt(depositAmount);
-  const primitive = getPrimitive(config.gameType);
 
-  // calculate how much house needs to fund based on max possible payout
-  const maxPayout = primitive.calculateMaxPayout(playerDeposit, config);
-  const houseDeposit = maxPayout > playerDeposit ? maxPayout : playerDeposit;
-
-  // check vault has enough liquidity
+  // house deposit = player * 10, capped by custody
   let vaultState;
   try {
     vaultState = await getVaultState();
@@ -126,71 +137,139 @@ async function handleCreateSession(ws: WebSocket, playerId: string, payload: Cre
     return;
   }
 
+  // max deposit = 1% of custody
+  const maxDeposit = vaultState.custodyBalance / 100n;
+  if (playerDeposit > maxDeposit) {
+    sendError(ws, `Max deposit is ${maxDeposit.toString()} (1% of custody ${vaultState.custodyBalance})`, 'MAX_BET_EXCEEDED');
+    return;
+  }
+
+  let houseDeposit = playerDeposit * 10n;
+  if (houseDeposit > vaultState.custodyBalance) {
+    houseDeposit = vaultState.custodyBalance;
+  }
+
   if (vaultState.custodyBalance < houseDeposit) {
-    sendError(ws, 'Insufficient house liquidity', 'LIQUIDITY_ERROR');
+    sendError(ws, `Insufficient house liquidity. Custody has ${vaultState.custodyBalance}, needs ${houseDeposit}`, 'LIQUIDITY_ERROR');
     return;
   }
 
-  // check max bet
-  const maxBet = primitive.calculateMaxBet(vaultState.custodyBalance);
-  if (playerDeposit > maxBet) {
-    sendError(ws, `Max bet is ${maxBet.toString()}`, 'MAX_BET_EXCEEDED');
-    return;
-  }
+  console.log(`[session] creating for ${playerId}, deposit=${playerDeposit} house=${houseDeposit}`);
 
-  // initialize game state
-  const gameState = primitive.initializeState(config, playerDeposit);
-  gameState.playerBalance = playerDeposit;
-  gameState.houseBalance = houseDeposit;
-
-  // create session in DB
+  // create session in DB, no game yet
   const session = await db.session.create({
     data: {
       playerId,
-      gameConfigSlug: gameSlug,
+      gameConfigSlug: null,
       playerDeposit: playerDeposit.toString(),
       houseDeposit: houseDeposit.toString(),
       status: 'ACTIVE',
-      gameState: JSON.parse(JSON.stringify(gameState, (_k, v) =>
-        typeof v === 'bigint' ? v.toString() : v
-      )),
     },
   });
 
-  // store in memory
-  sessionPlayers.set(session.id, playerId);
-  sessionStates.set(session.id, gameState);
-  sessionConfigs.set(session.id, config);
+  // store session-level state
+  sessions.set(session.id, {
+    playerId,
+    playerBalance: playerDeposit,
+    houseBalance: houseDeposit,
+    isActive: true,
+  });
 
   send(ws, 'session_created', {
     sessionId: session.id,
-    gameType: config.gameType,
-    gameSlug,
     playerDeposit: playerDeposit.toString(),
     houseDeposit: houseDeposit.toString(),
+  });
+}
+
+async function handleStartGame(ws: WebSocket, playerId: string, payload: StartGamePayload) {
+  const { sessionId, gameSlug } = payload;
+
+  const session = sessions.get(sessionId);
+  if (!session || session.playerId !== playerId) {
+    sendError(ws, 'Session not found or not authorized', 'AUTH_ERROR');
+    return;
+  }
+
+  if (!session.isActive) {
+    sendError(ws, 'Session not active', 'SESSION_CLOSED');
+    return;
+  }
+
+  // check no game already running
+  if (activeGames.has(sessionId)) {
+    sendError(ws, 'A game is already running in this session. End it first.', 'GAME_ACTIVE');
+    return;
+  }
+
+  const config = getGameConfig(gameSlug);
+  if (!config) {
+    sendError(ws, `Unknown game: ${gameSlug}`, 'INVALID_GAME');
+    return;
+  }
+
+  const primitive = getPrimitive(config.gameType);
+  const gameState = primitive.initializeState(config, session.playerBalance);
+  gameState.playerBalance = session.playerBalance;
+  gameState.houseBalance = session.houseBalance;
+
+  // store in activeGames
+  activeGames.set(sessionId, { config, state: gameState });
+
+  // update session in DB with current game slug
+  await db.session.update({
+    where: { id: sessionId },
+    data: { gameConfigSlug: gameSlug },
+  });
+
+  send(ws, 'game_started', {
+    gameSlug,
+    gameType: config.gameType,
     maxRounds: gameState.maxRounds,
-    // send tile counts for death game so frontend can render the grid
     primitiveState: gameState.primitiveState,
   });
+}
+
+async function handleEndGame(ws: WebSocket, playerId: string, payload: EndGamePayload) {
+  const { sessionId } = payload;
+
+  const session = sessions.get(sessionId);
+  if (!session || session.playerId !== playerId) {
+    sendError(ws, 'Session not found or not authorized', 'AUTH_ERROR');
+    return;
+  }
+
+  // clear active game, session stays open
+  activeGames.delete(sessionId);
+
+  // clear game slug in DB
+  await db.session.update({
+    where: { id: sessionId },
+    data: { gameConfigSlug: null },
+  });
+
+  send(ws, 'game_ended', { sessionId });
 }
 
 async function handlePlaceBet(ws: WebSocket, playerId: string, payload: PlaceBetPayload) {
   const { sessionId, amount, commitment, choiceData } = payload;
 
-  if (sessionPlayers.get(sessionId) !== playerId) {
+  const session = sessions.get(sessionId);
+  if (!session || session.playerId !== playerId) {
     sendError(ws, 'Not authorized for this session', 'AUTH_ERROR');
     return;
   }
 
-  const state = sessionStates.get(sessionId);
-  const config = sessionConfigs.get(sessionId);
-  if (!state || !config) {
-    sendError(ws, 'Session not found in memory', 'NOT_FOUND');
+  const game = activeGames.get(sessionId);
+  if (!game) {
+    sendError(ws, 'No active game in this session', 'NO_GAME');
     return;
   }
 
+  const { config, state } = game;
+
   if (!state.isActive) {
-    sendError(ws, 'Session not active', 'SESSION_CLOSED');
+    sendError(ws, 'Game not active', 'GAME_CLOSED');
     return;
   }
 
@@ -204,6 +283,9 @@ async function handlePlaceBet(ws: WebSocket, playerId: string, payload: PlaceBet
     sendError(ws, validation.error || 'Invalid choice', 'INVALID_CHOICE');
     return;
   }
+
+  // track per-round bet amount
+  state.betAmount = betAmount;
 
   const roundNumber = state.currentRound + 1;
 
@@ -229,17 +311,19 @@ async function handlePlaceBet(ws: WebSocket, playerId: string, payload: PlaceBet
 async function handleReveal(ws: WebSocket, playerId: string, payload: RevealPayload) {
   const { sessionId, roundId, choiceData, nonce } = payload;
 
-  if (sessionPlayers.get(sessionId) !== playerId) {
+  const session = sessions.get(sessionId);
+  if (!session || session.playerId !== playerId) {
     sendError(ws, 'Not authorized for this session', 'AUTH_ERROR');
     return;
   }
 
-  const state = sessionStates.get(sessionId);
-  const config = sessionConfigs.get(sessionId);
-  if (!state || !config) {
-    sendError(ws, 'Session state not found', 'STATE_ERROR');
+  const game = activeGames.get(sessionId);
+  if (!game) {
+    sendError(ws, 'No active game in this session', 'NO_GAME');
     return;
   }
+
+  const { config, state } = game;
 
   // player reveals
   try {
@@ -253,52 +337,56 @@ async function handleReveal(ws: WebSocket, playerId: string, payload: RevealPayl
   // house reveals and settles via primitive
   const { outcome, updatedState } = await GameService.houseRevealAndSettle(roundId, state, config);
 
-  // update balances based on outcome
-  let newPlayerBalance = state.playerBalance;
-  let newHouseBalance = state.houseBalance;
   const betAmount = state.betAmount;
+  let newPlayerBalance = session.playerBalance;
+  let newHouseBalance = session.houseBalance;
 
   if (outcome.gameOver) {
     if (outcome.playerWon && outcome.payout > 0n) {
-      // player cashed out or won final round
-      newPlayerBalance = state.playerBalance - betAmount + outcome.payout;
-      newHouseBalance = state.houseBalance + betAmount - outcome.payout;
+      newPlayerBalance = session.playerBalance - betAmount + outcome.payout;
+      newHouseBalance = session.houseBalance + betAmount - outcome.payout;
     } else if (!outcome.playerWon) {
-      // player lost their bet
-      newPlayerBalance = state.playerBalance - betAmount;
-      newHouseBalance = state.houseBalance + betAmount;
+      newPlayerBalance = session.playerBalance - betAmount;
+      newHouseBalance = session.houseBalance + betAmount;
     }
   } else if (config.gameType === 'pick-number') {
-    // range game: each round is independent bet
+    // range: each round is independent
     if (outcome.playerWon && outcome.payout > 0n) {
-      newPlayerBalance = state.playerBalance - betAmount + outcome.payout;
-      newHouseBalance = state.houseBalance + betAmount - outcome.payout;
+      newPlayerBalance = session.playerBalance - betAmount + outcome.payout;
+      newHouseBalance = session.houseBalance + betAmount - outcome.payout;
     } else {
-      newPlayerBalance = state.playerBalance - betAmount;
-      newHouseBalance = state.houseBalance + betAmount;
+      newPlayerBalance = session.playerBalance - betAmount;
+      newHouseBalance = session.houseBalance + betAmount;
+    }
+
+    // bust detection
+    if (newPlayerBalance < betAmount) {
+      updatedState.isActive = false;
     }
   }
-  // for multi-round games (cash-out, reveal-tiles), balance only changes on cashout/loss
 
   updatedState.playerBalance = newPlayerBalance;
   updatedState.houseBalance = newHouseBalance;
 
-  // persist updated state
-  sessionStates.set(sessionId, updatedState);
+  // update session-level balances
+  session.playerBalance = newPlayerBalance;
+  session.houseBalance = newHouseBalance;
 
-  // update session in DB
+  // update game state
+  game.state = updatedState;
+
+  // persist to DB
   await db.session.update({
     where: { id: sessionId },
     data: {
       gameState: JSON.parse(JSON.stringify(updatedState, (_k, v) =>
         typeof v === 'bigint' ? v.toString() : v
       )),
-      status: updatedState.isActive ? 'ACTIVE' : 'CLOSED',
-      closedAt: updatedState.isActive ? undefined : new Date(),
+      // session stays ACTIVE even if game ends. only close_session closes it.
+      status: session.isActive ? 'ACTIVE' : 'CLOSED',
     },
   });
 
-  // fetch round for house nonce
   const round = await db.round.findUnique({ where: { id: roundId } });
 
   send(ws, 'round_result', {
@@ -323,20 +411,22 @@ async function handleReveal(ws: WebSocket, playerId: string, payload: RevealPayl
 async function handleCashOut(ws: WebSocket, playerId: string, payload: CashOutPayload) {
   const { sessionId } = payload;
 
-  if (sessionPlayers.get(sessionId) !== playerId) {
+  const session = sessions.get(sessionId);
+  if (!session || session.playerId !== playerId) {
     sendError(ws, 'Not authorized for this session', 'AUTH_ERROR');
     return;
   }
 
-  const state = sessionStates.get(sessionId);
-  const config = sessionConfigs.get(sessionId);
-  if (!state || !config) {
-    sendError(ws, 'Session not found', 'NOT_FOUND');
+  const game = activeGames.get(sessionId);
+  if (!game) {
+    sendError(ws, 'No active game to cash out from', 'NO_GAME');
     return;
   }
 
+  const { state } = game;
+
   if (!state.isActive) {
-    sendError(ws, 'Session not active', 'SESSION_CLOSED');
+    sendError(ws, 'Game not active', 'GAME_CLOSED');
     return;
   }
 
@@ -344,23 +434,22 @@ async function handleCashOut(ws: WebSocket, playerId: string, payload: CashOutPa
   const grossPayout = (state.betAmount * BigInt(Math.floor(state.cumulativeMultiplier * 10000))) / 10000n;
   const netPayout = (grossPayout * BigInt(BPS_BASE - HOUSE_EDGE_BPS)) / BigInt(BPS_BASE);
 
-  const newPlayerBalance = state.playerBalance - state.betAmount + netPayout;
-  const newHouseBalance = state.houseBalance + state.betAmount - netPayout;
+  const newPlayerBalance = session.playerBalance - state.betAmount + netPayout;
+  const newHouseBalance = session.houseBalance + state.betAmount - netPayout;
 
-  state.isActive = false;
-  state.playerBalance = newPlayerBalance;
-  state.houseBalance = newHouseBalance;
-  sessionStates.set(sessionId, state);
+  // update session balances
+  session.playerBalance = newPlayerBalance;
+  session.houseBalance = newHouseBalance;
 
-  // update DB
+  // end the game, but keep session open
+  activeGames.delete(sessionId);
+
+  // clear game slug in DB, session stays ACTIVE
   await db.session.update({
     where: { id: sessionId },
     data: {
-      status: 'CLOSED',
-      closedAt: new Date(),
-      gameState: JSON.parse(JSON.stringify(state, (_k, v) =>
-        typeof v === 'bigint' ? v.toString() : v
-      )),
+      gameConfigSlug: null,
+      gameState: null,
     },
   });
 
@@ -376,78 +465,80 @@ async function handleCashOut(ws: WebSocket, playerId: string, payload: CashOutPa
 async function handleCloseSession(ws: WebSocket, playerId: string, payload: CloseSessionPayload) {
   const { sessionId } = payload;
 
-  if (sessionPlayers.get(sessionId) !== playerId) {
-    sendError(ws, 'Not authorized for this session', 'AUTH_ERROR');
+  const session = sessions.get(sessionId);
+  if (!session || session.playerId !== playerId) {
+    sendError(ws, 'Session not found or not authorized', 'AUTH_ERROR');
     return;
   }
 
-  const state = sessionStates.get(sessionId);
-  if (!state) {
-    sendError(ws, 'Session not found', 'NOT_FOUND');
-    return;
-  }
+  // if a game is running, end it (forfeit)
+  activeGames.delete(sessionId);
 
-  // mark closed
-  state.isActive = false;
-  sessionStates.set(sessionId, state);
+  session.isActive = false;
 
   await db.session.update({
     where: { id: sessionId },
     data: {
       status: 'CLOSED',
       closedAt: new Date(),
+      gameConfigSlug: null,
     },
   });
 
+  const finalPlayer = session.playerBalance.toString();
+  const finalHouse = session.houseBalance.toString();
+
   // cleanup
-  sessionPlayers.delete(sessionId);
-  sessionStates.delete(sessionId);
-  sessionConfigs.delete(sessionId);
+  sessions.delete(sessionId);
 
   send(ws, 'session_closed', {
     sessionId,
-    finalPlayerBalance: state.playerBalance.toString(),
-    finalHouseBalance: state.houseBalance.toString(),
+    finalPlayerBalance: finalPlayer,
+    finalHouseBalance: finalHouse,
   });
 }
 
 async function handleGetSession(ws: WebSocket, payload: { sessionId: string }) {
-  const state = sessionStates.get(payload.sessionId);
+  const session = sessions.get(payload.sessionId);
+  const game = activeGames.get(payload.sessionId);
 
-  if (!state) {
+  if (!session) {
     // try loading from DB
-    const session = await db.session.findUnique({ where: { id: payload.sessionId } });
-    if (!session) {
+    const dbSession = await db.session.findUnique({ where: { id: payload.sessionId } });
+    if (!dbSession) {
       sendError(ws, 'Session not found', 'NOT_FOUND');
       return;
     }
 
     send(ws, 'session_state', {
-      sessionId: session.id,
-      status: session.status,
-      playerBalance: session.playerDeposit,
-      houseBalance: session.houseDeposit,
-      gameState: session.gameState,
+      sessionId: dbSession.id,
+      status: dbSession.status,
+      playerBalance: dbSession.playerDeposit,
+      houseBalance: dbSession.houseDeposit,
+      gameState: dbSession.gameState,
     });
     return;
   }
 
   send(ws, 'session_state', {
     sessionId: payload.sessionId,
-    status: state.isActive ? 'ACTIVE' : 'CLOSED',
-    playerBalance: state.playerBalance.toString(),
-    houseBalance: state.houseBalance.toString(),
-    currentRound: state.currentRound,
-    cumulativeMultiplier: state.cumulativeMultiplier,
-    primitiveState: state.primitiveState,
+    status: session.isActive ? 'ACTIVE' : 'CLOSED',
+    playerBalance: session.playerBalance.toString(),
+    houseBalance: session.houseBalance.toString(),
+    activeGame: game ? {
+      gameType: game.config.gameType,
+      currentRound: game.state.currentRound,
+      cumulativeMultiplier: game.state.cumulativeMultiplier,
+      primitiveState: game.state.primitiveState,
+    } : null,
   });
 }
 
-export function registerGameHandler(fastify: FastifyInstance) {
+// registered as a fastify plugin so WS decorator is available
+export const gameHandlerPlugin = async (fastify: FastifyInstance) => {
   fastify.get('/ws/game', { websocket: true }, (socket, req) => {
-    // get player address from query param (browsers can't set WS headers)
-    const url = new URL(req.url || '', `http://${req.headers.host}`);
-    const playerId = url.searchParams.get('address') || 'anonymous';
+    const query = req.query as Record<string, string>;
+    const playerId = query.address || 'anonymous';
 
     console.log(`Player connected: ${playerId}`);
     connections.set(playerId, socket);
@@ -476,8 +567,8 @@ export function registerGameHandler(fastify: FastifyInstance) {
       console.error(`Socket error for ${playerId}:`, err);
     });
   });
-}
+};
 
 export const GameHandler = {
-  registerGameHandler,
+  gameHandlerPlugin,
 };

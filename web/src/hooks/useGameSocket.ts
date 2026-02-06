@@ -16,6 +16,8 @@ const subscribers = new Map<string, Set<MessageHandler>>()
 let reconnectAttempts = 0
 let reconnectTimer: ReturnType<typeof setTimeout> | null = null
 let pingInterval: ReturnType<typeof setInterval> | null = null
+// track if a connect() call is in flight so reconnect doesn't stack
+let connecting = false
 
 function getWsUrl(address: string): string {
   return `${WS_BASE}/ws/game?address=${encodeURIComponent(address)}`
@@ -59,7 +61,10 @@ function scheduleReconnect() {
   reconnectTimer = setTimeout(() => {
     reconnectTimer = null
     if (playerAddress) {
-      connect(playerAddress)
+      // catch the promise so it doesn't become an unhandled rejection
+      connect(playerAddress).catch(() => {
+        // reconnect will be scheduled again by onclose
+      })
     }
   }, delay)
 }
@@ -72,31 +77,55 @@ export function connect(address: string): Promise<void> {
       return
     }
 
+    // prevent concurrent connect attempts
+    if (connecting) {
+      resolve()
+      return
+    }
+
     // close existing
     disconnect()
     playerAddress = address
     reconnectAttempts = 0
+    connecting = true
 
-    ws = new WebSocket(getWsUrl(address))
+    const socket = new WebSocket(getWsUrl(address))
+    ws = socket
 
-    ws.onopen = () => {
+    let settled = false
+
+    socket.onopen = () => {
       console.log('[ws] connected')
+      connecting = false
       reconnectAttempts = 0
       startPing()
-      resolve()
+      if (!settled) {
+        settled = true
+        resolve()
+      }
     }
 
-    ws.onmessage = handleMessage
+    socket.onmessage = handleMessage
 
-    ws.onclose = () => {
+    socket.onclose = () => {
       console.log('[ws] disconnected')
+      connecting = false
       stopPing()
-      scheduleReconnect()
+      // only reject if we never connected (open never fired)
+      if (!settled) {
+        settled = true
+        reject(new Error('WebSocket connection failed'))
+      }
+      // only reconnect if we still want to be connected
+      if (playerAddress) {
+        scheduleReconnect()
+      }
     }
 
-    ws.onerror = (err) => {
+    socket.onerror = (err) => {
       console.error('[ws] error', err)
-      reject(err)
+      // don't reject here, onclose will fire right after and handle it
+      // this prevents double-rejection
     }
   })
 }
@@ -107,8 +136,10 @@ export function disconnect() {
     reconnectTimer = null
   }
   stopPing()
+  connecting = false
   if (ws) {
     ws.onclose = null // prevent reconnect
+    ws.onerror = null
     ws.close()
     ws = null
   }
@@ -155,6 +186,34 @@ export function waitFor<T = unknown>(type: string, timeout = 15000): Promise<T> 
   })
 }
 
+// wait for a message type, but also reject immediately if an error arrives
+// prevents 15s timeout hangs when backend sends error instead of expected type
+export function waitForOrError<T = unknown>(type: string, timeout = 15000): Promise<T> {
+  return new Promise((resolve, reject) => {
+    const timer = setTimeout(() => {
+      cleanup()
+      reject(new Error(`Timeout waiting for ${type}`))
+    }, timeout)
+
+    function cleanup() {
+      clearTimeout(timer)
+      typeUnsub()
+      errorUnsub()
+    }
+
+    const typeUnsub = subscribe(type, (payload) => {
+      cleanup()
+      resolve(payload as T)
+    })
+
+    const errorUnsub = subscribe('error', (payload) => {
+      cleanup()
+      const p = payload as { error: string; code?: string }
+      reject(new Error(p.error))
+    })
+  })
+}
+
 export function isConnected(): boolean {
   return ws?.readyState === WebSocket.OPEN
 }
@@ -165,5 +224,6 @@ export const GameSocket = {
   send,
   subscribe,
   waitFor,
+  waitForOrError,
   isConnected,
 }

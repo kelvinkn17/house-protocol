@@ -75,6 +75,7 @@ model VaultSnapshot {
 }
 
 // game config: registered game types (our 3 demos + future builder games)
+// configs live in memory via configs.ts for now, this table is for future builder dashboard
 model GameConfig {
   slug        String   @id // "double-or-nothing", "death", "range"
   name        String
@@ -85,8 +86,6 @@ model GameConfig {
   createdAt   DateTime @default(now())
   updatedAt   DateTime @updatedAt
 
-  sessions    Session[]
-
   @@index([gameType])
 }
 
@@ -95,8 +94,7 @@ model Session {
   id            String    @id @default(cuid())
   playerId      String    // wallet address
   channelId     String?   // nitrolite channel id
-  gameConfigSlug String
-  gameConfig    GameConfig @relation(fields: [gameConfigSlug], references: [slug])
+  gameConfigSlug String?  // current active game slug, null when between games
   playerDeposit String    // raw bigint
   houseDeposit  String    // raw bigint
   status        String    @default("ACTIVE") // ACTIVE, CLOSED, EXPIRED

@@ -1,10 +1,10 @@
-import { useState } from 'react'
+import { useState, useEffect, useRef } from 'react'
 import { cnm } from '@/utils/style'
 import { useSound } from '@/providers/SoundProvider'
 import AnimateComponent from '@/components/elements/AnimateComponent'
 import SdkPanel from './SdkPanel'
 import SessionGate from './SessionGate'
-import { useGameSession } from '@/hooks/useGameSession'
+import { useSession } from '@/providers/SessionProvider'
 import { formatUnits } from 'viem'
 
 type AnimPhase = 'idle' | 'flipping' | 'won' | 'lost'
@@ -59,24 +59,45 @@ await session.cashOut()`,
 
 export default function DoubleOrNothing() {
   const { play } = useSound()
-  const gameSession = useGameSession()
+  const session = useSession()
   const [animPhase, setAnimPhase] = useState<AnimPhase>('idle')
+  const gameStarted = useRef(false)
 
-  const { phase, session, stats, lastResult } = gameSession
+  const { sessionPhase, activeGame, gamePhase, stats, playerBalance } = session
 
+  const multiplier = activeGame?.cumulativeMultiplier ?? 1
   const streak = stats.wins
-  const multiplier = session.cumulativeMultiplier
-  const betAmountFormatted = session.playerBalance !== '0'
-    ? parseFloat(formatUnits(BigInt(session.playerBalance), 6)).toFixed(2)
-    : '0.00'
+
+  // auto-start game when session becomes active
+  useEffect(() => {
+    if (sessionPhase === 'active' && gamePhase === 'none' && !activeGame && !gameStarted.current) {
+      gameStarted.current = true
+      session.startGame('double-or-nothing')
+    }
+  }, [sessionPhase, gamePhase, activeGame, session])
+
+  // reset the ref when session changes
+  useEffect(() => {
+    if (sessionPhase !== 'active') {
+      gameStarted.current = false
+    }
+  }, [sessionPhase])
+
+  // when game starts, switch to playing
+  useEffect(() => {
+    if (gamePhase === 'active' && animPhase === 'idle' && activeGame) {
+      // game just started, ready to play
+    }
+  }, [gamePhase, animPhase, activeGame])
+
+  const isActive = gamePhase === 'active' || gamePhase === 'playing_round'
 
   const flip = async () => {
     play('action')
     setAnimPhase('flipping')
 
-    const result = await gameSession.playRound({ action: 'continue' })
+    const result = await session.playRound({ action: 'continue' })
 
-    // delay for animation
     setTimeout(() => {
       if (result?.playerWon) {
         setAnimPhase('won')
@@ -90,16 +111,18 @@ export default function DoubleOrNothing() {
 
   const handleCashOut = async () => {
     play('cashout')
-    await gameSession.cashOut()
+    await session.cashOut()
     setAnimPhase('idle')
   }
 
-  const handleReset = () => {
-    gameSession.reset()
+  const handlePlayAgain = async () => {
     setAnimPhase('idle')
+    // end current game if still tracked, start fresh
+    if (activeGame) {
+      await session.endGame()
+    }
+    await session.startGame('double-or-nothing')
   }
-
-  const isActive = phase === 'active' || phase === 'playing_round'
 
   return (
     <div className="grid lg:grid-cols-5 gap-6">
@@ -108,17 +131,7 @@ export default function DoubleOrNothing() {
           className="bg-white border-2 border-black rounded-2xl p-6"
           style={{ boxShadow: '6px 6px 0px black' }}
         >
-          <SessionGate
-            phase={phase}
-            error={gameSession.error}
-            stats={stats}
-            playerBalance={session.playerBalance}
-            cumulativeMultiplier={multiplier}
-            sessionId={session.sessionId}
-            onOpenSession={(amount) => gameSession.openSession('double-or-nothing', amount)}
-            onReset={handleReset}
-            accentColor="#CDFF57"
-          >
+          <SessionGate accentColor="#CDFF57">
             {/* multiplier display */}
             <div className="flex flex-col items-center justify-center py-8">
               <div
@@ -173,7 +186,7 @@ export default function DoubleOrNothing() {
               {animPhase === 'idle' && isActive && (
                 <button
                   onClick={flip}
-                  disabled={phase === 'playing_round'}
+                  disabled={gamePhase === 'playing_round'}
                   className="w-full py-4 text-sm font-black uppercase bg-black text-white border-2 border-black rounded-xl transition-transform hover:translate-x-1 hover:translate-y-1 disabled:opacity-50"
                   style={{ boxShadow: '4px 4px 0px #CDFF57' }}
                 >
@@ -185,7 +198,7 @@ export default function DoubleOrNothing() {
                 <div className="flex gap-3">
                   <button
                     onClick={handleCashOut}
-                    disabled={phase === 'playing_round'}
+                    disabled={gamePhase === 'playing_round'}
                     className="flex-1 py-4 text-sm font-black uppercase bg-[#CDFF57] text-black border-2 border-black rounded-xl transition-transform hover:translate-x-1 hover:translate-y-1 disabled:opacity-50"
                     style={{ boxShadow: '4px 4px 0px black' }}
                   >
@@ -193,7 +206,7 @@ export default function DoubleOrNothing() {
                   </button>
                   <button
                     onClick={flip}
-                    disabled={phase === 'playing_round'}
+                    disabled={gamePhase === 'playing_round'}
                     className="flex-1 py-4 text-sm font-black uppercase bg-black text-white border-2 border-black rounded-xl transition-transform hover:translate-x-1 hover:translate-y-1 disabled:opacity-50"
                     style={{ boxShadow: '4px 4px 0px #FF6B9D' }}
                   >
@@ -204,7 +217,7 @@ export default function DoubleOrNothing() {
 
               {animPhase === 'lost' && (
                 <button
-                  onClick={handleReset}
+                  onClick={handlePlayAgain}
                   className="w-full py-4 text-sm font-black uppercase bg-black text-white border-2 border-black rounded-xl transition-transform hover:translate-x-1 hover:translate-y-1"
                   style={{ boxShadow: '4px 4px 0px #FF6B9D' }}
                 >

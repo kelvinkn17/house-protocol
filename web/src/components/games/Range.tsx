@@ -4,7 +4,7 @@ import { useSound } from '@/providers/SoundProvider'
 import AnimateComponent from '@/components/elements/AnimateComponent'
 import SdkPanel from './SdkPanel'
 import SessionGate from './SessionGate'
-import { useGameSession } from '@/hooks/useGameSession'
+import { useSession } from '@/providers/SessionProvider'
 
 type Mode = 'over' | 'under' | 'range'
 type AnimPhase = 'idle' | 'rolling' | 'result'
@@ -66,7 +66,7 @@ console.log(result.payout) // amount won`,
 
 export default function Range() {
   const { play } = useSound()
-  const gameSession = useGameSession()
+  const session = useSession()
   const [mode, setMode] = useState<Mode>('over')
   const [target, setTarget] = useState(50)
   const [rangeStart, setRangeStart] = useState(30)
@@ -75,9 +75,10 @@ export default function Range() {
   const [displayResult, setDisplayResult] = useState<number | null>(null)
   const [won, setWon] = useState(false)
   const intervalRef = useRef<ReturnType<typeof setInterval> | null>(null)
+  const gameStarted = useRef(false)
 
-  const { phase, session, stats, lastResult } = gameSession
-  const isActive = phase === 'active' || phase === 'playing_round'
+  const { sessionPhase, activeGame, gamePhase, stats } = session
+  const isActive = gamePhase === 'active' || gamePhase === 'playing_round'
 
   // slider drag state
   const barRef = useRef<HTMLDivElement>(null)
@@ -95,6 +96,20 @@ export default function Range() {
   })()
 
   const payout = winProbability > 0 ? (1 / winProbability) * 0.98 : 0
+
+  // auto-start game when session becomes active
+  useEffect(() => {
+    if (sessionPhase === 'active' && gamePhase === 'none' && !activeGame && !gameStarted.current) {
+      gameStarted.current = true
+      session.startGame('range')
+    }
+  }, [sessionPhase, gamePhase, activeGame, session])
+
+  useEffect(() => {
+    if (sessionPhase !== 'active') {
+      gameStarted.current = false
+    }
+  }, [sessionPhase])
 
   // convert mouse/touch position to slider value (1-99)
   const getValueFromPosition = useCallback((clientX: number) => {
@@ -185,7 +200,7 @@ export default function Range() {
       choice.rangeEnd = rangeEnd
     }
 
-    const result = await gameSession.playRound(choice)
+    const result = await session.playRound(choice)
 
     // stop ticker
     if (intervalRef.current) clearInterval(intervalRef.current)
@@ -199,13 +214,7 @@ export default function Range() {
     } else {
       setAnimPhase('idle')
     }
-  }, [mode, target, rangeStart, rangeEnd, play, gameSession])
-
-  const handleReset = () => {
-    gameSession.reset()
-    setAnimPhase('idle')
-    setDisplayResult(null)
-  }
+  }, [mode, target, rangeStart, rangeEnd, play, session])
 
   return (
     <div className="grid lg:grid-cols-5 gap-6">
@@ -214,17 +223,7 @@ export default function Range() {
           className="bg-white border-2 border-black rounded-2xl p-6"
           style={{ boxShadow: '6px 6px 0px black' }}
         >
-          <SessionGate
-            phase={phase}
-            error={gameSession.error}
-            stats={stats}
-            playerBalance={session.playerBalance}
-            cumulativeMultiplier={1}
-            sessionId={session.sessionId}
-            onOpenSession={(amount) => gameSession.openSession('range', amount)}
-            onReset={handleReset}
-            accentColor="#dcb865"
-          >
+          <SessionGate accentColor="#dcb865">
             {/* result number */}
             <div className="flex flex-col items-center justify-center py-6">
               <div
@@ -426,7 +425,7 @@ export default function Range() {
               {animPhase === 'idle' && isActive && (
                 <button
                   onClick={roll}
-                  disabled={phase === 'playing_round'}
+                  disabled={gamePhase === 'playing_round'}
                   className="w-full py-4 text-sm font-black uppercase bg-black text-white border-2 border-black rounded-xl transition-transform hover:translate-x-1 hover:translate-y-1 disabled:opacity-50"
                   style={{ boxShadow: '4px 4px 0px #dcb865' }}
                 >
@@ -443,7 +442,7 @@ export default function Range() {
               {animPhase === 'result' && isActive && (
                 <button
                   onClick={roll}
-                  disabled={phase === 'playing_round'}
+                  disabled={gamePhase === 'playing_round'}
                   className={cnm(
                     'w-full py-4 text-sm font-black uppercase border-2 border-black rounded-xl transition-transform hover:translate-x-1 hover:translate-y-1 disabled:opacity-50',
                     won ? 'bg-[#CDFF57] text-black' : 'bg-black text-white',

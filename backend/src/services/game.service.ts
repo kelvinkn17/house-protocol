@@ -9,8 +9,7 @@ import { getPrimitive } from './primitives/registry.ts';
 import type { PlayerChoice, RoundOutcome, GameSessionState } from './primitives/types.ts';
 import type { GameConfig } from './primitives/types.ts';
 
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
-const db = prismaQuery as any;
+const db = prismaQuery;
 
 // -- crypto helpers (shared across all game types) --
 
@@ -80,6 +79,7 @@ export async function playerReveal(roundId: string, choiceData: string, nonce: s
   if (!round) throw new Error('Round not found');
   if (!round.houseCommitment) throw new Error('House has not committed yet');
 
+  if (!round.playerCommitment) throw new Error('Player commitment not found');
   const valid = verifyCommitment(round.playerCommitment, choiceData, nonce);
   if (!valid) throw new Error('Invalid commitment, nonce does not match');
 
