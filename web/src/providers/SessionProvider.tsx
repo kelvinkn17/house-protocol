@@ -6,6 +6,7 @@ import {
   createContext,
   useContext,
   useState,
+  useEffect,
   useRef,
   useCallback,
   type ReactNode,
@@ -18,11 +19,21 @@ import { useWallets } from '@privy-io/react-auth'
 import { createWalletClient, custom } from 'viem'
 import { sepolia } from 'viem/chains'
 import type { Address } from 'viem'
+import {
+  USDH_ADDRESS,
+  CUSTODY_ADDRESS,
+  ERC20_ABI,
+  CUSTODY_ABI,
+  SEPOLIA_CHAIN_ID,
+  getPublicClient,
+} from '@/lib/contracts'
 
 // session lifecycle
 export type SessionPhase =
   | 'no_wallet'
   | 'idle'
+  | 'approving'
+  | 'depositing'
   | 'connecting'
   | 'creating'
   | 'active'
@@ -107,6 +118,15 @@ export function SessionProvider({ children }: { children: ReactNode }) {
   const [depositAmount, setDepositAmount] = useState('0')
   const [sessionError, setSessionError] = useState<string | null>(null)
 
+  // sync phase when wallet loads async (privy takes a tick to hydrate)
+  useEffect(() => {
+    if (walletAddress && sessionPhase === 'no_wallet') {
+      setSessionPhase('idle')
+    } else if (!walletAddress && sessionPhase === 'idle') {
+      setSessionPhase('no_wallet')
+    }
+  }, [walletAddress])
+
   // game state
   const [activeGame, setActiveGame] = useState<ActiveGame | null>(null)
   const [gamePhase, setGamePhase] = useState<GamePhase>('none')
@@ -119,20 +139,8 @@ export function SessionProvider({ children }: { children: ReactNode }) {
   })
   const errorUnsub = useRef<(() => void) | null>(null)
 
-  // get a viem walletClient from the Privy wallet (for clearnode EIP712 auth)
-  const getWalletClient = useCallback(async () => {
-    const wallet = wallets[0]
-    if (!wallet) throw new Error('No wallet available')
-
-    const provider = await wallet.getEthereumProvider()
-    return createWalletClient({
-      account: wallet.address as Address,
-      chain: sepolia,
-      transport: custom(provider),
-    })
-  }, [wallets])
-
-  // full flow: backend validates + signs as broker, frontend creates app session on clearnode
+  // full flow: approve + deposit to custody, backend validates + signs as broker,
+  // frontend creates app session on clearnode
   const openSession = useCallback(async (deposit: string) => {
     if (!walletAddress) {
       setSessionPhase('no_wallet')
@@ -140,9 +148,56 @@ export function SessionProvider({ children }: { children: ReactNode }) {
     }
 
     setSessionError(null)
-    setSessionPhase('connecting')
 
     try {
+      // step 0: deposit USDH into Nitrolite Custody contract (on-chain)
+      if (!USDH_ADDRESS || !CUSTODY_ADDRESS) throw new Error('Contract addresses not configured')
+
+      const wallet = wallets[0]
+      if (!wallet) throw new Error('No wallet connected')
+
+      await wallet.switchChain(SEPOLIA_CHAIN_ID)
+      const provider = await wallet.getEthereumProvider()
+      const wc = createWalletClient({
+        account: walletAddress as Address,
+        chain: sepolia,
+        transport: custom(provider),
+      })
+      const publicClient = getPublicClient()
+      const depositBigInt = BigInt(deposit)
+
+      // approve USDH spending by custody contract
+      setSessionPhase('approving')
+      const allowance = await publicClient.readContract({
+        address: USDH_ADDRESS,
+        abi: ERC20_ABI,
+        functionName: 'allowance',
+        args: [walletAddress as Address, CUSTODY_ADDRESS],
+      }) as bigint
+
+      if (allowance < depositBigInt) {
+        const approveHash = await wc.writeContract({
+          address: USDH_ADDRESS,
+          abi: ERC20_ABI,
+          functionName: 'approve',
+          args: [CUSTODY_ADDRESS, depositBigInt * 10n],
+        })
+        await publicClient.waitForTransactionReceipt({ hash: approveHash })
+      }
+
+      // then: deposit into custody
+      setSessionPhase('depositing')
+      const depositHash = await wc.writeContract({
+        address: CUSTODY_ADDRESS,
+        abi: CUSTODY_ABI,
+        functionName: 'deposit',
+        args: [walletAddress as Address, USDH_ADDRESS, depositBigInt],
+      })
+      await publicClient.waitForTransactionReceipt({ hash: depositHash })
+
+      // now proceed with session creation
+      setSessionPhase('connecting')
+
       // connect to our backend WS
       await GameSocket.connect(walletAddress)
 
@@ -169,8 +224,7 @@ export function SessionProvider({ children }: { children: ReactNode }) {
         timestamp: number
       }>('session_params')
 
-      // step 2: authenticate with clearnode using player's wallet
-      const wc = await getWalletClient()
+      // step 2: authenticate with clearnode using player's wallet (reuse wc from deposit step)
       await ClearnodeClient.authenticate(walletAddress as Address, wc)
 
       // step 3: create app session on clearnode (player signs + broker sigs combined)
@@ -208,7 +262,7 @@ export function SessionProvider({ children }: { children: ReactNode }) {
       setSessionError((err as Error).message)
       setSessionPhase('error')
     }
-  }, [walletAddress, getWalletClient])
+  }, [walletAddress, wallets])
 
   const startGame = useCallback(async (slug: string) => {
     if (!sessionId || sessionPhase !== 'active') return

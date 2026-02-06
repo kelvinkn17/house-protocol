@@ -8,6 +8,17 @@ import tailwindcss from '@tailwindcss/vite'
 // import { nitro } from 'nitro/vite'
 
 const config = defineConfig({
+  resolve: {
+    dedupe: ['react', 'react-dom', 'react/jsx-runtime', 'react/jsx-dev-runtime'],
+  },
+  ssr: {
+    resolve: {
+      dedupe: ['react', 'react-dom', 'react/jsx-runtime', 'react/jsx-dev-runtime'],
+    },
+    // don't externalize privy, force it through vite's module graph
+    // so it picks up the deduplicated react
+    noExternal: ['@privy-io/react-auth'],
+  },
   plugins: [
     devtools(),
     // nitro(),

@@ -58,7 +58,7 @@ export async function authenticate(
       application: APP_NAME,
       scope: APP_NAME,
       expires_at: BigInt(Math.floor(Date.now() / 1000) + 3600),
-      allowances: [{ asset: ASSET_SYMBOL, amount: '1000000' }],
+      allowances: [{ asset: ASSET_SYMBOL, amount: '100000000000' }],
     }
 
     const timeout = setTimeout(() => {

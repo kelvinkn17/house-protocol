@@ -3,7 +3,13 @@ import { sepolia } from 'viem/chains'
 
 export const VAULT_ADDRESS = (import.meta.env.VITE_HOUSE_VAULT_ADDRESS || '') as Address
 export const USDH_ADDRESS = (import.meta.env.VITE_USDH_TOKEN_ADDRESS || '') as Address
+export const CUSTODY_ADDRESS = (import.meta.env.VITE_NITROLITE_CUSTODY_ADDRESS || '') as Address
 export const SEPOLIA_CHAIN_ID = 11155111
+
+// Nitrolite custody: deposit USDH before opening a state channel session
+export const CUSTODY_ABI = parseAbi([
+  'function deposit(address account, address token, uint256 amount) payable',
+])
 
 // ERC-4626 vault: deposit, withdraw, and read functions
 export const VAULT_ABI = parseAbi([

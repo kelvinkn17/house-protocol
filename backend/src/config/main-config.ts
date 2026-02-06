@@ -4,7 +4,7 @@
  */
 
 // Validate required environment variables on startup
-const requiredEnvVars: string[] = ['DATABASE_URL', 'JWT_SECRET', 'PRIVY_APP_ID', 'PRIVY_APP_SECRET'];
+const requiredEnvVars: string[] = ['DATABASE_URL', 'JWT_SECRET', 'PRIVY_APP_ID', 'PRIVY_APP_SECRET', 'OPERATOR_PRIVATE_KEY'];
 
 for (const envVar of requiredEnvVars) {
   if (!process.env[envVar]) {

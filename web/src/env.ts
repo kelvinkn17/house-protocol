@@ -14,6 +14,7 @@ export const env = createEnv({
     VITE_PRIVY_APP_ID: z.string().min(1),
     VITE_HOUSE_VAULT_ADDRESS: z.string().min(1).optional(),
     VITE_USDH_TOKEN_ADDRESS: z.string().min(1).optional(),
+    VITE_NITROLITE_CUSTODY_ADDRESS: z.string().min(1).optional(),
   },
 
   runtimeEnv: import.meta.env,

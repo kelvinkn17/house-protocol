@@ -144,7 +144,7 @@ function SessionBar() {
   const { login, walletAddress } = useAuthContext()
   const { play } = useSound()
   const session = useSession()
-  const [betInput, setBetInput] = useState('100')
+  const [betInput, setBetInput] = useState('10')
 
   const { sessionPhase, playerBalance, depositAmount, sessionError, stats, sessionId } = session
 
@@ -198,7 +198,7 @@ function SessionBar() {
         </div>
         <div className="flex items-center gap-3">
           <div className="flex gap-1.5">
-            {[10, 50, 100, 500].map((amt) => (
+            {[5, 10, 50, 100].map((amt) => (
               <button
                 key={amt}
                 onClick={() => { play('click'); setBetInput(String(amt)) }}
@@ -207,9 +207,19 @@ function SessionBar() {
                   betInput === String(amt) ? 'bg-black text-white' : 'bg-white text-black',
                 )}
               >
-                ${amt}
+                {amt}
               </button>
             ))}
+          </div>
+          <div className="flex items-center border-2 border-black rounded-lg overflow-hidden">
+            <input
+              type="number"
+              value={betInput}
+              onChange={(e) => setBetInput(e.target.value)}
+              className="w-20 px-2 py-1.5 text-xs font-black text-black bg-white outline-none [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none"
+              min="1"
+            />
+            <span className="px-2 py-1.5 text-[10px] font-mono text-black/40 bg-black/5 border-l-2 border-black">USDH</span>
           </div>
           <button
             onClick={() => {
@@ -220,15 +230,21 @@ function SessionBar() {
             className="ml-auto px-6 py-2.5 text-xs font-black uppercase bg-black text-white border-2 border-black rounded-xl transition-transform hover:translate-x-0.5 hover:translate-y-0.5"
             style={{ boxShadow: '3px 3px 0px #CDFF57' }}
           >
-            Open Session (${betInput})
+            Open Session ({betInput} USDH)
           </button>
         </div>
       </div>
     )
   }
 
-  // connecting / creating
-  if (sessionPhase === 'connecting' || sessionPhase === 'creating') {
+  // approving / depositing / connecting / creating
+  if (sessionPhase === 'approving' || sessionPhase === 'depositing' || sessionPhase === 'connecting' || sessionPhase === 'creating') {
+    const phaseLabel: Record<string, string> = {
+      approving: 'Approving USDH...',
+      depositing: 'Depositing to custody...',
+      connecting: 'Connecting...',
+      creating: 'Creating session...',
+    }
     return (
       <div
         className="mb-6 bg-white border-2 border-black rounded-2xl p-5 flex items-center gap-3"
@@ -236,7 +252,7 @@ function SessionBar() {
       >
         <div className="w-5 h-5 border-2 border-black border-t-transparent rounded-full animate-spin" />
         <p className="text-sm font-mono text-black/50">
-          {sessionPhase === 'connecting' ? 'Connecting...' : 'Creating session...'}
+          {phaseLabel[sessionPhase] || 'Processing...'}
         </p>
       </div>
     )
@@ -280,7 +296,7 @@ function SessionBar() {
               'text-xl font-black',
               isProfit ? 'text-[#7BA318]' : 'text-[#FF6B9D]',
             )}>
-              {isProfit ? '+' : ''}${netResult.toFixed(2)}
+              {isProfit ? '+' : ''}{netResult.toFixed(2)} USDH
             </p>
           </div>
           <div className="flex items-center gap-4 text-[10px] font-mono text-black/40">
@@ -322,7 +338,7 @@ function SessionBar() {
       <div className="flex items-center gap-5">
         <div>
           <p className="text-[10px] font-mono text-black/40 uppercase">Balance</p>
-          <p className="text-lg font-black text-black">${balanceFormatted}</p>
+          <p className="text-lg font-black text-black">{balanceFormatted} USDH</p>
         </div>
         <div className="h-6 w-px bg-black/10" />
         <div className="flex items-center gap-3 text-[10px] font-mono text-black/40">
