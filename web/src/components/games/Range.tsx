@@ -99,7 +99,15 @@ export default function Range() {
 
   // auto-start game when session becomes active
   useEffect(() => {
-    if (sessionPhase === 'active' && gamePhase === 'none' && !activeGame && !gameStarted.current) {
+    if (sessionPhase !== 'active' || gameStarted.current) return
+
+    if (activeGame && activeGame.slug !== 'range') {
+      gameStarted.current = true
+      session.endGame().then(() => session.startGame('range'))
+      return
+    }
+
+    if (gamePhase === 'none' && !activeGame) {
       gameStarted.current = true
       session.startGame('range')
     }

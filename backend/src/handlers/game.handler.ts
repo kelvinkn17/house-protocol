@@ -1,6 +1,7 @@
 // websocket game handler, session-first architecture
 // session = deposit once, play any game. games start/end within a session.
-// delegates all game logic to primitives via game service
+// integrates with Nitrolite clearnode for real state channel deposits.
+// backend signs as broker, frontend signs as player and talks to clearnode.
 
 import type { FastifyInstance } from 'fastify';
 import type { WebSocket } from 'ws';
@@ -11,8 +12,32 @@ import { getGameConfig } from '../services/primitives/configs.ts';
 import { prismaQuery } from '../lib/prisma.ts';
 import type { GameSessionState, GameConfig } from '../services/primitives/types.ts';
 import { HOUSE_EDGE_BPS, BPS_BASE } from '../services/primitives/types.ts';
+import {
+  createECDSAMessageSigner,
+  createAppSessionMessage,
+  RPCProtocolVersion,
+} from '@erc7824/nitrolite';
+import { privateKeyToAccount } from 'viem/accounts';
+import { OPERATOR_PRIVATE_KEY } from '../config/main-config.ts';
+import type { Hex, Address } from 'viem';
 
 const db = prismaQuery;
+
+const ASSET_SYMBOL = 'usdh';
+const APP_NAME = 'the-house-protocol';
+
+// broker signer (lazy init from operator private key)
+let _brokerSigner: ReturnType<typeof createECDSAMessageSigner> | null = null;
+let _brokerAddress: Address | null = null;
+
+function getBrokerSigner() {
+  if (!_brokerSigner) {
+    if (!OPERATOR_PRIVATE_KEY) throw new Error('OPERATOR_PRIVATE_KEY not configured');
+    _brokerSigner = createECDSAMessageSigner(OPERATOR_PRIVATE_KEY as Hex);
+    _brokerAddress = privateKeyToAccount(OPERATOR_PRIVATE_KEY as Hex).address;
+  }
+  return { signer: _brokerSigner, address: _brokerAddress! };
+}
 
 interface ClientMessage {
   type: string;
@@ -22,6 +47,11 @@ interface ClientMessage {
 interface CreateSessionPayload {
   depositAmount: string;
   tokenAddress?: string;
+}
+
+interface ConfirmSessionPayload {
+  sessionId: string;
+  appSessionId: string;
 }
 
 interface StartGamePayload {
@@ -52,6 +82,10 @@ interface CashOutPayload {
 }
 
 interface CloseSessionPayload {
+  sessionId: string;
+}
+
+interface ConfirmClosePayload {
   sessionId: string;
 }
 
@@ -89,6 +123,9 @@ async function handleMessage(ws: WebSocket, playerId: string, message: ClientMes
       case 'create_session':
         await handleCreateSession(ws, playerId, payload as CreateSessionPayload);
         break;
+      case 'confirm_session':
+        await handleConfirmSession(ws, playerId, payload as ConfirmSessionPayload);
+        break;
       case 'start_game':
         await handleStartGame(ws, playerId, payload as StartGamePayload);
         break;
@@ -107,6 +144,9 @@ async function handleMessage(ws: WebSocket, playerId: string, message: ClientMes
       case 'close_session':
         await handleCloseSession(ws, playerId, payload as CloseSessionPayload);
         break;
+      case 'confirm_close':
+        await handleConfirmClose(ws, playerId, payload as ConfirmClosePayload);
+        break;
       case 'get_session':
         await handleGetSession(ws, payload as { sessionId: string });
         break;
@@ -123,6 +163,8 @@ async function handleMessage(ws: WebSocket, playerId: string, message: ClientMes
   }
 }
 
+// step 1: validate deposit, sign as broker, send params to frontend
+// frontend will create the app session on the clearnode then call confirm_session
 async function handleCreateSession(ws: WebSocket, playerId: string, payload: CreateSessionPayload) {
   const { depositAmount } = payload;
   const playerDeposit = BigInt(depositAmount);
@@ -154,31 +196,101 @@ async function handleCreateSession(ws: WebSocket, playerId: string, payload: Cre
     return;
   }
 
-  console.log(`[session] creating for ${playerId}, deposit=${playerDeposit} house=${houseDeposit}`);
+  console.log(`[session] preparing for ${playerId}, deposit=${playerDeposit} house=${houseDeposit}`);
 
-  // create session in DB, no game yet
+  // create session in DB as PENDING (waiting for clearnode confirmation)
   const session = await db.session.create({
     data: {
       playerId,
       gameConfigSlug: null,
       playerDeposit: playerDeposit.toString(),
       houseDeposit: houseDeposit.toString(),
-      status: 'ACTIVE',
+      status: 'PENDING',
     },
   });
 
-  // store session-level state
+  // store session state (not active yet)
   sessions.set(session.id, {
     playerId,
     playerBalance: playerDeposit,
     houseBalance: houseDeposit,
-    isActive: true,
+    isActive: false,
   });
 
-  send(ws, 'session_created', {
+  // build nitrolite app session definition
+  const { signer, address: brokerAddr } = getBrokerSigner();
+
+  const definition = {
+    protocol: RPCProtocolVersion.NitroRPC_0_4,
+    participants: [playerId as Address, brokerAddr],
+    weights: [100, 0],
+    quorum: 100,
+    challenge: 0,
+    nonce: Date.now(),
+    application: APP_NAME,
+  };
+
+  const allocations = [
+    { participant: playerId as Address, asset: ASSET_SYMBOL, amount: playerDeposit.toString() },
+    { participant: brokerAddr, asset: ASSET_SYMBOL, amount: houseDeposit.toString() },
+  ];
+
+  const requestId = Math.floor(Math.random() * 1000000);
+  const timestamp = Date.now();
+
+  // broker signs the app session message
+  const brokerMsg = await createAppSessionMessage(
+    signer,
+    { definition, allocations } as any,
+    requestId,
+    timestamp,
+  );
+  const brokerParsed = JSON.parse(brokerMsg);
+  const brokerSigs = brokerParsed.sig;
+
+  console.log(`[session] ${session.id} params ready, waiting for clearnode confirmation`);
+
+  // send params to frontend so it can create the session on clearnode
+  send(ws, 'session_params', {
     sessionId: session.id,
     playerDeposit: playerDeposit.toString(),
     houseDeposit: houseDeposit.toString(),
+    brokerAddress: brokerAddr,
+    definition,
+    allocations,
+    brokerSigs,
+    requestId,
+    timestamp,
+  });
+}
+
+// step 2: frontend confirmed the clearnode app session was created
+async function handleConfirmSession(ws: WebSocket, playerId: string, payload: ConfirmSessionPayload) {
+  const { sessionId, appSessionId } = payload;
+
+  const session = sessions.get(sessionId);
+  if (!session || session.playerId !== playerId) {
+    sendError(ws, 'Session not found or not authorized', 'AUTH_ERROR');
+    return;
+  }
+
+  // mark session active
+  session.isActive = true;
+
+  await db.session.update({
+    where: { id: sessionId },
+    data: {
+      channelId: appSessionId,
+      status: 'ACTIVE',
+    },
+  });
+
+  console.log(`[session] ${sessionId} confirmed, appSession=${appSessionId}`);
+
+  send(ws, 'session_created', {
+    sessionId,
+    playerDeposit: session.playerBalance.toString(),
+    houseDeposit: session.houseBalance.toString(),
   });
 }
 
@@ -382,7 +494,6 @@ async function handleReveal(ws: WebSocket, playerId: string, payload: RevealPayl
       gameState: JSON.parse(JSON.stringify(updatedState, (_k, v) =>
         typeof v === 'bigint' ? v.toString() : v
       )),
-      // session stays ACTIVE even if game ends. only close_session closes it.
       status: session.isActive ? 'ACTIVE' : 'CLOSED',
     },
   });
@@ -462,6 +573,7 @@ async function handleCashOut(ws: WebSocket, playerId: string, payload: CashOutPa
   });
 }
 
+// step 1 of close: send final balances to frontend so it can close the clearnode session
 async function handleCloseSession(ws: WebSocket, playerId: string, payload: CloseSessionPayload) {
   const { sessionId } = payload;
 
@@ -473,6 +585,30 @@ async function handleCloseSession(ws: WebSocket, playerId: string, payload: Clos
 
   // if a game is running, end it (forfeit)
   activeGames.delete(sessionId);
+
+  // get appSessionId from DB
+  const dbSession = await db.session.findUnique({ where: { id: sessionId } });
+  const { address: brokerAddr } = getBrokerSigner();
+
+  // send params so frontend can close the clearnode session
+  send(ws, 'close_params', {
+    sessionId,
+    appSessionId: dbSession?.channelId || null,
+    finalPlayerBalance: session.playerBalance.toString(),
+    finalHouseBalance: session.houseBalance.toString(),
+    brokerAddress: brokerAddr,
+  });
+}
+
+// step 2 of close: frontend confirmed clearnode session closed
+async function handleConfirmClose(ws: WebSocket, playerId: string, payload: ConfirmClosePayload) {
+  const { sessionId } = payload;
+
+  const session = sessions.get(sessionId);
+  if (!session || session.playerId !== playerId) {
+    sendError(ws, 'Session not found or not authorized', 'AUTH_ERROR');
+    return;
+  }
 
   session.isActive = false;
 
@@ -490,6 +626,8 @@ async function handleCloseSession(ws: WebSocket, playerId: string, payload: Clos
 
   // cleanup
   sessions.delete(sessionId);
+
+  console.log(`[session] ${sessionId} closed, player=${finalPlayer} house=${finalHouse}`);
 
   send(ws, 'session_closed', {
     sessionId,

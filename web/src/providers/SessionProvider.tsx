@@ -1,5 +1,6 @@
 // session-first provider: one deposit, play any game
 // wraps the play layout so all game components share the same session
+// integrates with Nitrolite clearnode for real state channel deposits
 
 import {
   createContext,
@@ -10,8 +11,13 @@ import {
   type ReactNode,
 } from 'react'
 import { GameSocket } from '@/hooks/useGameSocket'
+import { ClearnodeClient } from '@/lib/clearnode'
 import { generateNonce, createCommitment } from '@/lib/game'
 import { useAuthContext } from '@/providers/AuthProvider'
+import { useWallets } from '@privy-io/react-auth'
+import { createWalletClient, custom } from 'viem'
+import { sepolia } from 'viem/chains'
+import type { Address } from 'viem'
 
 // session lifecycle
 export type SessionPhase =
@@ -91,6 +97,7 @@ export function useSession() {
 
 export function SessionProvider({ children }: { children: ReactNode }) {
   const { walletAddress } = useAuthContext()
+  const { wallets } = useWallets()
 
   // session state
   const [sessionPhase, setSessionPhase] = useState<SessionPhase>(walletAddress ? 'idle' : 'no_wallet')
@@ -112,6 +119,20 @@ export function SessionProvider({ children }: { children: ReactNode }) {
   })
   const errorUnsub = useRef<(() => void) | null>(null)
 
+  // get a viem walletClient from the Privy wallet (for clearnode EIP712 auth)
+  const getWalletClient = useCallback(async () => {
+    const wallet = wallets[0]
+    if (!wallet) throw new Error('No wallet available')
+
+    const provider = await wallet.getEthereumProvider()
+    return createWalletClient({
+      account: wallet.address as Address,
+      chain: sepolia,
+      transport: custom(provider),
+    })
+  }, [wallets])
+
+  // full flow: backend validates + signs as broker, frontend creates app session on clearnode
   const openSession = useCallback(async (deposit: string) => {
     if (!walletAddress) {
       setSessionPhase('no_wallet')
@@ -122,6 +143,7 @@ export function SessionProvider({ children }: { children: ReactNode }) {
     setSessionPhase('connecting')
 
     try {
+      // connect to our backend WS
       await GameSocket.connect(walletAddress)
 
       if (errorUnsub.current) errorUnsub.current()
@@ -132,8 +154,41 @@ export function SessionProvider({ children }: { children: ReactNode }) {
 
       setSessionPhase('creating')
 
+      // step 1: ask backend to validate deposit and sign as broker
       GameSocket.send('create_session', { depositAmount: deposit })
 
+      const params = await GameSocket.waitForOrError<{
+        sessionId: string
+        playerDeposit: string
+        houseDeposit: string
+        brokerAddress: string
+        definition: Record<string, unknown>
+        allocations: Array<{ participant: string; asset: string; amount: string }>
+        brokerSigs: string[]
+        requestId: number
+        timestamp: number
+      }>('session_params')
+
+      // step 2: authenticate with clearnode using player's wallet
+      const wc = await getWalletClient()
+      await ClearnodeClient.authenticate(walletAddress as Address, wc)
+
+      // step 3: create app session on clearnode (player signs + broker sigs combined)
+      const appSessionId = await ClearnodeClient.openAppSession(
+        params.definition,
+        params.allocations,
+        params.brokerSigs,
+        params.requestId,
+        params.timestamp,
+      )
+
+      // step 4: tell backend the clearnode session is confirmed
+      GameSocket.send('confirm_session', {
+        sessionId: params.sessionId,
+        appSessionId,
+      })
+
+      // step 5: wait for backend to acknowledge
       const result = await GameSocket.waitForOrError<{
         sessionId: string
         playerDeposit: string
@@ -153,7 +208,7 @@ export function SessionProvider({ children }: { children: ReactNode }) {
       setSessionError((err as Error).message)
       setSessionPhase('error')
     }
-  }, [walletAddress])
+  }, [walletAddress, getWalletClient])
 
   const startGame = useCallback(async (slug: string) => {
     if (!sessionId || sessionPhase !== 'active') return
@@ -180,7 +235,6 @@ export function SessionProvider({ children }: { children: ReactNode }) {
         cumulativeMultiplier: 1,
       })
       setLastResult(null)
-      // keep session stats across games (cumulative for the session)
       setGamePhase('active')
     } catch (err) {
       setSessionError((err as Error).message)
@@ -282,11 +336,8 @@ export function SessionProvider({ children }: { children: ReactNode }) {
         totalRounds: prev.totalRounds + 1,
       }))
 
-      // if game ended (player lost or completed all rounds), clear active game
       if (!roundResult.isActive) {
         setGamePhase('none')
-        // keep activeGame around briefly so components can show the final result
-        // they'll call endGame or startGame again when ready
       } else {
         setGamePhase('active')
       }
@@ -326,12 +377,43 @@ export function SessionProvider({ children }: { children: ReactNode }) {
     }
   }, [sessionId])
 
+  // close flow: backend sends close_params, frontend closes clearnode session, confirms back
   const closeSession = useCallback(async () => {
     if (!sessionId) return
 
     setSessionPhase('closing')
     try {
+      // step 1: ask backend for final balances + appSessionId
       GameSocket.send('close_session', { sessionId })
+
+      const closeParams = await GameSocket.waitForOrError<{
+        sessionId: string
+        appSessionId: string | null
+        finalPlayerBalance: string
+        finalHouseBalance: string
+        brokerAddress: string
+      }>('close_params')
+
+      // step 2: close the clearnode app session (if we have one)
+      if (closeParams.appSessionId && walletAddress) {
+        try {
+          await ClearnodeClient.closeAppSession(
+            closeParams.appSessionId,
+            walletAddress as Address,
+            closeParams.brokerAddress as Address,
+            closeParams.finalPlayerBalance,
+            closeParams.finalHouseBalance,
+          )
+        } catch (err) {
+          // clearnode close failed, but we still confirm with backend
+          // the clearnode session might already be closed or expired
+          console.warn('[session] clearnode close failed:', (err as Error).message)
+        }
+      }
+
+      // step 3: tell backend to finalize
+      GameSocket.send('confirm_close', { sessionId: closeParams.sessionId })
+
       const result = await GameSocket.waitForOrError<{
         sessionId: string
         finalPlayerBalance: string
@@ -347,9 +429,10 @@ export function SessionProvider({ children }: { children: ReactNode }) {
       setSessionError((err as Error).message)
       setSessionPhase('error')
     }
-  }, [sessionId])
+  }, [sessionId, walletAddress])
 
   const reset = useCallback(() => {
+    ClearnodeClient.disconnect()
     setSessionPhase(walletAddress ? 'idle' : 'no_wallet')
     setSessionError(null)
     setSessionId(null)

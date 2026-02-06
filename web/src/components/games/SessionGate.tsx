@@ -1,8 +1,7 @@
 // game-level gate: handles game start/end within an active session
 // session creation, wallet connect, deposit, etc. are in the layout session bar
 
-import { cnm } from '@/utils/style'
-import { useSession, type GamePhase } from '@/providers/SessionProvider'
+import { useSession } from '@/providers/SessionProvider'
 
 interface SessionGateProps {
   accentColor?: string
@@ -13,7 +12,7 @@ export default function SessionGate({
   accentColor = '#CDFF57',
   children,
 }: SessionGateProps) {
-  const { sessionPhase, activeGame, gamePhase, sessionError, stats, playerBalance } = useSession()
+  const { sessionPhase, activeGame, gamePhase, sessionError, stats } = useSession()
 
   // no active session, point user to session bar
   if (sessionPhase !== 'active') {

@@ -5,7 +5,6 @@ import AnimateComponent from '@/components/elements/AnimateComponent'
 import SdkPanel from './SdkPanel'
 import SessionGate from './SessionGate'
 import { useSession } from '@/providers/SessionProvider'
-import { formatUnits } from 'viem'
 
 type AnimPhase = 'idle' | 'flipping' | 'won' | 'lost'
 
@@ -63,14 +62,23 @@ export default function DoubleOrNothing() {
   const [animPhase, setAnimPhase] = useState<AnimPhase>('idle')
   const gameStarted = useRef(false)
 
-  const { sessionPhase, activeGame, gamePhase, stats, playerBalance } = session
+  const { sessionPhase, activeGame, gamePhase, stats } = session
 
   const multiplier = activeGame?.cumulativeMultiplier ?? 1
   const streak = stats.wins
 
   // auto-start game when session becomes active
   useEffect(() => {
-    if (sessionPhase === 'active' && gamePhase === 'none' && !activeGame && !gameStarted.current) {
+    if (sessionPhase !== 'active' || gameStarted.current) return
+
+    // if a different game is running, end it first
+    if (activeGame && activeGame.slug !== 'double-or-nothing') {
+      gameStarted.current = true
+      session.endGame().then(() => session.startGame('double-or-nothing'))
+      return
+    }
+
+    if (gamePhase === 'none' && !activeGame) {
       gameStarted.current = true
       session.startGame('double-or-nothing')
     }
@@ -82,13 +90,6 @@ export default function DoubleOrNothing() {
       gameStarted.current = false
     }
   }, [sessionPhase])
-
-  // when game starts, switch to playing
-  useEffect(() => {
-    if (gamePhase === 'active' && animPhase === 'idle' && activeGame) {
-      // game just started, ready to play
-    }
-  }, [gamePhase, animPhase, activeGame])
 
   const isActive = gamePhase === 'active' || gamePhase === 'playing_round'
 

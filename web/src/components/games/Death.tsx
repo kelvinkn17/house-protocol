@@ -116,7 +116,15 @@ export default function Death() {
 
   // auto-start game when session becomes active
   useEffect(() => {
-    if (sessionPhase === 'active' && gamePhase === 'none' && !activeGame && !gameStarted.current) {
+    if (sessionPhase !== 'active' || gameStarted.current) return
+
+    if (activeGame && activeGame.slug !== 'death') {
+      gameStarted.current = true
+      session.endGame().then(() => session.startGame('death'))
+      return
+    }
+
+    if (gamePhase === 'none' && !activeGame) {
       gameStarted.current = true
       session.startGame('death')
     }
