@@ -257,14 +257,14 @@ async function handleCreateSession(ws: WebSocket, playerId: string, payload: Cre
   });
 
   // build nitrolite app session definition (2 participants: player + broker)
-  // clearnode requires ALL listed participants to sign createAppSession
-  // broker signs here, player signs via their own clearnode connection from the frontend
+  // clearnode requires ALL listed participants to sign for session creation
+  // broker weight 100 >= quorum 100, so broker alone can close sessions later
   const brokerAddr = getBrokerAddress();
 
   const definition = {
     protocol: RPCProtocolVersion.NitroRPC_0_4,
     participants: [playerId as Address, brokerAddr],
-    weights: [100, 100],
+    weights: [1, 100],
     quorum: 100,
     challenge: 0,
     nonce: Date.now(),
@@ -277,13 +277,29 @@ async function handleCreateSession(ws: WebSocket, playerId: string, payload: Cre
     { participant: brokerAddr, asset: ASSET_SYMBOL, amount: (houseDeposit / DECIMALS).toString() },
   ];
 
-  // tell frontend to sign the session on clearnode (they connect, auth, sign independently)
+  // send definition to frontend so player can sign on clearnode (EIP-712 popup)
   send(ws, 'session_sign_request', { sessionId: session.id, definition, allocations });
 
-  // broker signs and sends to clearnode, then waits for both sigs to be collected
-  // longer timeout since player needs to connect, authenticate, and sign on clearnode
   try {
-    const appSessionId = await ClearnodeBackend.createAppSession(definition, allocations, 60000);
+    // wait for player to sign on clearnode first
+    // sequential: player signs -> broker signs -> broker gets the response
+    await new Promise<void>((resolve, reject) => {
+      const timeout = setTimeout(() => {
+        signingResolvers.delete(session.id);
+        reject(new Error('Player signing timeout'));
+      }, 65000);
+
+      signingResolvers.set(session.id, () => {
+        clearTimeout(timeout);
+        resolve();
+      });
+    });
+
+    console.log(`[session] player signed, broker completing on clearnode...`);
+
+    // player signed on clearnode, now broker signs (completing the 2-party session)
+    // broker is the last signer so clearnode responds to us
+    const appSessionId = await ClearnodeBackend.createAppSession(definition, allocations);
 
     const memSession = sessions.get(session.id);
     if (memSession) memSession.isActive = true;
@@ -308,6 +324,7 @@ async function handleCreateSession(ws: WebSocket, playerId: string, payload: Cre
     });
   } catch (err) {
     // player didn't sign in time or clearnode error, clean up
+    signingResolvers.delete(session.id);
     sessions.delete(session.id);
     await db.session.update({
       where: { id: session.id },

@@ -27,7 +27,7 @@ import {
   SEPOLIA_CHAIN_ID,
   getPublicClient,
 } from '@/lib/contracts'
-import { ClearnodeClient } from '@/lib/clearnode'
+import { playerSignAppSession } from '@/lib/clearnode'
 
 const SESSION_STORAGE_KEY = 'house_session_id'
 
@@ -366,19 +366,18 @@ export function SessionProvider({ children }: { children: ReactNode }) {
 
       // player connects to clearnode, authenticates (EIP-712 wallet popup), signs the session
       setSessionPhase('signing')
-      await ClearnodeClient.authenticate(walletAddress as Address, wc)
-      await ClearnodeClient.signAppSession(signRequest.definition, signRequest.allocations)
+      await playerSignAppSession(wc, walletAddress, signRequest.definition, signRequest.allocations)
 
-      // wait for backend to confirm (clearnode collects both sigs, backend gets response)
+      // tell backend we've signed so it can complete the session (broker signs next)
+      GameSocket.send('session_player_signed', { sessionId: signRequest.sessionId })
+
+      // wait for backend to confirm (broker signs on clearnode, gets response)
       const result = await GameSocket.waitForOrError<{
         sessionId: string
         playerDeposit: string
         houseDeposit: string
         channelId: string
-      }>('session_created', 45000)
-
-      // done with clearnode for now
-      ClearnodeClient.disconnect()
+      }>('session_created', 60000)
 
       // persist session for resume on refresh
       localStorage.setItem(SESSION_STORAGE_KEY, JSON.stringify({
@@ -410,7 +409,6 @@ export function SessionProvider({ children }: { children: ReactNode }) {
         // busted means player balance is 0, nothing to withdraw
       })
     } catch (err) {
-      ClearnodeClient.disconnect()
       setSessionError((err as Error).message)
       setSessionPhase('error')
     }

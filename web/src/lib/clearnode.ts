@@ -67,7 +67,7 @@ export async function playerSignAppSession(
     ws.onopen = async () => {
       try {
         const msg = await createAuthRequestMessage({
-          address: playerAddress,
+          address: playerAddress as `0x${string}`,
           application: APP_NAME,
           ...authConfig,
         })
