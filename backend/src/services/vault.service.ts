@@ -10,7 +10,6 @@ import {
 } from 'viem';
 import { sepolia } from 'viem/chains';
 import { privateKeyToAccount } from 'viem/accounts';
-import { prismaQuery } from '../lib/prisma.ts';
 import { OPERATOR_PRIVATE_KEY } from '../config/main-config.ts';
 
 // contract addresses from env
@@ -69,76 +68,9 @@ function getPublicClient(): PublicClient {
   return publicClient;
 }
 
-// 1e18 scaling factor to avoid precision loss in per-share PnL math
-const PNL_PRECISION = 10n ** 18n;
-
-// raw sum of house P&L from all closed sessions (for debugging)
-export async function getRawSessionPnL(): Promise<bigint> {
-  const closedSessions = await (prismaQuery as any).session.findMany({
-    where: { status: 'CLOSED', finalHouseBalance: { not: null } },
-    select: { houseDeposit: true, finalHouseBalance: true },
-  });
-
-  let pnl = 0n;
-  for (const s of closedSessions) {
-    pnl += BigInt(s.finalHouseBalance) - BigInt(s.houseDeposit);
-  }
-  return pnl;
-}
-
-// calculate effective PnL that scales correctly with supply changes.
-// the old approach added raw PnL as a flat amount, which meant when someone
-// withdrew most shares, the same PnL got divided among far fewer shares and
-// the price exploded. this version computes per-share PnL at the time each
-// session closed (using snapshot supply), so withdrawals proportionally reduce
-// the effective PnL instead of concentrating it.
-async function getEffectivePnL(currentTotalSupply: bigint): Promise<bigint> {
-  if (currentTotalSupply === 0n) return 0n;
-
-  const closedSessions = await (prismaQuery as any).session.findMany({
-    where: { status: 'CLOSED', finalHouseBalance: { not: null } },
-    select: { houseDeposit: true, finalHouseBalance: true, closedAt: true },
-    orderBy: { closedAt: 'asc' },
-  });
-
-  if (closedSessions.length === 0) return 0n;
-
-  // grab snapshots to look up supply at each session close time
-  const snapshots = await (prismaQuery as any).vaultSnapshot.findMany({
-    orderBy: { timestamp: 'asc' },
-    select: { totalSupply: true, timestamp: true },
-  });
-
-  let accPnlPerShare = 0n;
-
-  for (const s of closedSessions) {
-    const pnl = BigInt(s.finalHouseBalance) - BigInt(s.houseDeposit);
-    if (pnl === 0n) continue;
-
-    // find supply at session close from nearest earlier snapshot
-    let supplyAtClose = currentTotalSupply;
-    if (s.closedAt && snapshots.length > 0) {
-      const closeMs = s.closedAt.getTime();
-      for (let i = snapshots.length - 1; i >= 0; i--) {
-        if (snapshots[i].timestamp.getTime() <= closeMs) {
-          supplyAtClose = BigInt(snapshots[i].totalSupply);
-          break;
-        }
-      }
-    }
-
-    if (supplyAtClose > 0n) {
-      accPnlPerShare += pnl * PNL_PRECISION / supplyAtClose;
-    }
-  }
-
-  return accPnlPerShare * currentTotalSupply / PNL_PRECISION;
-}
-
-// read vault state, adjusted for off-chain session P&L.
-// on-chain totalAssets doesn't reflect session wins/losses since those
-// happen in state channels. we add per-share scaled PnL to get an
-// accurate TVL and share price that doesn't blow up on large withdrawals.
+// read vault state from on-chain. totalAssets() already includes custody balance
+// which reflects settled session PnL, so no off-chain adjustment needed.
+// share price must match on-chain reality so deposits/withdrawals don't distort it.
 export async function getVaultState() {
   const client = getPublicClient();
 
@@ -160,23 +92,16 @@ export async function getVaultState() {
     }) as Promise<bigint>,
   ]);
 
-  // per-share PnL scaled to current supply (fixes price explosion on large withdrawals)
-  const sessionPnL = await getEffectivePnL(totalSupply);
-
-  const adjustedTotalAssets = totalAssets + sessionPnL;
-
   // assets are 6 decimals (USDH), shares are 9 decimals (sUSDH, 3-decimal offset)
   const sharePrice = totalSupply > 0n
-    ? Number(formatUnits(adjustedTotalAssets, 6)) / Number(formatUnits(totalSupply, 9))
+    ? Number(formatUnits(totalAssets, 6)) / Number(formatUnits(totalSupply, 9))
     : 1.0;
 
   return {
-    totalAssets: adjustedTotalAssets,
+    totalAssets,
     totalSupply,
     custodyBalance,
     sharePrice,
-    onChainTotalAssets: totalAssets,
-    sessionPnL,
   };
 }
 

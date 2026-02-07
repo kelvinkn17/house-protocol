@@ -1,6 +1,6 @@
 // session-first provider: one deposit, play any game
 // wraps the play layout so all game components share the same session
-// integrates with Nitrolite clearnode for real state channel deposits
+// backend handles clearnode session creation, player just signs the deposit tx
 // persists sessionId to localStorage so sessions survive page refresh
 
 import {
@@ -13,7 +13,6 @@ import {
   type ReactNode,
 } from 'react'
 import { GameSocket } from '@/hooks/useGameSocket'
-import { ClearnodeClient } from '@/lib/clearnode'
 import { generateNonce, createCommitment } from '@/lib/game'
 import { useAuthContext } from '@/providers/AuthProvider'
 import { useWallets } from '@privy-io/react-auth'
@@ -270,8 +269,7 @@ export function SessionProvider({ children }: { children: ReactNode }) {
     doResume()
   }, [walletAddress, sessionPhase])
 
-  // full flow: approve + deposit to custody, backend validates + signs as broker,
-  // frontend creates app session on clearnode
+  // approve + deposit to custody, backend creates clearnode session, done
   const openSession = useCallback(async (deposit: string) => {
     if (!walletAddress) {
       setSessionPhase('no_wallet')
@@ -281,7 +279,6 @@ export function SessionProvider({ children }: { children: ReactNode }) {
     setSessionError(null)
 
     try {
-      // step 0: deposit USDH into Nitrolite Custody contract (on-chain)
       if (!USDH_ADDRESS || !CUSTODY_ADDRESS) throw new Error('Contract addresses not configured')
 
       const wallet = wallets[0]
@@ -297,7 +294,7 @@ export function SessionProvider({ children }: { children: ReactNode }) {
       const publicClient = getPublicClient()
       const depositBigInt = BigInt(deposit)
 
-      // approve USDH spending by custody contract
+      // approve USDH spending (MAX_UINT256 so this only happens once ever)
       setSessionPhase('approving')
       const allowance = await publicClient.readContract({
         address: USDH_ADDRESS,
@@ -311,12 +308,12 @@ export function SessionProvider({ children }: { children: ReactNode }) {
           address: USDH_ADDRESS,
           abi: ERC20_ABI,
           functionName: 'approve',
-          args: [CUSTODY_ADDRESS, depositBigInt * 10n],
+          args: [CUSTODY_ADDRESS, 2n ** 256n - 1n],
         })
         await publicClient.waitForTransactionReceipt({ hash: approveHash })
       }
 
-      // then: deposit into custody
+      // deposit into custody
       setSessionPhase('depositing')
       const depositHash = await wc.writeContract({
         address: CUSTODY_ADDRESS,
@@ -326,10 +323,8 @@ export function SessionProvider({ children }: { children: ReactNode }) {
       })
       await publicClient.waitForTransactionReceipt({ hash: depositHash })
 
-      // now proceed with session creation
+      // connect to backend WS
       setSessionPhase('connecting')
-
-      // connect to our backend WS
       await GameSocket.connect(walletAddress)
 
       if (errorUnsub.current) errorUnsub.current()
@@ -338,42 +333,10 @@ export function SessionProvider({ children }: { children: ReactNode }) {
         setSessionError(p.error)
       })
 
+      // backend creates clearnode session directly, no player sig needed
       setSessionPhase('creating')
-
-      // step 1: ask backend to validate deposit and sign as broker
       GameSocket.send('create_session', { depositAmount: deposit })
 
-      const params = await GameSocket.waitForOrError<{
-        sessionId: string
-        playerDeposit: string
-        houseDeposit: string
-        brokerAddress: string
-        definition: Record<string, unknown>
-        allocations: Array<{ participant: string; asset: string; amount: string }>
-        brokerSigs: string[]
-        requestId: number
-        timestamp: number
-      }>('session_params')
-
-      // step 2: authenticate with clearnode using player's wallet (reuse wc from deposit step)
-      await ClearnodeClient.authenticate(walletAddress as Address, wc)
-
-      // step 3: create app session on clearnode (player signs + broker sigs combined)
-      const appSessionId = await ClearnodeClient.openAppSession(
-        params.definition,
-        params.allocations,
-        params.brokerSigs,
-        params.requestId,
-        params.timestamp,
-      )
-
-      // step 4: tell backend the clearnode session is confirmed
-      GameSocket.send('confirm_session', {
-        sessionId: params.sessionId,
-        appSessionId,
-      })
-
-      // step 5: wait for backend to acknowledge
       const result = await GameSocket.waitForOrError<{
         sessionId: string
         playerDeposit: string
@@ -610,7 +573,6 @@ export function SessionProvider({ children }: { children: ReactNode }) {
   }, [sessionId, withdrawFromCustody])
 
   const reset = useCallback(() => {
-    ClearnodeClient.disconnect()
     if (bustedUnsub.current) {
       bustedUnsub.current()
       bustedUnsub.current = null
