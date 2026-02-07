@@ -1,6 +1,8 @@
+import { useState } from 'react'
 import AnimateComponent from '@/components/elements/AnimateComponent'
 
 export default function VideoSection() {
+  const [active, setActive] = useState(false)
   return (
     <section className="py-20 sm:py-28 px-4 sm:px-6 md:px-8 bg-[#EDEBE6]">
       <div className="mx-auto max-w-5xl">
@@ -13,7 +15,7 @@ export default function VideoSection() {
           </div>
         </AnimateComponent>
 
-        <AnimateComponent onScroll variant="fadeInUp" delay={150}>
+        <AnimateComponent onScroll variant="scaleIn" delay={150}>
           <div
             className="rounded-2xl border-3 border-black overflow-hidden"
             style={{ boxShadow: '8px 8px 0px black' }}
@@ -27,7 +29,7 @@ export default function VideoSection() {
               </div>
               <div className="flex-1 bg-white/10 rounded-lg px-3 h-9 hidden sm:flex items-center">
                 <p className="text-sm font-sans text-white/50">
-                  house-protocol.xyz/demo
+                  houseprotocol.xyz/demo
                 </p>
               </div>
               <div className="px-3 h-9 bg-[#CDFF57] rounded-lg border border-black/20 hidden sm:flex items-center">
@@ -37,7 +39,12 @@ export default function VideoSection() {
               </div>
             </div>
 
-            <div className="relative bg-black" style={{ aspectRatio: '16/9' }}>
+            <div
+              className="relative bg-black"
+              style={{ aspectRatio: '16/9' }}
+              onClick={() => setActive(true)}
+              onMouseLeave={() => setActive(false)}
+            >
               <iframe
                 src="https://www.youtube.com/embed/dQw4w9WgXcQ"
                 title="House Protocol Demo"
@@ -45,6 +52,9 @@ export default function VideoSection() {
                 allowFullScreen
                 className="absolute inset-0 w-full h-full"
               />
+              {!active && (
+                <div className="absolute inset-0 z-10 cursor-pointer" />
+              )}
             </div>
           </div>
         </AnimateComponent>

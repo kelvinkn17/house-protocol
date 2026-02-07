@@ -9,12 +9,18 @@ const LOGO_ASPECT = 1373 / 452
 
 interface IntroAnimationProps {
   onComplete: () => void
+  onHeroStart?: () => void
 }
 
-export default function IntroAnimation({ onComplete }: IntroAnimationProps) {
+export default function IntroAnimation({
+  onComplete,
+  onHeroStart,
+}: IntroAnimationProps) {
   const [scope, animate] = useAnimate()
   const onCompleteRef = useRef(onComplete)
   onCompleteRef.current = onComplete
+  const onHeroStartRef = useRef(onHeroStart)
+  onHeroStartRef.current = onHeroStart
 
   useEffect(() => {
     const scrollbarWidth =
@@ -23,13 +29,12 @@ export default function IntroAnimation({ onComplete }: IntroAnimationProps) {
     document.body.style.paddingRight = `${scrollbarWidth}px`
 
     const isSm = window.innerWidth >= 640
-    const vw = window.innerWidth
-    const endH = isSm ? 64 : 48
-    const padding = isSm ? 24 : 16
-    const navLeft = Math.max(padding, (vw - 1280) / 2)
-    const navTop = (80 - endH) / 2
     const morphLR = isSm ? 24 : 8
     const morphBR = isSm ? '32px 32px 0 0' : '24px 24px 0 0'
+    const navLogo = document.querySelector(
+      'header img[alt="House Protocol"]',
+    ) as HTMLElement
+    const navRect = navLogo?.getBoundingClientRect()
 
     async function sequence() {
       animate(
@@ -40,7 +45,7 @@ export default function IntroAnimation({ onComplete }: IntroAnimationProps) {
       await animate(
         '#logo-img',
         { clipPath: 'inset(0 0% 0 0)' },
-        { duration: 0.8, delay: 0.15, ease: EASE_OUT_QUINT },
+        { duration: 0.65, delay: 0.15, ease: EASE_OUT_QUINT },
       )
 
       const wrapper = scope.current?.querySelector(
@@ -54,15 +59,15 @@ export default function IntroAnimation({ onComplete }: IntroAnimationProps) {
         wrapper.style.height = `${rect.height}px`
         wrapper.style.transform = 'none'
       }
-      animate(
+      const logoMorph = animate(
         '#logo-wrapper',
         {
-          top: `${navTop}px`,
-          left: `${navLeft}px`,
-          height: `${endH}px`,
-          width: `${endH * LOGO_ASPECT}px`,
+          top: `${navRect!.top}px`,
+          left: `${navRect!.left}px`,
+          height: `${navRect!.height}px`,
+          width: `${navRect!.width}px`,
         },
-        { duration: 1.1, ease: EASE_OUT_QUINT },
+        { duration: 0.9, ease: EASE_OUT_QUINT },
       )
       animate(
         '#overlay',
@@ -72,14 +77,16 @@ export default function IntroAnimation({ onComplete }: IntroAnimationProps) {
           right: `${morphLR}px`,
           borderRadius: morphBR,
         },
-        { duration: 1.1, ease: EASE_OUT_QUINT },
+        { duration: 0.9, ease: EASE_OUT_QUINT },
       )
-      await animate(
+      await Promise.race([logoMorph, new Promise((r) => setTimeout(r, 700))])
+      onHeroStartRef.current?.()
+      animate(
         '#overlay',
         { opacity: 0 },
-        { duration: 0.5, delay: 1.1, ease: 'easeOut' },
+        { duration: 0.25, ease: EASE_EXPO_OUT },
       )
-
+      await logoMorph
       document.body.style.overflow = ''
       document.body.style.paddingRight = ''
       onCompleteRef.current()

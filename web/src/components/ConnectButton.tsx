@@ -31,10 +31,9 @@ export default function ConnectButton({ className }: ConnectButtonProps) {
   return (
     <div
       className={cnm(
-        'inline-flex items-center justify-center rounded-full border-2 border-black bg-white hover:translate-x-0.5 hover:translate-y-0.5 transition-transform duration-200 overflow-hidden cursor-pointer [&_button]:!bg-white [&_button]:!text-black',
+        'inline-flex font-medium items-center justify-center rounded-full border-2 border-black bg-white shadow-[4px_4px_0px_black] hover:translate-x-[4px] hover:translate-y-[4px] hover:shadow-none transition-all duration-150 overflow-hidden cursor-pointer [&_button]:!bg-white [&_button]:!text-black',
         className,
       )}
-      style={{ boxShadow: '4px 4px 0px black' }}
     >
       <UserPill
         action={{

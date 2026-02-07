@@ -35,8 +35,7 @@ export default function InfraSection() {
             {infra.map((item, i) => (
               <AnimateComponent key={item.name} onScroll delay={200 + i * 70}>
                 <div
-                  className="bg-white p-5 sm:p-6 rounded-2xl border-2 border-black flex items-center justify-between gap-3 hover:translate-x-1 hover:translate-y-1 transition-transform duration-200"
-                  style={{ boxShadow: '5px 5px 0px black' }}
+                  className="bg-white p-5 sm:p-6 rounded-2xl border-2 border-black flex items-center justify-between gap-3 shadow-[5px_5px_0px_black] hover:translate-x-[5px] hover:translate-y-[5px] hover:shadow-none transition-all duration-150"
                 >
                   <span className="text-base sm:text-lg font-black text-black tracking-tight">{item.name}</span>
                   <span className="text-xs font-mono text-black/60 px-3 py-1.5 border-2 border-black rounded-full bg-[#EDEBE6] shrink-0">

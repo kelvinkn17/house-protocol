@@ -17,15 +17,19 @@ export const Route = createFileRoute('/')({
 
 function LandingPage() {
   const [introComplete, setIntroComplete] = useState(false)
+  const [heroStarted, setHeroStarted] = useState(false)
 
   return (
     <>
       {!introComplete && (
-        <IntroAnimation onComplete={() => setIntroComplete(true)} />
+        <IntroAnimation
+          onHeroStart={() => setHeroStarted(true)}
+          onComplete={() => setIntroComplete(true)}
+        />
       )}
       <AppLayout noPadding hideNavLogo={!introComplete}>
         <div className="overflow-x-hidden selection:bg-[#CDFF57] selection:text-black relative">
-          <HeroSection introComplete={introComplete} />
+          <HeroSection introComplete={heroStarted} />
           <MarqueeStrip />
           <VideoSection />
           <StatsSection />

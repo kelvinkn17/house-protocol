@@ -38,8 +38,7 @@ export default function GamePrimitivesSection() {
           {primitives.map((p, i) => (
             <AnimateComponent key={p.type} onScroll delay={400 + i * 80}>
               <div
-                className="group bg-white p-6 md:p-8 rounded-2xl border-2 border-black cursor-pointer relative overflow-hidden hover:translate-x-1 hover:translate-y-1 transition-transform duration-200"
-                style={{ boxShadow: '6px 6px 0px black' }}
+                className="group bg-white p-6 md:p-8 rounded-2xl border-2 border-black cursor-pointer relative overflow-hidden shadow-[6px_6px_0px_black] hover:translate-x-[6px] hover:translate-y-[6px] hover:shadow-none transition-all duration-150"
               >
                 <div className="h-full flex flex-col relative z-10">
                   <div className="flex items-start justify-between mb-4">

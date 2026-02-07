@@ -24,7 +24,7 @@ export default function StatsSection() {
 
   return (
     <section ref={sectionRef} className="py-28 px-4 md:px-8 relative bg-[#EDEBE6]">
-      <div className="mx-auto max-w-6xl relative">
+      <div className="mx-auto max-w-7xl relative">
         <AnimateComponent onScroll variant="fadeInUp">
           <div className="mb-10 flex items-center gap-4">
             <span className="text-xs font-black uppercase tracking-widest text-black/50">
@@ -38,8 +38,7 @@ export default function StatsSection() {
           {stats.map((stat, i) => (
             <AnimateComponent key={stat.label} onScroll delay={100 + i * 80}>
               <div
-                className={`${colors[i]} p-6 md:p-8 flex flex-col rounded-2xl border-2 border-black hover:translate-x-1 hover:translate-y-1 transition-transform duration-200`}
-                style={{ boxShadow: '6px 6px 0px black' }}
+                className={`${colors[i]} p-6 md:p-8 flex flex-col rounded-2xl border-2 border-black shadow-[6px_6px_0px_black] hover:translate-x-[6px] hover:translate-y-[6px] hover:shadow-none transition-all duration-150`}
               >
                 <span className="text-xs font-mono text-black/40 mb-4">0{i + 1}</span>
                 <span className="text-3xl sm:text-4xl md:text-5xl lg:text-6xl font-black tracking-tight mb-2 text-black tabular-nums">

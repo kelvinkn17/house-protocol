@@ -22,8 +22,7 @@ export default function FinalCTA() {
             <AnimateComponent delay={650}>
               <Link
                 to="/app/stake"
-                className="inline-flex px-10 py-5 bg-[#CDFF57] text-black text-sm font-black uppercase tracking-wide rounded-full border-2 border-black hover:translate-x-1 hover:translate-y-1 transition-transform duration-200"
-                style={{ boxShadow: '4px 4px 0px black' }}
+                className="inline-flex px-10 py-5 bg-[#CDFF57] text-black text-sm font-black uppercase tracking-wide rounded-full border-2 border-black shadow-[4px_4px_0px_black] hover:translate-x-[4px] hover:translate-y-[4px] hover:shadow-none transition-all duration-150"
               >
                 Launch App
               </Link>
