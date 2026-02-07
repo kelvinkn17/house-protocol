@@ -12,6 +12,7 @@ import { ETHERSCAN_API_KEY } from '../config/main-config.ts';
 let isRunning = false;
 let lastIndexedBlock: bigint | null = null;
 let lastSnapshotPrice: number | null = null;
+let lastSnapshotTvl: string | null = null;
 let lastSnapshotTime = 0;
 
 // 5 min minimum between snapshots unless price changes
@@ -168,13 +169,15 @@ async function takeSnapshot() {
   const state = await getVaultState();
   const now = Date.now();
 
-  // skip if price hasn't changed and we snapshotted recently
+  // skip if nothing changed and we snapshotted recently
+  const tvlStr = state.totalAssets.toString();
   const priceChanged = lastSnapshotPrice !== null
     ? Math.abs(state.sharePrice - lastSnapshotPrice) / lastSnapshotPrice > PRICE_CHANGE_THRESHOLD
     : true;
+  const tvlChanged = lastSnapshotTvl !== null ? tvlStr !== lastSnapshotTvl : true;
   const timeElapsed = now - lastSnapshotTime > SNAPSHOT_INTERVAL_MS;
 
-  if (!priceChanged && !timeElapsed) return;
+  if (!priceChanged && !tvlChanged && !timeElapsed) return;
 
   const blockNumber = await getBlockNumber();
 
@@ -190,6 +193,7 @@ async function takeSnapshot() {
   });
 
   lastSnapshotPrice = state.sharePrice;
+  lastSnapshotTvl = tvlStr;
   lastSnapshotTime = now;
 
   console.log(`[VaultIndexer] Snapshot: TVL=${state.totalAssets}, price=${state.sharePrice.toFixed(6)}`);

@@ -1,15 +1,17 @@
 // websocket game handler, session-first architecture
 // session = deposit once, play any game. games start/end within a session.
 // integrates with Nitrolite clearnode for real state channel deposits.
-// backend signs as broker, frontend signs as player and talks to clearnode.
+// backend handles close via its own clearnode connection (broker signs close).
 
 import type { FastifyInstance } from 'fastify';
-import type { WebSocket } from 'ws';
+import type WebSocket from 'ws';
 import { GameService } from '../services/game.service.ts';
 import { getVaultState } from '../services/vault.service.ts';
 import { getPrimitive } from '../services/primitives/registry.ts';
 import { getGameConfig } from '../services/primitives/configs.ts';
 import { prismaQuery } from '../lib/prisma.ts';
+import { Prisma } from '../../prisma/generated';
+import { ClearnodeBackend } from '../lib/clearnode.ts';
 import type { GameSessionState, GameConfig } from '../services/primitives/types.ts';
 import { HOUSE_EDGE_BPS, BPS_BASE } from '../services/primitives/types.ts';
 import {
@@ -25,6 +27,7 @@ const db = prismaQuery;
 
 const ASSET_SYMBOL = 'usdh';
 const APP_NAME = 'the-house-protocol';
+const DECIMALS = 1000000n;
 
 // broker signer (lazy init from operator private key)
 let _brokerSigner: ReturnType<typeof createECDSAMessageSigner> | null = null;
@@ -85,7 +88,7 @@ interface CloseSessionPayload {
   sessionId: string;
 }
 
-interface ConfirmClosePayload {
+interface ResumeSessionPayload {
   sessionId: string;
 }
 
@@ -144,8 +147,11 @@ async function handleMessage(ws: WebSocket, playerId: string, message: ClientMes
       case 'close_session':
         await handleCloseSession(ws, playerId, payload as CloseSessionPayload);
         break;
-      case 'confirm_close':
-        await handleConfirmClose(ws, playerId, payload as ConfirmClosePayload);
+      case 'resume_session':
+        await handleResumeSession(ws, playerId, payload as ResumeSessionPayload);
+        break;
+      case 'list_sessions':
+        await handleListSessions(ws, playerId);
         break;
       case 'get_session':
         await handleGetSession(ws, payload as { sessionId: string });
@@ -168,6 +174,41 @@ async function handleMessage(ws: WebSocket, playerId: string, message: ClientMes
 async function handleCreateSession(ws: WebSocket, playerId: string, payload: CreateSessionPayload) {
   const { depositAmount } = payload;
   const playerDeposit = BigInt(depositAmount);
+
+  // force-close any stale sessions for this player (leftover from crashes, old code, etc.)
+  const staleSessions = await db.session.findMany({
+    where: { playerId, status: { in: ['ACTIVE', 'PENDING'] } },
+  });
+  for (const stale of staleSessions) {
+    console.log(`[session] force-closing stale session ${stale.id} for ${playerId}`);
+
+    // try clearnode close, best effort (old sessions might have weight [100,0] so broker can't close)
+    if (stale.channelId) {
+      const { address: brokerAddr } = getBrokerSigner();
+      try {
+        const playerAmt = (BigInt(stale.currentPlayerBalance || stale.playerDeposit) / DECIMALS).toString();
+        const houseAmt = (BigInt(stale.currentHouseBalance || stale.houseDeposit) / DECIMALS).toString();
+        await ClearnodeBackend.closeAppSession(stale.channelId, [
+          { participant: playerId as Address, asset: ASSET_SYMBOL, amount: playerAmt },
+          { participant: brokerAddr, asset: ASSET_SYMBOL, amount: houseAmt },
+        ]);
+      } catch {
+        // old sessions with [100,0] weights won't close, that's expected
+      }
+    }
+
+    await db.session.update({
+      where: { id: stale.id },
+      data: {
+        status: 'CLOSED',
+        closedAt: new Date(),
+        finalPlayerBalance: stale.currentPlayerBalance || stale.playerDeposit,
+        finalHouseBalance: stale.currentHouseBalance || stale.houseDeposit,
+      },
+    });
+    sessions.delete(stale.id);
+    activeGames.delete(stale.id);
+  }
 
   // house deposit = player * 10, capped by custody
   let vaultState;
@@ -223,7 +264,7 @@ async function handleCreateSession(ws: WebSocket, playerId: string, payload: Cre
   const definition = {
     protocol: RPCProtocolVersion.NitroRPC_0_4,
     participants: [playerId as Address, brokerAddr],
-    weights: [100, 0],
+    weights: [100, 100], // either player or broker can close
     quorum: 100,
     challenge: 0,
     nonce: Date.now(),
@@ -231,7 +272,6 @@ async function handleCreateSession(ws: WebSocket, playerId: string, payload: Cre
   };
 
   // clearnode expects human-readable amounts, not 6-decimal on-chain units
-  const DECIMALS = 1000000n;
   const allocations = [
     { participant: playerId as Address, asset: ASSET_SYMBOL, amount: (playerDeposit / DECIMALS).toString() },
     { participant: brokerAddr, asset: ASSET_SYMBOL, amount: (houseDeposit / DECIMALS).toString() },
@@ -284,6 +324,8 @@ async function handleConfirmSession(ws: WebSocket, playerId: string, payload: Co
     data: {
       channelId: appSessionId,
       status: 'ACTIVE',
+      currentPlayerBalance: session.playerBalance.toString(),
+      currentHouseBalance: session.houseBalance.toString(),
     },
   });
 
@@ -482,7 +524,8 @@ async function handleReveal(ws: WebSocket, playerId: string, payload: RevealPayl
   }
 
   // universal bust detection, applies to every game type
-  if (newPlayerBalance <= 0n) {
+  const busted = newPlayerBalance <= 0n;
+  if (busted) {
     updatedState.isActive = false;
   }
 
@@ -496,13 +539,15 @@ async function handleReveal(ws: WebSocket, playerId: string, payload: RevealPayl
   // update game state
   game.state = updatedState;
 
-  // persist to DB
+  // persist balances + game state to DB every round
   await db.session.update({
     where: { id: sessionId },
     data: {
       gameState: JSON.parse(JSON.stringify(updatedState, (_k, v) =>
         typeof v === 'bigint' ? v.toString() : v
       )),
+      currentPlayerBalance: newPlayerBalance.toString(),
+      currentHouseBalance: newHouseBalance.toString(),
       status: session.isActive ? 'ACTIVE' : 'CLOSED',
     },
   });
@@ -526,6 +571,16 @@ async function handleReveal(ws: WebSocket, playerId: string, payload: RevealPayl
     cumulativeMultiplier: updatedState.cumulativeMultiplier,
     isActive: updatedState.isActive,
   });
+
+  // auto-close on bust: close clearnode session and finalize
+  if (busted) {
+    await closeClearnodeAndFinalize(sessionId, session, ws);
+    send(ws, 'session_busted', {
+      sessionId,
+      finalPlayerBalance: session.playerBalance.toString(),
+      finalHouseBalance: session.houseBalance.toString(),
+    });
+  }
 }
 
 async function handleCashOut(ws: WebSocket, playerId: string, payload: CashOutPayload) {
@@ -564,12 +619,14 @@ async function handleCashOut(ws: WebSocket, playerId: string, payload: CashOutPa
   // end the game, but keep session open
   activeGames.delete(sessionId);
 
-  // clear game slug in DB, session stays ACTIVE
+  // persist balances, clear game slug, session stays ACTIVE
   await db.session.update({
     where: { id: sessionId },
     data: {
       gameConfigSlug: null,
-      gameState: null,
+      gameState: Prisma.JsonNull,
+      currentPlayerBalance: newPlayerBalance.toString(),
+      currentHouseBalance: newHouseBalance.toString(),
     },
   });
 
@@ -582,41 +639,29 @@ async function handleCashOut(ws: WebSocket, playerId: string, payload: CashOutPa
   });
 }
 
-// step 1 of close: send final balances to frontend so it can close the clearnode session
-async function handleCloseSession(ws: WebSocket, playerId: string, payload: CloseSessionPayload) {
-  const { sessionId } = payload;
-
-  const session = sessions.get(sessionId);
-  if (!session || session.playerId !== playerId) {
-    sendError(ws, 'Session not found or not authorized', 'AUTH_ERROR');
-    return;
-  }
-
-  // if a game is running, end it (forfeit)
-  activeGames.delete(sessionId);
-
-  // get appSessionId from DB
+// shared close logic: close clearnode session as broker, persist final state
+async function closeClearnodeAndFinalize(
+  sessionId: string,
+  session: { playerId: string; playerBalance: bigint; houseBalance: bigint; isActive: boolean },
+  ws?: WebSocket,
+) {
   const dbSession = await db.session.findUnique({ where: { id: sessionId } });
   const { address: brokerAddr } = getBrokerSigner();
 
-  // send params so frontend can close the clearnode session
-  send(ws, 'close_params', {
-    sessionId,
-    appSessionId: dbSession?.channelId || null,
-    finalPlayerBalance: session.playerBalance.toString(),
-    finalHouseBalance: session.houseBalance.toString(),
-    brokerAddress: brokerAddr,
-  });
-}
+  // close clearnode app session as broker
+  if (dbSession?.channelId) {
+    try {
+      const playerAmt = (session.playerBalance / DECIMALS).toString();
+      const houseAmt = (session.houseBalance / DECIMALS).toString();
 
-// step 2 of close: frontend confirmed clearnode session closed
-async function handleConfirmClose(ws: WebSocket, playerId: string, payload: ConfirmClosePayload) {
-  const { sessionId } = payload;
-
-  const session = sessions.get(sessionId);
-  if (!session || session.playerId !== playerId) {
-    sendError(ws, 'Session not found or not authorized', 'AUTH_ERROR');
-    return;
+      await ClearnodeBackend.closeAppSession(dbSession.channelId, [
+        { participant: session.playerId as Address, asset: ASSET_SYMBOL, amount: playerAmt },
+        { participant: brokerAddr, asset: ASSET_SYMBOL, amount: houseAmt },
+      ]);
+    } catch (err) {
+      // log but don't fail the session close, clearnode might already be closed
+      console.error(`[session] clearnode close failed for ${sessionId}:`, (err as Error).message);
+    }
   }
 
   session.isActive = false;
@@ -630,21 +675,156 @@ async function handleConfirmClose(ws: WebSocket, playerId: string, payload: Conf
       status: 'CLOSED',
       closedAt: new Date(),
       gameConfigSlug: null,
+      gameState: Prisma.JsonNull,
       finalPlayerBalance: finalPlayer,
       finalHouseBalance: finalHouse,
     },
   });
 
-  // cleanup
+  // cleanup in-memory state
   sessions.delete(sessionId);
+  activeGames.delete(sessionId);
 
   console.log(`[session] ${sessionId} closed, player=${finalPlayer} house=${finalHouse}`);
+}
+
+// backend handles close entirely, no more 2-step dance with frontend
+async function handleCloseSession(ws: WebSocket, playerId: string, payload: CloseSessionPayload) {
+  const { sessionId } = payload;
+
+  const session = sessions.get(sessionId);
+  if (!session || session.playerId !== playerId) {
+    sendError(ws, 'Session not found or not authorized', 'AUTH_ERROR');
+    return;
+  }
+
+  // forfeit any running game
+  activeGames.delete(sessionId);
+
+  await closeClearnodeAndFinalize(sessionId, session, ws);
 
   send(ws, 'session_closed', {
     sessionId,
-    finalPlayerBalance: finalPlayer,
-    finalHouseBalance: finalHouse,
+    finalPlayerBalance: session.playerBalance.toString(),
+    finalHouseBalance: session.houseBalance.toString(),
   });
+}
+
+// resume a session from DB after page refresh
+async function handleResumeSession(ws: WebSocket, playerId: string, payload: ResumeSessionPayload) {
+  const { sessionId } = payload;
+
+  // check if already in memory
+  const existing = sessions.get(sessionId);
+  if (existing) {
+    if (existing.playerId !== playerId) {
+      sendError(ws, 'Not authorized for this session', 'AUTH_ERROR');
+      return;
+    }
+
+    const game = activeGames.get(sessionId);
+    send(ws, 'session_resumed', {
+      sessionId,
+      playerBalance: existing.playerBalance.toString(),
+      houseBalance: existing.houseBalance.toString(),
+      activeGame: game ? {
+        gameSlug: game.config.builderParams.slug,
+        gameType: game.config.gameType,
+        currentRound: game.state.currentRound,
+        cumulativeMultiplier: game.state.cumulativeMultiplier,
+        primitiveState: game.state.primitiveState,
+        isActive: game.state.isActive,
+      } : null,
+    });
+    return;
+  }
+
+  // load from DB
+  const dbSession = await db.session.findUnique({ where: { id: sessionId } });
+  if (!dbSession || dbSession.status !== 'ACTIVE' || dbSession.playerId !== playerId) {
+    sendError(ws, 'Session not found, closed, or not yours', 'SESSION_NOT_FOUND');
+    return;
+  }
+
+  // restore balances (prefer currentPlayerBalance, fall back to initial deposits)
+  const playerBalance = BigInt(dbSession.currentPlayerBalance || dbSession.playerDeposit);
+  const houseBalance = BigInt(dbSession.currentHouseBalance || dbSession.houseDeposit);
+
+  // restore to in-memory map
+  sessions.set(sessionId, {
+    playerId,
+    playerBalance,
+    houseBalance,
+    isActive: true,
+  });
+
+  // restore active game if there's a saved game state
+  let activeGameInfo = null;
+  if (dbSession.gameConfigSlug && dbSession.gameState) {
+    const config = getGameConfig(dbSession.gameConfigSlug);
+    if (config) {
+      const savedState = dbSession.gameState as Record<string, unknown>;
+      // rebuild GameSessionState from saved JSON
+      const gameState: GameSessionState = {
+        gameType: config.gameType,
+        isActive: savedState.isActive as boolean ?? true,
+        currentRound: savedState.currentRound as number ?? 0,
+        maxRounds: savedState.maxRounds as number ?? 1,
+        betAmount: BigInt((savedState.betAmount as string) || '0'),
+        playerBalance,
+        houseBalance,
+        cumulativeMultiplier: savedState.cumulativeMultiplier as number ?? 1,
+        primitiveState: savedState.primitiveState as Record<string, unknown> ?? {},
+      };
+
+      activeGames.set(sessionId, { config, state: gameState });
+
+      activeGameInfo = {
+        gameSlug: dbSession.gameConfigSlug,
+        gameType: config.gameType,
+        currentRound: gameState.currentRound,
+        cumulativeMultiplier: gameState.cumulativeMultiplier,
+        primitiveState: gameState.primitiveState,
+        isActive: gameState.isActive,
+      };
+    }
+  }
+
+  console.log(`[session] ${sessionId} resumed for ${playerId}, balance=${playerBalance}`);
+
+  send(ws, 'session_resumed', {
+    sessionId,
+    playerBalance: playerBalance.toString(),
+    houseBalance: houseBalance.toString(),
+    activeGame: activeGameInfo,
+  });
+}
+
+// list active sessions for a player
+async function handleListSessions(ws: WebSocket, playerId: string) {
+  const dbSessions = await db.session.findMany({
+    where: { playerId, status: 'ACTIVE' },
+    orderBy: { createdAt: 'desc' },
+    select: {
+      id: true,
+      currentPlayerBalance: true,
+      currentHouseBalance: true,
+      playerDeposit: true,
+      houseDeposit: true,
+      gameConfigSlug: true,
+      createdAt: true,
+    },
+  });
+
+  const list = dbSessions.map((s) => ({
+    id: s.id,
+    playerBalance: s.currentPlayerBalance || s.playerDeposit,
+    houseBalance: s.currentHouseBalance || s.houseDeposit,
+    gameConfigSlug: s.gameConfigSlug,
+    createdAt: s.createdAt.toISOString(),
+  }));
+
+  send(ws, 'sessions_list', { sessions: list });
 }
 
 async function handleGetSession(ws: WebSocket, payload: { sessionId: string }) {
@@ -662,8 +842,8 @@ async function handleGetSession(ws: WebSocket, payload: { sessionId: string }) {
     send(ws, 'session_state', {
       sessionId: dbSession.id,
       status: dbSession.status,
-      playerBalance: dbSession.playerDeposit,
-      houseBalance: dbSession.houseDeposit,
+      playerBalance: dbSession.currentPlayerBalance || dbSession.playerDeposit,
+      houseBalance: dbSession.currentHouseBalance || dbSession.houseDeposit,
       gameState: dbSession.gameState,
     });
     return;

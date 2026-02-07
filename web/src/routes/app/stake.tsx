@@ -309,7 +309,7 @@ function StakePage() {
                   ) : (
                     <>
                       <div className="flex items-center justify-between text-xs font-mono text-black/50 mb-2">
-                        <span className="flex items-center gap-1.5 uppercase">
+                        <span className="flex items-center gap-1.5">
                           <TokenIcon token={tab === 'deposit' ? 'usdh' : 'husdh'} size={18} />
                           {tab === 'deposit' ? 'Amount (USDH)' : 'Shares (hUSDH)'}
                         </span>
@@ -410,7 +410,7 @@ function StakePage() {
                         { label: 'USDH Balance', value: fmtToken(position.usdhBalanceFormatted), token: 'usdh' as const },
                       ].map((item) => (
                         <div key={item.label} className="text-center">
-                          <p className="text-[10px] font-mono text-black/50 uppercase mb-1">{item.label}</p>
+                          <p className="text-[10px] font-mono text-black/50 mb-1">{item.label}</p>
                           <div className="flex items-center justify-center gap-1.5">
                             <TokenIcon token={item.token} size={18} />
                             <p className="text-sm font-black text-black">{item.value}</p>

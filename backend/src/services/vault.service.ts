@@ -8,7 +8,6 @@ import {
   type Address,
 } from 'viem';
 import { sepolia } from 'viem/chains';
-import { BROKER_ADDRESS as BROKER_ADDR } from '../config/main-config.ts';
 
 // contract addresses from env
 const VAULT_ADDRESS = (process.env.HOUSE_VAULT_ADDRESS || '') as Address;
@@ -26,6 +25,7 @@ const VAULT_ABI = parseAbi([
   'function previewDeposit(uint256 assets) view returns (uint256)',
   'function previewRedeem(uint256 shares) view returns (uint256)',
   'function decimals() view returns (uint8)',
+  'function getCustodyBalance() view returns (uint256)',
   'event Deposit(address indexed sender, address indexed owner, uint256 assets, uint256 shares)',
   'event Withdraw(address indexed sender, address indexed receiver, address indexed owner, uint256 assets, uint256 shares)',
 ]);
@@ -37,11 +37,6 @@ const DEPOSIT_EVENT = parseAbiItem(
 const WITHDRAW_EVENT = parseAbiItem(
   'event Withdraw(address indexed sender, address indexed receiver, address indexed owner, uint256 assets, uint256 shares)'
 );
-
-// nitrolite custody ABI, for reading operator-specific balances
-const CUSTODY_ABI = parseAbi([
-  'function getAccountsBalances(address[] accounts, address[] tokens) view returns (uint256[][])',
-]);
 
 const ERC20_ABI = parseAbi([
   'function balanceOf(address) view returns (uint256)',
@@ -64,13 +59,11 @@ function getPublicClient(): PublicClient {
   return publicClient;
 }
 
-// read vault state in one go
+// read vault state in one go, all from the vault contract
 export async function getVaultState() {
   const client = getPublicClient();
 
-  const operatorAddress = BROKER_ADDR as Address;
-
-  const [totalAssets, totalSupply, custodyBalances] = await Promise.all([
+  const [totalAssets, totalSupply, custodyBalance] = await Promise.all([
     client.readContract({
       address: VAULT_ADDRESS,
       abi: VAULT_ABI,
@@ -82,17 +75,13 @@ export async function getVaultState() {
       functionName: 'totalSupply',
     }) as Promise<bigint>,
     client.readContract({
-      address: CUSTODY_ADDRESS,
-      abi: CUSTODY_ABI,
-      functionName: 'getAccountsBalances',
-      args: [[operatorAddress], [USDH_ADDRESS]],
-    }) as Promise<bigint[][]>,
+      address: VAULT_ADDRESS,
+      abi: VAULT_ABI,
+      functionName: 'getCustodyBalance',
+    }) as Promise<bigint>,
   ]);
 
-  // operator-specific custody balance, not the whole contract
-  const custodyBalance = custodyBalances[0]?.[0] ?? 0n;
-
-  // standard ERC-4626: vault's totalAssets() already includes custody balance
+  // standard ERC-4626: totalAssets = vault USDH + operator custody balance
   // assets are 6 decimals (USDH), shares are 9 decimals (sUSDH, 3-decimal offset)
   const sharePrice = totalSupply > 0n
     ? Number(formatUnits(totalAssets, 6)) / Number(formatUnits(totalSupply, 9))

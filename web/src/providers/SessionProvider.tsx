@@ -1,6 +1,7 @@
 // session-first provider: one deposit, play any game
 // wraps the play layout so all game components share the same session
 // integrates with Nitrolite clearnode for real state channel deposits
+// persists sessionId to localStorage so sessions survive page refresh
 
 import {
   createContext,
@@ -28,6 +29,8 @@ import {
   getPublicClient,
 } from '@/lib/contracts'
 
+const SESSION_STORAGE_KEY = 'house_session_id'
+
 // session lifecycle
 export type SessionPhase =
   | 'no_wallet'
@@ -36,6 +39,7 @@ export type SessionPhase =
   | 'depositing'
   | 'connecting'
   | 'creating'
+  | 'resuming'
   | 'active'
   | 'closing'
   | 'closed'
@@ -138,6 +142,85 @@ export function SessionProvider({ children }: { children: ReactNode }) {
     nonce: '', choiceData: '', roundId: null,
   })
   const errorUnsub = useRef<(() => void) | null>(null)
+  const bustedUnsub = useRef<(() => void) | null>(null)
+  const resumeAttempted = useRef(false)
+
+  // try to resume session from localStorage on mount
+  useEffect(() => {
+    if (!walletAddress || resumeAttempted.current) return
+    if (sessionPhase !== 'idle') return
+
+    resumeAttempted.current = true
+    const savedId = localStorage.getItem(SESSION_STORAGE_KEY)
+    if (!savedId) return
+
+    const doResume = async () => {
+      setSessionPhase('resuming')
+      try {
+        await GameSocket.connect(walletAddress)
+
+        // subscribe to errors
+        if (errorUnsub.current) errorUnsub.current()
+        errorUnsub.current = GameSocket.subscribe('error', (payload: unknown) => {
+          const p = payload as { error: string }
+          setSessionError(p.error)
+        })
+
+        GameSocket.send('resume_session', { sessionId: savedId })
+
+        const result = await GameSocket.waitForOrError<{
+          sessionId: string
+          playerBalance: string
+          houseBalance: string
+          activeGame: {
+            gameSlug: string
+            gameType: string
+            currentRound: number
+            cumulativeMultiplier: number
+            primitiveState: Record<string, unknown>
+            isActive: boolean
+          } | null
+        }>('session_resumed')
+
+        setSessionId(result.sessionId)
+        setPlayerBalance(result.playerBalance)
+        setHouseBalance(result.houseBalance)
+        setDepositAmount(result.playerBalance)
+
+        if (result.activeGame) {
+          setActiveGame({
+            slug: result.activeGame.gameSlug,
+            gameType: result.activeGame.gameType,
+            maxRounds: 0,
+            primitiveState: result.activeGame.primitiveState || {},
+            currentRound: result.activeGame.currentRound,
+            cumulativeMultiplier: result.activeGame.cumulativeMultiplier,
+          })
+          setGamePhase(result.activeGame.isActive ? 'active' : 'none')
+        }
+
+        // subscribe to session_busted
+        if (bustedUnsub.current) bustedUnsub.current()
+        bustedUnsub.current = GameSocket.subscribe('session_busted', (payload: unknown) => {
+          const p = payload as { sessionId: string; finalPlayerBalance: string; finalHouseBalance: string }
+          setPlayerBalance(p.finalPlayerBalance)
+          setHouseBalance(p.finalHouseBalance)
+          setActiveGame(null)
+          setGamePhase('none')
+          setSessionPhase('closed')
+          localStorage.removeItem(SESSION_STORAGE_KEY)
+        })
+
+        setSessionPhase('active')
+      } catch {
+        // session gone or expired, clear and go back to idle
+        localStorage.removeItem(SESSION_STORAGE_KEY)
+        setSessionPhase('idle')
+      }
+    }
+
+    doResume()
+  }, [walletAddress, sessionPhase])
 
   // full flow: approve + deposit to custody, backend validates + signs as broker,
   // frontend creates app session on clearnode
@@ -249,6 +332,9 @@ export function SessionProvider({ children }: { children: ReactNode }) {
         houseDeposit: string
       }>('session_created')
 
+      // persist sessionId for resume on refresh
+      localStorage.setItem(SESSION_STORAGE_KEY, result.sessionId)
+
       setSessionId(result.sessionId)
       setPlayerBalance(result.playerDeposit)
       setHouseBalance(result.houseDeposit)
@@ -258,6 +344,18 @@ export function SessionProvider({ children }: { children: ReactNode }) {
       setActiveGame(null)
       setGamePhase('none')
       setSessionPhase('active')
+
+      // subscribe to session_busted for auto-close on bust
+      if (bustedUnsub.current) bustedUnsub.current()
+      bustedUnsub.current = GameSocket.subscribe('session_busted', (payload: unknown) => {
+        const p = payload as { sessionId: string; finalPlayerBalance: string; finalHouseBalance: string }
+        setPlayerBalance(p.finalPlayerBalance)
+        setHouseBalance(p.finalHouseBalance)
+        setActiveGame(null)
+        setGamePhase('none')
+        setSessionPhase('closed')
+        localStorage.removeItem(SESSION_STORAGE_KEY)
+      })
     } catch (err) {
       setSessionError((err as Error).message)
       setSessionPhase('error')
@@ -431,47 +529,13 @@ export function SessionProvider({ children }: { children: ReactNode }) {
     }
   }, [sessionId])
 
-  // close flow: backend sends close_params, frontend closes clearnode session, confirms back
+  // simplified close: backend handles clearnode close, we just wait for confirmation
   const closeSession = useCallback(async () => {
     if (!sessionId) return
 
     setSessionPhase('closing')
     try {
-      // step 1: ask backend for final balances + appSessionId
       GameSocket.send('close_session', { sessionId })
-
-      const closeParams = await GameSocket.waitForOrError<{
-        sessionId: string
-        appSessionId: string | null
-        finalPlayerBalance: string
-        finalHouseBalance: string
-        brokerAddress: string
-      }>('close_params')
-
-      // step 2: close the clearnode app session (if we have one)
-      if (closeParams.appSessionId && walletAddress) {
-        try {
-          // clearnode uses human-readable amounts, backend sends 6-decimal raw values
-          const DECIMALS = 1000000n
-          const playerAmt = (BigInt(closeParams.finalPlayerBalance) / DECIMALS).toString()
-          const houseAmt = (BigInt(closeParams.finalHouseBalance) / DECIMALS).toString()
-
-          await ClearnodeClient.closeAppSession(
-            closeParams.appSessionId,
-            walletAddress as Address,
-            closeParams.brokerAddress as Address,
-            playerAmt,
-            houseAmt,
-          )
-        } catch (err) {
-          // clearnode close failed, but we still confirm with backend
-          // the clearnode session might already be closed or expired
-          console.warn('[session] clearnode close failed:', (err as Error).message)
-        }
-      }
-
-      // step 3: tell backend to finalize
-      GameSocket.send('confirm_close', { sessionId: closeParams.sessionId })
 
       const result = await GameSocket.waitForOrError<{
         sessionId: string
@@ -484,14 +548,19 @@ export function SessionProvider({ children }: { children: ReactNode }) {
       setActiveGame(null)
       setGamePhase('none')
       setSessionPhase('closed')
+      localStorage.removeItem(SESSION_STORAGE_KEY)
     } catch (err) {
       setSessionError((err as Error).message)
       setSessionPhase('error')
     }
-  }, [sessionId, walletAddress])
+  }, [sessionId])
 
   const reset = useCallback(() => {
     ClearnodeClient.disconnect()
+    if (bustedUnsub.current) {
+      bustedUnsub.current()
+      bustedUnsub.current = null
+    }
     setSessionPhase(walletAddress ? 'idle' : 'no_wallet')
     setSessionError(null)
     setSessionId(null)
