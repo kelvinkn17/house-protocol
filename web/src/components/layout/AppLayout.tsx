@@ -39,6 +39,9 @@ export default function AppLayout({ children, noPadding }: AppLayoutProps) {
               <NavLink to="/app/play" active={path.includes('/play')}>
                 PLAY
               </NavLink>
+              <NavLink to="/app/faucet" active={path.includes('/faucet')}>
+                FAUCET
+              </NavLink>
             </div>
           </div>
 
@@ -75,6 +78,9 @@ export default function AppLayout({ children, noPadding }: AppLayoutProps) {
           </MobileNavLink>
           <MobileNavLink to="/app/play" active={path.includes('/play')} onClick={() => setMobileMenuOpen(false)}>
             PLAY
+          </MobileNavLink>
+          <MobileNavLink to="/app/faucet" active={path.includes('/faucet')} onClick={() => setMobileMenuOpen(false)}>
+            FAUCET
           </MobileNavLink>
         </div>
       </div>

@@ -161,10 +161,13 @@ function connect(): Promise<void> {
   });
 }
 
-// create an app session as broker only (no player sig needed, broker weight meets quorum)
+// create an app session, broker signs and sends to clearnode
+// for 2-participant sessions the player also needs to sign via their own clearnode connection
+// timeout is configurable since 2-party signing takes longer (player auth + sign)
 async function createAppSession(
   definition: Record<string, unknown>,
   allocations: Array<{ participant: Address; asset: string; amount: string }>,
+  timeoutMs = 60000,
 ): Promise<string> {
   if (!authenticated || !ws || ws.readyState !== WebSocket.OPEN) {
     await connect();
@@ -174,7 +177,7 @@ async function createAppSession(
     const timeout = setTimeout(() => {
       if (ws) ws.off('message', handleMessage);
       reject(new Error('Timeout creating app session on clearnode'));
-    }, 15000);
+    }, timeoutMs);
 
     function handleMessage(data: Buffer | ArrayBuffer | Buffer[]) {
       try {

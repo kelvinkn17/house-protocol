@@ -17,6 +17,7 @@ import { Route as BuildGamesRouteImport } from './routes/build/games'
 import { Route as BuildAnalyticsRouteImport } from './routes/build/analytics'
 import { Route as AppStakeRouteImport } from './routes/app/stake'
 import { Route as AppPlayRouteImport } from './routes/app/play'
+import { Route as AppFaucetRouteImport } from './routes/app/faucet'
 import { Route as AppPlayIndexRouteImport } from './routes/app/play.index'
 import { Route as BuildGamesNewRouteImport } from './routes/build/games.new'
 import { Route as BuildGamesIdRouteImport } from './routes/build/games.$id'
@@ -62,6 +63,11 @@ const AppPlayRoute = AppPlayRouteImport.update({
   path: '/play',
   getParentRoute: () => AppRoute,
 } as any)
+const AppFaucetRoute = AppFaucetRouteImport.update({
+  id: '/faucet',
+  path: '/faucet',
+  getParentRoute: () => AppRoute,
+} as any)
 const AppPlayIndexRoute = AppPlayIndexRouteImport.update({
   id: '/',
   path: '/',
@@ -87,6 +93,7 @@ export interface FileRoutesByFullPath {
   '/': typeof IndexRoute
   '/app': typeof AppRouteWithChildren
   '/build': typeof BuildRouteWithChildren
+  '/app/faucet': typeof AppFaucetRoute
   '/app/play': typeof AppPlayRouteWithChildren
   '/app/stake': typeof AppStakeRoute
   '/build/analytics': typeof BuildAnalyticsRoute
@@ -101,6 +108,7 @@ export interface FileRoutesByTo {
   '/': typeof IndexRoute
   '/app': typeof AppRouteWithChildren
   '/build': typeof BuildRouteWithChildren
+  '/app/faucet': typeof AppFaucetRoute
   '/app/stake': typeof AppStakeRoute
   '/build/analytics': typeof BuildAnalyticsRoute
   '/build/games': typeof BuildGamesRouteWithChildren
@@ -115,6 +123,7 @@ export interface FileRoutesById {
   '/': typeof IndexRoute
   '/app': typeof AppRouteWithChildren
   '/build': typeof BuildRouteWithChildren
+  '/app/faucet': typeof AppFaucetRoute
   '/app/play': typeof AppPlayRouteWithChildren
   '/app/stake': typeof AppStakeRoute
   '/build/analytics': typeof BuildAnalyticsRoute
@@ -131,6 +140,7 @@ export interface FileRouteTypes {
     | '/'
     | '/app'
     | '/build'
+    | '/app/faucet'
     | '/app/play'
     | '/app/stake'
     | '/build/analytics'
@@ -145,6 +155,7 @@ export interface FileRouteTypes {
     | '/'
     | '/app'
     | '/build'
+    | '/app/faucet'
     | '/app/stake'
     | '/build/analytics'
     | '/build/games'
@@ -158,6 +169,7 @@ export interface FileRouteTypes {
     | '/'
     | '/app'
     | '/build'
+    | '/app/faucet'
     | '/app/play'
     | '/app/stake'
     | '/build/analytics'
@@ -233,6 +245,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AppPlayRouteImport
       parentRoute: typeof AppRoute
     }
+    '/app/faucet': {
+      id: '/app/faucet'
+      path: '/faucet'
+      fullPath: '/app/faucet'
+      preLoaderRoute: typeof AppFaucetRouteImport
+      parentRoute: typeof AppRoute
+    }
     '/app/play/': {
       id: '/app/play/'
       path: '/'
@@ -278,11 +297,13 @@ const AppPlayRouteWithChildren =
   AppPlayRoute._addFileChildren(AppPlayRouteChildren)
 
 interface AppRouteChildren {
+  AppFaucetRoute: typeof AppFaucetRoute
   AppPlayRoute: typeof AppPlayRouteWithChildren
   AppStakeRoute: typeof AppStakeRoute
 }
 
 const AppRouteChildren: AppRouteChildren = {
+  AppFaucetRoute: AppFaucetRoute,
   AppPlayRoute: AppPlayRouteWithChildren,
   AppStakeRoute: AppStakeRoute,
 }

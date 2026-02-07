@@ -25,8 +25,9 @@ function deriveBombPosition(playerNonce: string, houseNonce: string, tilesInRow:
       ])
     )
   );
-  const firstByte = parseInt(combined.slice(2, 4), 16);
-  return firstByte % tilesInRow;
+  // use 4 hex chars (0-65535) instead of 2 (0-255) to minimize modulo bias
+  const value = parseInt(combined.slice(2, 6), 16);
+  return value % tilesInRow;
 }
 
 function getRowMultiplier(tilesInRow: number): number {

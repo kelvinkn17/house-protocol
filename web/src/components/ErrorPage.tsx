@@ -1,6 +1,5 @@
 import { useRouter } from '@tanstack/react-router'
 import { AlertTriangle, RefreshCw, Home } from 'lucide-react'
-import { cnm } from '@/utils/style'
 
 interface ErrorPageProps {
   error?: Error
@@ -23,85 +22,117 @@ export default function ErrorPage({ error, reset }: ErrorPageProps) {
   }
 
   return (
-    <div
-      className={cnm(
-        'min-h-screen w-full flex items-center justify-center',
-        'bg-neutral-50 dark:bg-neutral-900',
-        'px-6 py-20'
-      )}
-    >
-      <div className="max-w-lg w-full text-center">
-        <div className="mb-8 flex justify-center">
-          <div
-            className={cnm(
-              'w-16 h-16 flex items-center justify-center',
-              'border border-neutral-200 dark:border-neutral-800',
-              'bg-neutral-100 dark:bg-neutral-800'
-            )}
-          >
-            <AlertTriangle className="w-7 h-7 text-amber-500" />
+    <div className="min-h-screen w-full flex items-center justify-center bg-[#cdff57] px-6 py-20">
+      <div className="max-w-md w-full">
+        <div
+          className="bg-white border-2 border-black rounded-2xl p-8 text-center"
+          style={{ boxShadow: '6px 6px 0px black' }}
+        >
+          {/* icon */}
+          <div className="mb-6 flex justify-center">
+            <div
+              className="w-16 h-16 flex items-center justify-center bg-[#FF6B9D] border-2 border-black rounded-xl"
+              style={{ boxShadow: '3px 3px 0px black' }}
+            >
+              <AlertTriangle className="w-7 h-7 text-white" />
+            </div>
+          </div>
+
+          <p className="text-xs font-mono font-black uppercase tracking-widest text-black/40 mb-2">
+            Error
+          </p>
+
+          <h1 className="text-2xl sm:text-3xl font-black text-black mb-3">
+            Something went wrong
+          </h1>
+
+          <p className="text-sm text-black/50 leading-relaxed mb-6">
+            An unexpected error occurred. Try refreshing the page. If this keeps
+            happening, please contact us.
+          </p>
+
+          {error && (
+            <div
+              className="mb-6 px-4 py-3 text-left bg-black/5 border-2 border-black rounded-xl"
+              style={{ boxShadow: '3px 3px 0px #FF6B9D' }}
+            >
+              <p className="text-[10px] font-mono font-black uppercase tracking-wider text-black/40 mb-1">
+                Details
+              </p>
+              <p className="text-xs font-mono text-[#FF6B9D] break-all">
+                {error.message || 'Unknown error'}
+              </p>
+            </div>
+          )}
+
+          <div className="flex items-center justify-center gap-3">
+            <button
+              onClick={handleRetry}
+              className="inline-flex items-center gap-2 px-5 py-2.5 text-sm font-black uppercase tracking-wider bg-black text-white border-2 border-black rounded-xl transition-transform hover:translate-x-0.5 hover:translate-y-0.5 cursor-pointer"
+              style={{ boxShadow: '3px 3px 0px #CDFF57' }}
+            >
+              <RefreshCw className="w-4 h-4" />
+              Try again
+            </button>
+            <button
+              onClick={handleHome}
+              className="inline-flex items-center gap-2 px-5 py-2.5 text-sm font-black uppercase tracking-wider bg-white text-black border-2 border-black rounded-xl transition-transform hover:translate-x-0.5 hover:translate-y-0.5 cursor-pointer"
+              style={{ boxShadow: '3px 3px 0px black' }}
+            >
+              <Home className="w-4 h-4" />
+              Go home
+            </button>
           </div>
         </div>
+      </div>
+    </div>
+  )
+}
 
-        <p className="text-xs font-mono uppercase tracking-widest text-neutral-400 mb-3">
-          Error
-        </p>
+// 404 page, same neubrutalist vibe
+export function NotFoundPage() {
+  const router = useRouter()
 
-        <h1 className="text-2xl sm:text-3xl font-light text-neutral-900 dark:text-neutral-100 mb-4">
-          Something went wrong
-        </h1>
-
-        <p className="text-sm text-neutral-500 dark:text-neutral-400 leading-relaxed mb-8">
-          An unexpected error occurred. Try refreshing the page. If this keeps
-          happening, please contact us.
-        </p>
-
-        {error && (
+  return (
+    <div className="min-h-screen w-full flex items-center justify-center bg-[#cdff57] px-6 py-20">
+      <div className="max-w-md w-full">
+        <div
+          className="bg-white border-2 border-black rounded-2xl p-8 text-center"
+          style={{ boxShadow: '6px 6px 0px black' }}
+        >
           <div
-            className={cnm(
-              'mb-8 px-4 py-3 text-left',
-              'border border-neutral-200 dark:border-neutral-800',
-              'bg-neutral-100/50 dark:bg-neutral-800/30'
-            )}
+            className="inline-block text-7xl font-black text-black mb-4 px-4 py-1 bg-[#CDFF57] border-2 border-black rounded-xl"
+            style={{ boxShadow: '3px 3px 0px black' }}
           >
-            <p className="text-[10px] font-mono uppercase tracking-wider text-neutral-400 mb-1">
-              Details
-            </p>
-            <p className="text-xs font-mono text-red-600 dark:text-red-400 break-all">
-              {error.message || 'Unknown error'}
-            </p>
+            404
           </div>
-        )}
 
-        <div className="flex flex-col sm:flex-row items-center justify-center gap-3">
-          <button
-            onClick={handleRetry}
-            className={cnm(
-              'inline-flex items-center gap-2 px-5 py-2.5',
-              'text-sm font-mono',
-              'bg-neutral-900 dark:bg-neutral-100',
-              'text-neutral-100 dark:text-neutral-900',
-              'hover:bg-neutral-800 dark:hover:bg-neutral-200',
-              'transition-colors duration-150'
-            )}
-          >
-            <RefreshCw className="w-4 h-4" />
-            Try again
-          </button>
-          <button
-            onClick={handleHome}
-            className={cnm(
-              'inline-flex items-center gap-2 px-5 py-2.5',
-              'text-sm font-mono',
-              'border border-neutral-300 dark:border-neutral-700',
-              'text-neutral-700 dark:text-neutral-300',
-              'hover:bg-neutral-100 dark:hover:bg-neutral-800',
-              'transition-colors duration-150'
-            )}
-          >
-            <Home className="w-4 h-4" />
-            Go home
-          </button>
+          <h1 className="text-2xl sm:text-3xl font-black text-black mb-3">
+            Page not found
+          </h1>
+
+          <p className="text-sm text-black/50 leading-relaxed mb-6">
+            This page doesn't exist or was moved. Double check the URL or head
+            back home.
+          </p>
+
+          <div className="flex items-center justify-center gap-3">
+            <button
+              onClick={() => router.history.back()}
+              className="inline-flex items-center gap-2 px-5 py-2.5 text-sm font-black uppercase tracking-wider bg-white text-black border-2 border-black rounded-xl transition-transform hover:translate-x-0.5 hover:translate-y-0.5 cursor-pointer"
+              style={{ boxShadow: '3px 3px 0px black' }}
+            >
+              Go back
+            </button>
+            <button
+              onClick={() => router.navigate({ to: '/' })}
+              className="inline-flex items-center gap-2 px-5 py-2.5 text-sm font-black uppercase tracking-wider bg-black text-white border-2 border-black rounded-xl transition-transform hover:translate-x-0.5 hover:translate-y-0.5 cursor-pointer"
+              style={{ boxShadow: '3px 3px 0px #CDFF57' }}
+            >
+              <Home className="w-4 h-4" />
+              Go home
+            </button>
+          </div>
         </div>
       </div>
     </div>

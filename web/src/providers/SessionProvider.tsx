@@ -1,6 +1,6 @@
 // session-first provider: one deposit, play any game
 // wraps the play layout so all game components share the same session
-// backend handles clearnode session creation, player just signs the deposit tx
+// 2-party clearnode signing: player signs deposit tx + clearnode session, broker signs clearnode too
 // persists sessionId to localStorage so sessions survive page refresh
 
 import {
@@ -27,6 +27,7 @@ import {
   SEPOLIA_CHAIN_ID,
   getPublicClient,
 } from '@/lib/contracts'
+import { ClearnodeClient } from '@/lib/clearnode'
 
 const SESSION_STORAGE_KEY = 'house_session_id'
 
@@ -38,6 +39,7 @@ export type SessionPhase =
   | 'depositing'
   | 'connecting'
   | 'creating'
+  | 'signing'
   | 'resuming'
   | 'active'
   | 'closing'
@@ -286,7 +288,8 @@ export function SessionProvider({ children }: { children: ReactNode }) {
     doResume()
   }, [walletAddress, sessionPhase])
 
-  // approve + deposit to custody, backend creates clearnode session, done
+  // approve + deposit to custody, then 2-party clearnode signing
+  // flow: approve -> deposit -> connect WS -> backend creates definition -> player signs on clearnode -> done
   const openSession = useCallback(async (deposit: string) => {
     if (!walletAddress) {
       setSessionPhase('no_wallet')
@@ -350,16 +353,32 @@ export function SessionProvider({ children }: { children: ReactNode }) {
         setSessionError(p.error)
       })
 
-      // backend creates clearnode session directly, no player sig needed
+      // tell backend to create the session, it will send sign_request back
       setSessionPhase('creating')
       GameSocket.send('create_session', { depositAmount: deposit })
 
+      // wait for backend to send us the definition + allocations to sign
+      const signRequest = await GameSocket.waitForOrError<{
+        sessionId: string
+        definition: Record<string, unknown>
+        allocations: Array<{ participant: string; asset: string; amount: string }>
+      }>('session_sign_request', 30000)
+
+      // player connects to clearnode, authenticates (EIP-712 wallet popup), signs the session
+      setSessionPhase('signing')
+      await ClearnodeClient.authenticate(walletAddress as Address, wc)
+      await ClearnodeClient.signAppSession(signRequest.definition, signRequest.allocations)
+
+      // wait for backend to confirm (clearnode collects both sigs, backend gets response)
       const result = await GameSocket.waitForOrError<{
         sessionId: string
         playerDeposit: string
         houseDeposit: string
         channelId: string
-      }>('session_created')
+      }>('session_created', 45000)
+
+      // done with clearnode for now
+      ClearnodeClient.disconnect()
 
       // persist session for resume on refresh
       localStorage.setItem(SESSION_STORAGE_KEY, JSON.stringify({
@@ -391,6 +410,7 @@ export function SessionProvider({ children }: { children: ReactNode }) {
         // busted means player balance is 0, nothing to withdraw
       })
     } catch (err) {
+      ClearnodeClient.disconnect()
       setSessionError((err as Error).message)
       setSessionPhase('error')
     }

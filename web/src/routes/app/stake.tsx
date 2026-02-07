@@ -15,6 +15,7 @@ import {
   type TxStatus,
 } from '@/hooks/useVault'
 import type { Address } from 'viem'
+import FaucetBadge from '@/components/FaucetBadge'
 
 export const Route = createFileRoute('/app/stake')({
   component: StakePage,
@@ -184,6 +185,7 @@ function StakePage() {
   return (
     <div className="pb-12">
       <div className="mx-auto max-w-6xl">
+        <FaucetBadge />
         {/* header with how it works */}
         <AnimateComponent delay={50}>
           <div className="flex flex-col lg:flex-row lg:items-end justify-between mb-8 gap-6">

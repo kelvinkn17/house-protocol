@@ -6,6 +6,7 @@ import { useAuthContext } from '@/providers/AuthProvider'
 import { useSound } from '@/providers/SoundProvider'
 import { useState } from 'react'
 import { parseUnits, formatUnits } from 'viem'
+import FaucetBadge from '@/components/FaucetBadge'
 
 const GAMES: { slug: string; name: string; type: string; color: string; Icon: LucideIcon }[] = [
   { slug: 'double-or-nothing', name: 'Double or Nothing', type: 'cash-out', color: '#CDFF57', Icon: Coins },
@@ -131,6 +132,8 @@ function PlayLayoutInner() {
           </div>
         </div>
 
+        <FaucetBadge />
+
         {/* session bar */}
         <SessionBar />
 
@@ -250,13 +253,14 @@ function SessionBar() {
     )
   }
 
-  // loading states: approving, depositing, connecting, creating, resuming
-  if (sessionPhase === 'approving' || sessionPhase === 'depositing' || sessionPhase === 'connecting' || sessionPhase === 'creating' || sessionPhase === 'resuming') {
+  // loading states: approving, depositing, connecting, creating, signing, resuming
+  if (sessionPhase === 'approving' || sessionPhase === 'depositing' || sessionPhase === 'connecting' || sessionPhase === 'creating' || sessionPhase === 'signing' || sessionPhase === 'resuming') {
     const phaseLabel: Record<string, string> = {
       approving: 'Approving USDH...',
       depositing: 'Depositing to custody...',
       connecting: 'Connecting...',
       creating: 'Creating session...',
+      signing: 'Signing state channel...',
       resuming: 'Resuming session...',
     }
     return (

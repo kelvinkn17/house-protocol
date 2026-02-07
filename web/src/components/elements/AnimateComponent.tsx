@@ -1,7 +1,7 @@
 'use client'
 
 import { motion, useInView } from 'motion/react'
-import { useMemo, useRef } from 'react'
+import { useEffect, useRef, useState } from 'react'
 
 type AnimateVariant = 'default' | 'fadeIn' | 'fadeInUp' | 'fadeInDown' | 'scaleIn' | 'none'
 
@@ -55,8 +55,15 @@ export default function AnimateComponent({
   // trigger when element enters bottom 15% of viewport
   const isInView = useInView(ref, { once, margin: '0px 0px -15% 0px' })
 
-  // memoize so rotation stays consistent across re-renders
-  const randomRotation = useMemo(() => getRandomRotation(), [])
+  // generate random rotation only on client to avoid hydration mismatch
+  const [randomRotation, setRandomRotation] = useState(0)
+  const hasHydrated = useRef(false)
+  useEffect(() => {
+    if (!hasHydrated.current) {
+      hasHydrated.current = true
+      setRandomRotation(getRandomRotation())
+    }
+  }, [])
 
   // priority: trigger prop > onScroll > default (animate immediately)
   const shouldAnimate =

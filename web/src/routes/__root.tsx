@@ -13,7 +13,7 @@ import PrivyProvider from '../providers/PrivyProvider'
 import { AuthProvider } from '../providers/AuthProvider'
 import { SoundProvider } from '../providers/SoundProvider'
 import { ToastProvider } from '../components/Toast'
-import ErrorPage from '../components/ErrorPage'
+import ErrorPage, { NotFoundPage } from '../components/ErrorPage'
 import MobileOverlay from '../components/MobileOverlay'
 
 import TanStackQueryDevtools from '../integrations/tanstack-query/devtools'
@@ -28,6 +28,7 @@ interface MyRouterContext {
 
 export const Route = createRootRouteWithContext<MyRouterContext>()({
   errorComponent: ({ error, reset }) => <ErrorPage error={error} reset={reset} />,
+  notFoundComponent: () => <NotFoundPage />,
   head: () => ({
     meta: [
       {
