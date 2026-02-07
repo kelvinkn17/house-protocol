@@ -288,8 +288,8 @@ export function SessionProvider({ children }: { children: ReactNode }) {
     doResume()
   }, [walletAddress, sessionPhase])
 
-  // approve + deposit to custody, then 2-party clearnode signing
-  // flow: approve -> deposit -> connect WS -> backend creates definition -> player signs on clearnode -> done
+  // connect to clearnode first, check ledger balance, deposit only if needed
+  // flow: connect WS -> backend creates definition -> clearnode auth -> check balance -> deposit if deficit -> sign -> done
   const openSession = useCallback(async (deposit: string) => {
     if (!walletAddress) {
       setSessionPhase('no_wallet')
@@ -312,36 +312,42 @@ export function SessionProvider({ children }: { children: ReactNode }) {
         transport: custom(provider),
       })
       const publicClient = getPublicClient()
-      const depositBigInt = BigInt(deposit)
 
-      // approve USDH spending (MAX_UINT256 so this only happens once ever)
-      setSessionPhase('approving')
-      const allowance = await publicClient.readContract({
-        address: USDH_ADDRESS,
-        abi: ERC20_ABI,
-        functionName: 'allowance',
-        args: [walletAddress as Address, CUSTODY_ADDRESS],
-      }) as bigint
+      // deposit callback, called by clearnode client when ledger balance is insufficient.
+      // clearnode tells us the exact deficit (including any negative balance from past attempts),
+      // so we only deposit what's actually needed to reach the required amount.
+      const handleDepositNeeded = async (deficit: string) => {
+        const deficitBigInt = BigInt(deficit)
+        console.log(`[session] clearnode needs ${deficit} more deposited to custody`)
 
-      if (allowance < depositBigInt) {
-        const approveHash = await wc.writeContract({
+        setSessionPhase('approving')
+        const allowance = await publicClient.readContract({
           address: USDH_ADDRESS,
           abi: ERC20_ABI,
-          functionName: 'approve',
-          args: [CUSTODY_ADDRESS, 2n ** 256n - 1n],
-        })
-        await publicClient.waitForTransactionReceipt({ hash: approveHash })
-      }
+          functionName: 'allowance',
+          args: [walletAddress as Address, CUSTODY_ADDRESS],
+        }) as bigint
 
-      // deposit into custody
-      setSessionPhase('depositing')
-      const depositHash = await wc.writeContract({
-        address: CUSTODY_ADDRESS,
-        abi: CUSTODY_ABI,
-        functionName: 'deposit',
-        args: [walletAddress as Address, USDH_ADDRESS, depositBigInt],
-      })
-      await publicClient.waitForTransactionReceipt({ hash: depositHash })
+        if (allowance < deficitBigInt) {
+          const approveHash = await wc.writeContract({
+            address: USDH_ADDRESS,
+            abi: ERC20_ABI,
+            functionName: 'approve',
+            args: [CUSTODY_ADDRESS, 2n ** 256n - 1n],
+          })
+          await publicClient.waitForTransactionReceipt({ hash: approveHash })
+        }
+
+        setSessionPhase('depositing')
+        const depositHash = await wc.writeContract({
+          address: CUSTODY_ADDRESS,
+          abi: CUSTODY_ABI,
+          functionName: 'deposit',
+          args: [walletAddress as Address, USDH_ADDRESS, deficitBigInt],
+        })
+        await publicClient.waitForTransactionReceipt({ hash: depositHash })
+        console.log(`[session] deposited ${deficit} to custody`)
+      }
 
       // connect to backend WS
       setSessionPhase('connecting')
@@ -378,6 +384,7 @@ export function SessionProvider({ children }: { children: ReactNode }) {
         signRequest.brokerSignature,
         signRequest.requestId,
         signRequest.timestamp,
+        handleDepositNeeded,
       )
 
       // tell backend the session is live on clearnode
