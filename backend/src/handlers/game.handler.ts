@@ -84,8 +84,8 @@ interface ResumeSessionPayload {
 
 const connections = new Map<string, WebSocket>();
 
-// resolvers for 2-party signing flow: player signs on clearnode, then backend completes
-const signingResolvers = new Map<string, () => void>();
+// resolvers for 2-party signing flow: player submits combined sigs to clearnode, returns channelId
+const signingResolvers = new Map<string, (channelId: string) => void>();
 
 // session-level state (persists across games within a session)
 const sessions = new Map<string, {
@@ -147,11 +147,11 @@ async function handleMessage(ws: WebSocket, playerId: string, message: ClientMes
         await handleGetSession(ws, payload as { sessionId: string });
         break;
       case 'session_player_signed': {
-        const p = payload as { sessionId: string };
+        const p = payload as { sessionId: string; channelId: string };
         const resolver = signingResolvers.get(p.sessionId);
         if (resolver) {
           signingResolvers.delete(p.sessionId);
-          resolver();
+          resolver(p.channelId);
         }
         break;
       }
@@ -277,29 +277,27 @@ async function handleCreateSession(ws: WebSocket, playerId: string, payload: Cre
     { participant: brokerAddr, asset: ASSET_SYMBOL, amount: (houseDeposit / DECIMALS).toString() },
   ];
 
-  // send definition to frontend so player can sign on clearnode (EIP-712 popup)
-  send(ws, 'session_sign_request', { sessionId: session.id, definition, allocations });
+  // broker pre-signs the create_app_session, player will combine both sigs and submit to clearnode
+  const { signature: brokerSignature, requestId, timestamp } = await ClearnodeBackend.signCreateAppSession(definition, allocations);
+
+  // send definition + broker signature to frontend
+  send(ws, 'session_sign_request', { sessionId: session.id, definition, allocations, brokerSignature, requestId, timestamp });
 
   try {
-    // wait for player to sign on clearnode first
-    // sequential: player signs -> broker signs -> broker gets the response
-    await new Promise<void>((resolve, reject) => {
+    // wait for player to submit combined message to clearnode and return the app_session_id
+    const appSessionId = await new Promise<string>((resolve, reject) => {
       const timeout = setTimeout(() => {
         signingResolvers.delete(session.id);
         reject(new Error('Player signing timeout'));
       }, 65000);
 
-      signingResolvers.set(session.id, () => {
+      signingResolvers.set(session.id, (channelId: string) => {
         clearTimeout(timeout);
-        resolve();
+        resolve(channelId);
       });
     });
 
-    console.log(`[session] player signed, broker completing on clearnode...`);
-
-    // player signed on clearnode, now broker signs (completing the 2-party session)
-    // broker is the last signer so clearnode responds to us
-    const appSessionId = await ClearnodeBackend.createAppSession(definition, allocations);
+    console.log(`[session] session created on clearnode, appSession=${appSessionId}`);
 
     const memSession = sessions.get(session.id);
     if (memSession) memSession.isActive = true;

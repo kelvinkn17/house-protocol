@@ -357,19 +357,31 @@ export function SessionProvider({ children }: { children: ReactNode }) {
       setSessionPhase('creating')
       GameSocket.send('create_session', { depositAmount: deposit })
 
-      // wait for backend to send us the definition + allocations to sign
+      // wait for backend to send us the definition + allocations + broker's pre-signed signature
       const signRequest = await GameSocket.waitForOrError<{
         sessionId: string
         definition: Record<string, unknown>
         allocations: Array<{ participant: string; asset: string; amount: string }>
+        brokerSignature: string
+        requestId: number
+        timestamp: number
       }>('session_sign_request', 30000)
 
-      // player connects to clearnode, authenticates (EIP-712 wallet popup), signs the session
+      // player connects to clearnode, authenticates (EIP-712 wallet popup),
+      // combines both signatures, submits to clearnode, gets app_session_id back
       setSessionPhase('signing')
-      await playerSignAppSession(wc, walletAddress, signRequest.definition, signRequest.allocations)
+      const appSessionId = await playerSignAppSession(
+        wc,
+        walletAddress,
+        signRequest.definition,
+        signRequest.allocations,
+        signRequest.brokerSignature,
+        signRequest.requestId,
+        signRequest.timestamp,
+      )
 
-      // tell backend we've signed so it can complete the session (broker signs next)
-      GameSocket.send('session_player_signed', { sessionId: signRequest.sessionId })
+      // tell backend the session is live on clearnode
+      GameSocket.send('session_player_signed', { sessionId: signRequest.sessionId, channelId: appSessionId })
 
       // wait for backend to confirm (broker signs on clearnode, gets response)
       const result = await GameSocket.waitForOrError<{

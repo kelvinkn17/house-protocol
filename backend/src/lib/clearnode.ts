@@ -27,10 +27,15 @@ let connecting = false;
 let reconnectTimer: ReturnType<typeof setTimeout> | null = null;
 let reconnectAttempts = 0;
 
-// broker session key, generated once at startup
+// broker session key, generated once at startup (used for auth + close operations)
 const brokerSessionKey = generatePrivateKey();
 const brokerSessionAccount = privateKeyToAccount(brokerSessionKey);
 const brokerSessionSigner = createECDSAMessageSigner(brokerSessionKey);
+
+// direct signer using broker's actual private key (used for create_app_session signatures)
+// clearnode verifies create_app_session sigs against participant addresses directly,
+// so we sign with the real key, not the session key
+const brokerDirectSigner = createECDSAMessageSigner(OPERATOR_PRIVATE_KEY as Hex);
 
 // broker wallet for EIP-712 auth signing
 const brokerAccount = privateKeyToAccount(OPERATOR_PRIVATE_KEY as Hex);
@@ -282,8 +287,30 @@ async function closeAppSession(
   });
 }
 
+// pre-sign a create_app_session request as the broker, returns just the signature
+// player will combine this with their own signature and submit to clearnode
+async function signCreateAppSession(
+  definition: Record<string, unknown>,
+  allocations: Array<{ participant: Address; asset: string; amount: string }>,
+): Promise<{ signature: string; requestId: number; timestamp: number }> {
+  const requestId = Math.floor(Math.random() * 1000000);
+  const timestamp = Date.now();
+
+  const msg = await createAppSessionMessage(brokerDirectSigner, {
+    definition, allocations,
+  } as any, requestId, timestamp);
+  const parsed = JSON.parse(msg);
+
+  return {
+    signature: parsed.sig[0],
+    requestId,
+    timestamp,
+  };
+}
+
 export const ClearnodeBackend = {
   connect,
   createAppSession,
   closeAppSession,
+  signCreateAppSession,
 };
