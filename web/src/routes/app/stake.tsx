@@ -71,10 +71,20 @@ function StakePage() {
   const { data: vault, isLoading: vaultLoading } = useVaultInfo()
   const { data: activity, isLoading: activityLoading } = useVaultActivity()
   const { data: history } = useVaultHistory('1d')
-  const { data: position } = useUserPosition(authenticated ? walletAddress : null)
 
   const deposit = useDeposit()
   const withdraw = useWithdraw()
+
+  // pause position polling while tx is in-flight so settlement fund
+  // movements don't cause a temporary balance flash
+  const isTxActive =
+    (deposit.txStatus !== 'idle' && deposit.txStatus !== 'success' && deposit.txStatus !== 'error')
+    || (withdraw.txStatus !== 'idle' && withdraw.txStatus !== 'success' && withdraw.txStatus !== 'error')
+
+  const { data: position } = useUserPosition(
+    authenticated ? walletAddress : null,
+    { refetchInterval: isTxActive ? false : 15_000 },
+  )
 
   // toast on tx status changes
   useEffect(() => {
@@ -136,10 +146,6 @@ function StakePage() {
   const priceChange = prices.length >= 2
     ? ((prices[prices.length - 1] - prices[0]) / prices[0]) * 100
     : 0
-
-  const isTxPending =
-    (deposit.txStatus !== 'idle' && deposit.txStatus !== 'success' && deposit.txStatus !== 'error')
-    || (withdraw.txStatus !== 'idle' && withdraw.txStatus !== 'success' && withdraw.txStatus !== 'error')
 
   // preview what user receives
   const previewReceive = (() => {
@@ -331,13 +337,13 @@ function StakePage() {
                           value={amount}
                           onChange={(e) => setAmount(formatStringToNumericDecimals(e.target.value, 6))}
                           placeholder="0.00"
-                          disabled={isTxPending}
+                          disabled={isTxActive}
                           className="w-full border-2 border-black bg-black/5 px-4 py-4 pr-36 text-2xl font-black text-black placeholder-black/30 outline-none rounded-xl focus:ring-2 focus:ring-black/20 disabled:opacity-50"
                         />
                         <div className="absolute right-3 top-1/2 -translate-y-1/2 flex items-center gap-2">
                           <button
                             onClick={handleMax}
-                            disabled={isTxPending}
+                            disabled={isTxActive}
                             className="px-2 py-1 text-xs font-black bg-black text-white rounded hover:bg-black/80 transition-colors disabled:opacity-50"
                           >
                             MAX
@@ -363,11 +369,11 @@ function StakePage() {
                       </div>
                       <button
                         onClick={handleAction}
-                        disabled={isTxPending || !amount || serializeFormattedStringToFloat(amount) <= 0}
+                        disabled={isTxActive || !amount || serializeFormattedStringToFloat(amount) <= 0}
                         className="w-full py-4 text-sm font-black uppercase tracking-wider bg-black text-white border-2 border-black rounded-xl cursor-pointer transition-transform hover:translate-x-1 hover:translate-y-1 disabled:opacity-50 disabled:cursor-not-allowed disabled:hover:translate-x-0 disabled:hover:translate-y-0"
                         style={{ boxShadow: '4px 4px 0px #FF6B9D' }}
                       >
-                        {isTxPending
+                        {isTxActive
                           ? (tab === 'deposit' ? deposit.txStatus : withdraw.txStatus).replace(/_/g, ' ').toUpperCase() + '...'
                           : tab === 'deposit' ? 'Deposit USDH' : 'Withdraw USDH'
                         }
@@ -529,6 +535,12 @@ function PriceChart({ data }: { data: { sharePrice: number; timestamp: string }[
   const linePath = pts.map((p, i) => `${i === 0 ? 'M' : 'L'}${p.x},${p.y}`).join(' ')
   const areaPath = `${linePath} L${pts[pts.length - 1].x},${H} L${pts[0].x},${H} Z`
 
+  // gradient stops based on price direction
+  const dirStops = pts.map((p, i) => {
+    const up = i === 0 ? prices[1] >= prices[0] : prices[i] >= prices[i - 1]
+    return { offset: (p.x / W) * 100, up }
+  })
+
   function handleMouseMove(e: React.MouseEvent) {
     const rect = containerRef.current?.getBoundingClientRect()
     if (!rect || !pts.length) return
@@ -567,26 +579,40 @@ function PriceChart({ data }: { data: { sharePrice: number; timestamp: string }[
           onMouseLeave={() => setHover(null)}
         >
           <defs>
-            <linearGradient id="cg" x1="0%" y1="0%" x2="0%" y2="100%">
-              <stop offset="0%" stopColor="#CDFF57" stopOpacity="0.3" />
-              <stop offset="100%" stopColor="#CDFF57" stopOpacity="0" />
+            {/* horizontal color gradient for stroke */}
+            <linearGradient id="strokeGrad" x1="0" y1="0" x2="1" y2="0">
+              {dirStops.map((s, i) => (
+                <stop key={i} offset={`${s.offset}%`} stopColor={s.up ? '#9ACC20' : '#FF6B9D'} />
+              ))}
             </linearGradient>
+            {/* horizontal color gradient for area fill */}
+            <linearGradient id="areaColor" x1="0" y1="0" x2="1" y2="0">
+              {dirStops.map((s, i) => (
+                <stop key={i} offset={`${s.offset}%`} stopColor={s.up ? '#CDFF57' : '#FF6B9D'} stopOpacity="0.3" />
+              ))}
+            </linearGradient>
+            {/* vertical fade mask */}
+            <linearGradient id="areaFade" x1="0" y1="0" x2="0" y2="1">
+              <stop offset="0%" stopColor="white" />
+              <stop offset="100%" stopColor="white" stopOpacity="0" />
+            </linearGradient>
+            <mask id="areaMask">
+              <rect x="0" y="0" width={W} height={H} fill="url(#areaFade)" />
+            </mask>
           </defs>
-          <path d={areaPath} fill="url(#cg)" />
-          <path d={linePath} fill="none" stroke="#9ACC20" strokeWidth="2.5" vectorEffect="non-scaling-stroke" />
-          {/* dots at each data point */}
-          {pts.map((p, i) => (
+          <path d={areaPath} fill="url(#areaColor)" mask="url(#areaMask)" />
+          <path d={linePath} fill="none" stroke="url(#strokeGrad)" strokeWidth="2.5" vectorEffect="non-scaling-stroke" />
+          {/* dot only on hovered point */}
+          {hover && (
             <circle
-              key={i}
-              cx={p.x}
-              cy={p.y}
-              r={hover?.idx === i ? 5 : 2.5}
-              fill={hover?.idx === i ? '#000' : '#9ACC20'}
-              stroke={hover?.idx === i ? '#CDFF57' : 'none'}
+              cx={hover.x}
+              cy={hover.y}
+              r={5}
+              fill="#000"
+              stroke={dirStops[hover.idx]?.up ? '#CDFF57' : '#FF6B9D'}
               strokeWidth={2}
-              style={{ transition: 'r 0.1s, fill 0.1s' }}
             />
-          ))}
+          )}
           {/* hover crosshair */}
           {hover && (
             <line

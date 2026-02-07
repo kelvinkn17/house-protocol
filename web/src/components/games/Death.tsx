@@ -4,7 +4,9 @@ import { useSound } from '@/providers/SoundProvider'
 import AnimateComponent from '@/components/elements/AnimateComponent'
 import SdkPanel from './SdkPanel'
 import SessionGate from './SessionGate'
+import BetInput from './BetInput'
 import { useSession } from '@/providers/SessionProvider'
+import { parseUnits } from 'viem'
 
 const ROWS = 5
 const MIN_TILES = 2
@@ -102,9 +104,12 @@ export default function Death() {
   const [currentRow, setCurrentRow] = useState(0)
   const [results, setResults] = useState<RowResult[]>([])
   const [revealingRow, setRevealingRow] = useState(-1)
+  const [betInput, setBetInput] = useState('10')
   const gameStarted = useRef(false)
 
-  const { sessionPhase, activeGame, gamePhase, stats } = session
+  const { sessionPhase, activeGame, gamePhase, stats, playerBalance } = session
+
+  const betRaw = parseUnits(betInput || '0', 6).toString()
 
   // tile counts come from server (primitiveState) after game start
   const tileCounts = (activeGame?.primitiveState?.tileCounts as number[]) || generateTileCounts()
@@ -153,7 +158,7 @@ export default function Death() {
       play('reveal')
       setRevealingRow(currentRow)
 
-      const result = await session.playRound({ tileIndex: tile })
+      const result = await session.playRound({ tileIndex: tile }, betRaw)
 
       setTimeout(() => {
         if (!result) {
@@ -179,7 +184,7 @@ export default function Death() {
         }
       }, 400)
     },
-    [animPhase, currentRow, results, revealingRow, gamePhase, play, session],
+    [animPhase, currentRow, results, revealingRow, gamePhase, play, session, betRaw],
   )
 
   const handleCashOut = async () => {
@@ -293,10 +298,23 @@ export default function Death() {
               })}
             </div>
 
+            {/* bet selector, shown before first pick */}
+            {animPhase === 'playing' && results.length === 0 && isActive && (
+              <div className="mb-4">
+                <BetInput
+                  value={betInput}
+                  onChange={setBetInput}
+                  maxBet={playerBalance}
+                  accentColor="#FF6B9D"
+                />
+                <p className="text-[10px] font-mono text-black/30 mt-2 text-center">Pick a tile to start</p>
+              </div>
+            )}
+
             {/* current multiplier banner */}
             {animPhase === 'playing' && results.length > 0 && (
               <div className="text-center mb-4 py-3 bg-[#CDFF57]/20 rounded-xl border-2 border-[#CDFF57]/50">
-                <p className="text-[10px] font-mono text-black/50 uppercase">Current</p>
+                <p className="text-[10px] font-mono text-black/50 uppercase">Current ({betInput} USDH bet)</p>
                 <p className="text-2xl font-black text-black">{multiplier.toFixed(2)}x</p>
               </div>
             )}
@@ -311,7 +329,7 @@ export default function Death() {
             )}
             {animPhase === 'dead' && (
               <div className="text-center mb-4 py-3 bg-[#FF6B9D] rounded-xl border-2 border-black">
-                <p className="text-sm font-black text-black">DEAD</p>
+                <p className="text-sm font-black text-black">DEAD ({betInput} USDH lost)</p>
               </div>
             )}
 
@@ -329,13 +347,21 @@ export default function Death() {
               )}
 
               {(animPhase === 'dead' || animPhase === 'survived') && (
-                <button
-                  onClick={handlePlayAgain}
-                  className="w-full py-4 text-sm font-black uppercase bg-black text-white border-2 border-black rounded-xl transition-transform hover:translate-x-1 hover:translate-y-1"
-                  style={{ boxShadow: '4px 4px 0px #FF6B9D' }}
-                >
-                  Play Again
-                </button>
+                <div className="space-y-3">
+                  <BetInput
+                    value={betInput}
+                    onChange={setBetInput}
+                    maxBet={playerBalance}
+                    accentColor="#FF6B9D"
+                  />
+                  <button
+                    onClick={handlePlayAgain}
+                    className="w-full py-4 text-sm font-black uppercase bg-black text-white border-2 border-black rounded-xl transition-transform hover:translate-x-1 hover:translate-y-1"
+                    style={{ boxShadow: '4px 4px 0px #FF6B9D' }}
+                  >
+                    Play Again
+                  </button>
+                </div>
               )}
             </div>
           </SessionGate>

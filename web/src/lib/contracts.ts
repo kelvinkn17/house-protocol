@@ -10,6 +10,7 @@ export const SEPOLIA_CHAIN_ID = 11155111
 export const CUSTODY_ABI = parseAbi([
   'function deposit(address account, address token, uint256 amount) payable',
   'function withdraw(address token, uint256 amount)',
+  'function getAccountsBalances(address[] accounts, address[] tokens) view returns (uint256[][])',
 ])
 
 // ERC-4626 vault: deposit, withdraw, and read functions
@@ -31,6 +32,11 @@ export const ERC20_ABI = parseAbi([
   'function allowance(address owner, address spender) view returns (uint256)',
   'function approve(address spender, uint256 amount) returns (bool)',
   'function decimals() view returns (uint8)',
+])
+
+// USDH is the demo token, anyone can mint
+export const USDH_MINT_ABI = parseAbi([
+  'function mint(address to, uint256 amount)',
 ])
 
 let _publicClient: ReturnType<typeof createPublicClient> | null = null

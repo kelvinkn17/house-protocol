@@ -1,6 +1,6 @@
 // session-first provider: one deposit, play any game
 // wraps the play layout so all game components share the same session
-// integrates with Nitrolite clearnode for real state channel deposits
+// backend handles clearnode session creation, player just signs the deposit tx
 // persists sessionId to localStorage so sessions survive page refresh
 
 import {
@@ -13,7 +13,6 @@ import {
   type ReactNode,
 } from 'react'
 import { GameSocket } from '@/hooks/useGameSocket'
-import { ClearnodeClient } from '@/lib/clearnode'
 import { generateNonce, createCommitment } from '@/lib/game'
 import { useAuthContext } from '@/providers/AuthProvider'
 import { useWallets } from '@privy-io/react-auth'
@@ -82,6 +81,7 @@ interface SessionContextValue {
   // session level
   sessionPhase: SessionPhase
   sessionId: string | null
+  channelId: string | null
   playerBalance: string
   houseBalance: string
   depositAmount: string
@@ -118,6 +118,7 @@ export function SessionProvider({ children }: { children: ReactNode }) {
   // session state
   const [sessionPhase, setSessionPhase] = useState<SessionPhase>(walletAddress ? 'idle' : 'no_wallet')
   const [sessionId, setSessionId] = useState<string | null>(null)
+  const [channelId, setChannelId] = useState<string | null>(null)
   const [playerBalance, setPlayerBalance] = useState('0')
   const [houseBalance, setHouseBalance] = useState('0')
   const [depositAmount, setDepositAmount] = useState('0')
@@ -147,18 +148,30 @@ export function SessionProvider({ children }: { children: ReactNode }) {
   const resumeAttempted = useRef(false)
 
   // withdraw player's funds from custody back to their wallet after session close.
-  // clearnode uses whole units, so we round down to match what custody actually holds.
-  const DECIMALS = 1000000n
+  // checks actual custody balance first since settlement timing can vary.
   const withdrawFromCustody = useCallback(async (finalPlayerBalance: string) => {
-    const rawBalance = BigInt(finalPlayerBalance)
-    // clearnode only tracks whole units, so custody balance is floored
-    const withdrawAmount = (rawBalance / DECIMALS) * DECIMALS
-    if (withdrawAmount <= 0n) return
+    if (BigInt(finalPlayerBalance) <= 0n) return
 
     const wallet = wallets[0]
     if (!wallet || !walletAddress) return
 
     try {
+      const publicClient = getPublicClient()
+
+      // check what the player actually has available in custody
+      const balances = await publicClient.readContract({
+        address: CUSTODY_ADDRESS,
+        abi: CUSTODY_ABI,
+        functionName: 'getAccountsBalances',
+        args: [[walletAddress as Address], [USDH_ADDRESS]],
+      }) as bigint[][]
+      const available = balances[0]?.[0] ?? 0n
+
+      if (available <= 0n) {
+        console.log('[session] no custody balance to withdraw (settlement may still be pending)')
+        return
+      }
+
       await wallet.switchChain(SEPOLIA_CHAIN_ID)
       const provider = await wallet.getEthereumProvider()
       const wc = createWalletClient({
@@ -171,10 +184,10 @@ export function SessionProvider({ children }: { children: ReactNode }) {
         address: CUSTODY_ADDRESS,
         abi: CUSTODY_ABI,
         functionName: 'withdraw',
-        args: [USDH_ADDRESS, withdrawAmount],
+        args: [USDH_ADDRESS, available],
       })
-      await getPublicClient().waitForTransactionReceipt({ hash: txHash })
-      console.log(`[session] custody withdraw complete: ${txHash}`)
+      await publicClient.waitForTransactionReceipt({ hash: txHash })
+      console.log(`[session] custody withdraw complete: ${txHash}, amount=${available}`)
     } catch (err) {
       console.error('[session] custody withdraw failed:', (err as Error).message)
       // don't throw, session is already closed on backend side
@@ -187,8 +200,19 @@ export function SessionProvider({ children }: { children: ReactNode }) {
     if (sessionPhase !== 'idle') return
 
     resumeAttempted.current = true
-    const savedId = localStorage.getItem(SESSION_STORAGE_KEY)
-    if (!savedId) return
+    const saved = localStorage.getItem(SESSION_STORAGE_KEY)
+    if (!saved) return
+
+    // parse localStorage, handle legacy format (plain string) and new format (JSON)
+    let savedId: string
+    let savedDeposit: string | null = null
+    try {
+      const parsed = JSON.parse(saved)
+      savedId = parsed.sessionId
+      savedDeposit = parsed.depositAmount || null
+    } catch {
+      savedId = saved
+    }
 
     const doResume = async () => {
       setSessionPhase('resuming')
@@ -208,6 +232,8 @@ export function SessionProvider({ children }: { children: ReactNode }) {
           sessionId: string
           playerBalance: string
           houseBalance: string
+          playerDeposit: string
+          channelId: string | null
           activeGame: {
             gameSlug: string
             gameType: string
@@ -219,9 +245,11 @@ export function SessionProvider({ children }: { children: ReactNode }) {
         }>('session_resumed')
 
         setSessionId(result.sessionId)
+        setChannelId(result.channelId)
         setPlayerBalance(result.playerBalance)
         setHouseBalance(result.houseBalance)
-        setDepositAmount(result.playerBalance)
+        // restore original deposit from backend or localStorage
+        setDepositAmount(result.playerDeposit || savedDeposit || result.playerBalance)
 
         if (result.activeGame) {
           setActiveGame({
@@ -258,8 +286,7 @@ export function SessionProvider({ children }: { children: ReactNode }) {
     doResume()
   }, [walletAddress, sessionPhase])
 
-  // full flow: approve + deposit to custody, backend validates + signs as broker,
-  // frontend creates app session on clearnode
+  // approve + deposit to custody, backend creates clearnode session, done
   const openSession = useCallback(async (deposit: string) => {
     if (!walletAddress) {
       setSessionPhase('no_wallet')
@@ -269,7 +296,6 @@ export function SessionProvider({ children }: { children: ReactNode }) {
     setSessionError(null)
 
     try {
-      // step 0: deposit USDH into Nitrolite Custody contract (on-chain)
       if (!USDH_ADDRESS || !CUSTODY_ADDRESS) throw new Error('Contract addresses not configured')
 
       const wallet = wallets[0]
@@ -285,7 +311,7 @@ export function SessionProvider({ children }: { children: ReactNode }) {
       const publicClient = getPublicClient()
       const depositBigInt = BigInt(deposit)
 
-      // approve USDH spending by custody contract
+      // approve USDH spending (MAX_UINT256 so this only happens once ever)
       setSessionPhase('approving')
       const allowance = await publicClient.readContract({
         address: USDH_ADDRESS,
@@ -299,12 +325,12 @@ export function SessionProvider({ children }: { children: ReactNode }) {
           address: USDH_ADDRESS,
           abi: ERC20_ABI,
           functionName: 'approve',
-          args: [CUSTODY_ADDRESS, depositBigInt * 10n],
+          args: [CUSTODY_ADDRESS, 2n ** 256n - 1n],
         })
         await publicClient.waitForTransactionReceipt({ hash: approveHash })
       }
 
-      // then: deposit into custody
+      // deposit into custody
       setSessionPhase('depositing')
       const depositHash = await wc.writeContract({
         address: CUSTODY_ADDRESS,
@@ -314,10 +340,8 @@ export function SessionProvider({ children }: { children: ReactNode }) {
       })
       await publicClient.waitForTransactionReceipt({ hash: depositHash })
 
-      // now proceed with session creation
+      // connect to backend WS
       setSessionPhase('connecting')
-
-      // connect to our backend WS
       await GameSocket.connect(walletAddress)
 
       if (errorUnsub.current) errorUnsub.current()
@@ -326,52 +350,25 @@ export function SessionProvider({ children }: { children: ReactNode }) {
         setSessionError(p.error)
       })
 
+      // backend creates clearnode session directly, no player sig needed
       setSessionPhase('creating')
-
-      // step 1: ask backend to validate deposit and sign as broker
       GameSocket.send('create_session', { depositAmount: deposit })
 
-      const params = await GameSocket.waitForOrError<{
-        sessionId: string
-        playerDeposit: string
-        houseDeposit: string
-        brokerAddress: string
-        definition: Record<string, unknown>
-        allocations: Array<{ participant: string; asset: string; amount: string }>
-        brokerSigs: string[]
-        requestId: number
-        timestamp: number
-      }>('session_params')
-
-      // step 2: authenticate with clearnode using player's wallet (reuse wc from deposit step)
-      await ClearnodeClient.authenticate(walletAddress as Address, wc)
-
-      // step 3: create app session on clearnode (player signs + broker sigs combined)
-      const appSessionId = await ClearnodeClient.openAppSession(
-        params.definition,
-        params.allocations,
-        params.brokerSigs,
-        params.requestId,
-        params.timestamp,
-      )
-
-      // step 4: tell backend the clearnode session is confirmed
-      GameSocket.send('confirm_session', {
-        sessionId: params.sessionId,
-        appSessionId,
-      })
-
-      // step 5: wait for backend to acknowledge
       const result = await GameSocket.waitForOrError<{
         sessionId: string
         playerDeposit: string
         houseDeposit: string
+        channelId: string
       }>('session_created')
 
-      // persist sessionId for resume on refresh
-      localStorage.setItem(SESSION_STORAGE_KEY, result.sessionId)
+      // persist session for resume on refresh
+      localStorage.setItem(SESSION_STORAGE_KEY, JSON.stringify({
+        sessionId: result.sessionId,
+        depositAmount: deposit,
+      }))
 
       setSessionId(result.sessionId)
+      setChannelId(result.channelId)
       setPlayerBalance(result.playerDeposit)
       setHouseBalance(result.houseDeposit)
       setDepositAmount(result.playerDeposit)
@@ -598,7 +595,6 @@ export function SessionProvider({ children }: { children: ReactNode }) {
   }, [sessionId, withdrawFromCustody])
 
   const reset = useCallback(() => {
-    ClearnodeClient.disconnect()
     if (bustedUnsub.current) {
       bustedUnsub.current()
       bustedUnsub.current = null
@@ -606,6 +602,7 @@ export function SessionProvider({ children }: { children: ReactNode }) {
     setSessionPhase(walletAddress ? 'idle' : 'no_wallet')
     setSessionError(null)
     setSessionId(null)
+    setChannelId(null)
     setPlayerBalance('0')
     setHouseBalance('0')
     setDepositAmount('0')
@@ -619,6 +616,7 @@ export function SessionProvider({ children }: { children: ReactNode }) {
     <SessionContext.Provider value={{
       sessionPhase,
       sessionId,
+      channelId,
       playerBalance,
       houseBalance,
       depositAmount,

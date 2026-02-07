@@ -4,7 +4,9 @@ import { useSound } from '@/providers/SoundProvider'
 import AnimateComponent from '@/components/elements/AnimateComponent'
 import SdkPanel from './SdkPanel'
 import SessionGate from './SessionGate'
+import BetInput from './BetInput'
 import { useSession } from '@/providers/SessionProvider'
+import { parseUnits } from 'viem'
 
 type Mode = 'over' | 'under' | 'range'
 type AnimPhase = 'idle' | 'rolling' | 'result'
@@ -77,8 +79,11 @@ export default function Range() {
   const intervalRef = useRef<ReturnType<typeof setInterval> | null>(null)
   const gameStarted = useRef(false)
 
-  const { sessionPhase, activeGame, gamePhase, stats } = session
+  const { sessionPhase, activeGame, gamePhase, stats, playerBalance } = session
   const isActive = gamePhase === 'active' || gamePhase === 'playing_round'
+
+  const [betInput, setBetInput] = useState('10')
+  const betRaw = parseUnits(betInput || '0', 6).toString()
 
   // slider drag state
   const barRef = useRef<HTMLDivElement>(null)
@@ -208,7 +213,7 @@ export default function Range() {
       choice.rangeEnd = rangeEnd
     }
 
-    const result = await session.playRound(choice)
+    const result = await session.playRound(choice, betRaw)
 
     // stop ticker
     if (intervalRef.current) clearInterval(intervalRef.current)
@@ -431,14 +436,22 @@ export default function Range() {
             {/* controls */}
             <div className="border-t-2 border-black/10 pt-5">
               {animPhase === 'idle' && isActive && (
-                <button
-                  onClick={roll}
-                  disabled={gamePhase === 'playing_round'}
-                  className="w-full py-4 text-sm font-black uppercase bg-black text-white border-2 border-black rounded-xl transition-transform hover:translate-x-1 hover:translate-y-1 disabled:opacity-50"
-                  style={{ boxShadow: '4px 4px 0px #dcb865' }}
-                >
-                  Roll for {payout.toFixed(2)}x
-                </button>
+                <div className="space-y-3">
+                  <BetInput
+                    value={betInput}
+                    onChange={setBetInput}
+                    maxBet={playerBalance}
+                    accentColor="#dcb865"
+                  />
+                  <button
+                    onClick={roll}
+                    disabled={gamePhase === 'playing_round' || !betInput || parseFloat(betInput) <= 0}
+                    className="w-full py-4 text-sm font-black uppercase bg-black text-white border-2 border-black rounded-xl transition-transform hover:translate-x-1 hover:translate-y-1 disabled:opacity-50"
+                    style={{ boxShadow: '4px 4px 0px #dcb865' }}
+                  >
+                    Roll {betInput} USDH for {payout.toFixed(2)}x
+                  </button>
+                </div>
               )}
 
               {animPhase === 'rolling' && (
@@ -448,17 +461,25 @@ export default function Range() {
               )}
 
               {animPhase === 'result' && isActive && (
-                <button
-                  onClick={roll}
-                  disabled={gamePhase === 'playing_round'}
-                  className={cnm(
-                    'w-full py-4 text-sm font-black uppercase border-2 border-black rounded-xl transition-transform hover:translate-x-1 hover:translate-y-1 disabled:opacity-50',
-                    won ? 'bg-[#CDFF57] text-black' : 'bg-black text-white',
-                  )}
-                  style={{ boxShadow: `4px 4px 0px ${won ? 'black' : '#dcb865'}` }}
-                >
-                  Roll Again
-                </button>
+                <div className="space-y-3">
+                  <BetInput
+                    value={betInput}
+                    onChange={setBetInput}
+                    maxBet={playerBalance}
+                    accentColor="#dcb865"
+                  />
+                  <button
+                    onClick={roll}
+                    disabled={gamePhase === 'playing_round' || !betInput || parseFloat(betInput) <= 0}
+                    className={cnm(
+                      'w-full py-4 text-sm font-black uppercase border-2 border-black rounded-xl transition-transform hover:translate-x-1 hover:translate-y-1 disabled:opacity-50',
+                      won ? 'bg-[#CDFF57] text-black' : 'bg-black text-white',
+                    )}
+                    style={{ boxShadow: `4px 4px 0px ${won ? 'black' : '#dcb865'}` }}
+                  >
+                    Roll Again {betInput} USDH
+                  </button>
+                </div>
               )}
             </div>
           </SessionGate>

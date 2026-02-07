@@ -9,6 +9,7 @@ import {
   createAuthVerifyMessageFromChallenge,
   createEIP712AuthMessageSigner,
   createCloseAppSessionMessage,
+  createAppSessionMessage,
 } from '@erc7824/nitrolite';
 import { generatePrivateKey, privateKeyToAccount } from 'viem/accounts';
 import { createWalletClient, http } from 'viem';
@@ -160,6 +161,62 @@ function connect(): Promise<void> {
   });
 }
 
+// create an app session as broker only (no player sig needed, broker weight meets quorum)
+async function createAppSession(
+  definition: Record<string, unknown>,
+  allocations: Array<{ participant: Address; asset: string; amount: string }>,
+): Promise<string> {
+  if (!authenticated || !ws || ws.readyState !== WebSocket.OPEN) {
+    await connect();
+  }
+
+  return new Promise(async (resolve, reject) => {
+    const timeout = setTimeout(() => {
+      if (ws) ws.off('message', handleMessage);
+      reject(new Error('Timeout creating app session on clearnode'));
+    }, 15000);
+
+    function handleMessage(data: Buffer | ArrayBuffer | Buffer[]) {
+      try {
+        const parsed = JSON.parse(data.toString());
+        if (!parsed.res) return;
+
+        const method = parsed.res[1];
+        const params = parsed.res[2];
+
+        if (method === 'create_app_session') {
+          clearTimeout(timeout);
+          ws!.off('message', handleMessage);
+          if (params?.app_session_id) {
+            resolve(params.app_session_id);
+          } else {
+            reject(new Error(params?.error || 'Failed to create app session'));
+          }
+        }
+
+        if (method === 'error') {
+          clearTimeout(timeout);
+          ws!.off('message', handleMessage);
+          reject(new Error(params?.error || params?.message || 'Create failed'));
+        }
+      } catch { /* ignore */ }
+    }
+
+    ws!.on('message', handleMessage);
+
+    try {
+      const msg = await createAppSessionMessage(brokerSessionSigner, {
+        definition, allocations,
+      } as any);
+      ws!.send(msg);
+    } catch (err) {
+      clearTimeout(timeout);
+      ws!.off('message', handleMessage);
+      reject(err);
+    }
+  });
+}
+
 // close an app session as the broker
 // allocations use human-readable amounts (not 6-decimal on-chain units)
 async function closeAppSession(
@@ -224,5 +281,6 @@ async function closeAppSession(
 
 export const ClearnodeBackend = {
   connect,
+  createAppSession,
   closeAppSession,
 };

@@ -95,7 +95,7 @@ export function useVaultHistory(period = '7d') {
   })
 }
 
-export function useUserPosition(address: string | null) {
+export function useUserPosition(address: string | null, opts?: { refetchInterval?: number | false }) {
   return useQuery({
     queryKey: ['vault', 'user', address],
     queryFn: async () => {
@@ -105,7 +105,7 @@ export function useUserPosition(address: string | null) {
       return res.data
     },
     enabled: !!address,
-    refetchInterval: 15_000,
+    refetchInterval: opts?.refetchInterval ?? 15_000,
   })
 }
 
