@@ -10,6 +10,7 @@ export const SEPOLIA_CHAIN_ID = 11155111
 export const CUSTODY_ABI = parseAbi([
   'function deposit(address account, address token, uint256 amount) payable',
   'function withdraw(address token, uint256 amount)',
+  'function getAccountsBalances(address[] accounts, address[] tokens) view returns (uint256[][])',
 ])
 
 // ERC-4626 vault: deposit, withdraw, and read functions

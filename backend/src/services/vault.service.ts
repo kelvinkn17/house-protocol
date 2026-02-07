@@ -52,6 +52,7 @@ const ERC20_ABI = parseAbi([
 
 const CUSTODY_ABI = parseAbi([
   'function withdraw(address token, uint256 amount)',
+  'function getAccountsBalances(address[] accounts, address[] tokens) view returns (uint256[][])',
 ]);
 
 // lazy singleton
@@ -68,9 +69,11 @@ function getPublicClient(): PublicClient {
   return publicClient;
 }
 
-// sum up house P&L from all closed sessions
-// positive = house won, negative = house lost
-export async function getSessionPnL(): Promise<bigint> {
+// 1e18 scaling factor to avoid precision loss in per-share PnL math
+const PNL_PRECISION = 10n ** 18n;
+
+// raw sum of house P&L from all closed sessions (for debugging)
+export async function getRawSessionPnL(): Promise<bigint> {
   const closedSessions = await (prismaQuery as any).session.findMany({
     where: { status: 'CLOSED', finalHouseBalance: { not: null } },
     select: { houseDeposit: true, finalHouseBalance: true },
@@ -78,18 +81,64 @@ export async function getSessionPnL(): Promise<bigint> {
 
   let pnl = 0n;
   for (const s of closedSessions) {
-    const deposit = BigInt(s.houseDeposit);
-    const final = BigInt(s.finalHouseBalance);
-    pnl += final - deposit;
+    pnl += BigInt(s.finalHouseBalance) - BigInt(s.houseDeposit);
   }
-
   return pnl;
 }
 
-// read vault state, adjusted for off-chain session P&L
+// calculate effective PnL that scales correctly with supply changes.
+// the old approach added raw PnL as a flat amount, which meant when someone
+// withdrew most shares, the same PnL got divided among far fewer shares and
+// the price exploded. this version computes per-share PnL at the time each
+// session closed (using snapshot supply), so withdrawals proportionally reduce
+// the effective PnL instead of concentrating it.
+async function getEffectivePnL(currentTotalSupply: bigint): Promise<bigint> {
+  if (currentTotalSupply === 0n) return 0n;
+
+  const closedSessions = await (prismaQuery as any).session.findMany({
+    where: { status: 'CLOSED', finalHouseBalance: { not: null } },
+    select: { houseDeposit: true, finalHouseBalance: true, closedAt: true },
+    orderBy: { closedAt: 'asc' },
+  });
+
+  if (closedSessions.length === 0) return 0n;
+
+  // grab snapshots to look up supply at each session close time
+  const snapshots = await (prismaQuery as any).vaultSnapshot.findMany({
+    orderBy: { timestamp: 'asc' },
+    select: { totalSupply: true, timestamp: true },
+  });
+
+  let accPnlPerShare = 0n;
+
+  for (const s of closedSessions) {
+    const pnl = BigInt(s.finalHouseBalance) - BigInt(s.houseDeposit);
+    if (pnl === 0n) continue;
+
+    // find supply at session close from nearest earlier snapshot
+    let supplyAtClose = currentTotalSupply;
+    if (s.closedAt && snapshots.length > 0) {
+      const closeMs = s.closedAt.getTime();
+      for (let i = snapshots.length - 1; i >= 0; i--) {
+        if (snapshots[i].timestamp.getTime() <= closeMs) {
+          supplyAtClose = BigInt(snapshots[i].totalSupply);
+          break;
+        }
+      }
+    }
+
+    if (supplyAtClose > 0n) {
+      accPnlPerShare += pnl * PNL_PRECISION / supplyAtClose;
+    }
+  }
+
+  return accPnlPerShare * currentTotalSupply / PNL_PRECISION;
+}
+
+// read vault state, adjusted for off-chain session P&L.
 // on-chain totalAssets doesn't reflect session wins/losses since those
-// happen in state channels. we add the cumulative house P&L from closed
-// sessions to get an accurate TVL and share price.
+// happen in state channels. we add per-share scaled PnL to get an
+// accurate TVL and share price that doesn't blow up on large withdrawals.
 export async function getVaultState() {
   const client = getPublicClient();
 
@@ -111,10 +160,9 @@ export async function getVaultState() {
     }) as Promise<bigint>,
   ]);
 
-  // off-chain P&L from closed game sessions
-  const sessionPnL = await getSessionPnL();
+  // per-share PnL scaled to current supply (fixes price explosion on large withdrawals)
+  const sessionPnL = await getEffectivePnL(totalSupply);
 
-  // adjusted total = on-chain total + cumulative house wins/losses
   const adjustedTotalAssets = totalAssets + sessionPnL;
 
   // assets are 6 decimals (USDH), shares are 9 decimals (sUSDH, 3-decimal offset)
@@ -127,7 +175,6 @@ export async function getVaultState() {
     totalSupply,
     custodyBalance,
     sharePrice,
-    // raw on-chain value, useful for debugging
     onChainTotalAssets: totalAssets,
     sessionPnL,
   };
@@ -211,39 +258,75 @@ export async function getBlockTimestamp(blockNumber: bigint): Promise<bigint> {
   return block.timestamp;
 }
 
-// move funds from custody to vault so stakers can redeem
-// operator calls custody.withdraw() then transfers USDH to vault contract
+// move funds from custody to vault so stakers can redeem.
+// checks vault idle balance first, only moves what's actually needed.
 export async function settleForWithdrawal(amount: bigint): Promise<string> {
   if (!OPERATOR_PRIVATE_KEY) throw new Error('OPERATOR_PRIVATE_KEY not configured');
 
-  const account = privateKeyToAccount(OPERATOR_PRIVATE_KEY as `0x${string}`);
   const client = getPublicClient();
-  const rpcUrl = process.env.SEPOLIA_RPC_URL;
 
+  // check how much idle USDH the vault already has
+  const vaultIdle = await client.readContract({
+    address: USDH_ADDRESS,
+    abi: ERC20_ABI,
+    functionName: 'balanceOf',
+    args: [VAULT_ADDRESS],
+  }) as bigint;
+
+  console.log(`[settlement] vault idle=${vaultIdle}, needed=${amount}`);
+
+  if (vaultIdle >= amount) {
+    console.log(`[settlement] vault already has enough idle USDH, no settlement needed`);
+    return 'already_settled';
+  }
+
+  // need to move (amount - vaultIdle) from custody to vault
+  const shortfall = amount - vaultIdle;
+
+  // check operator's available custody balance
+  const operatorAccount = privateKeyToAccount(OPERATOR_PRIVATE_KEY as `0x${string}`);
+  const custodyBalances = await client.readContract({
+    address: CUSTODY_ADDRESS,
+    abi: CUSTODY_ABI,
+    functionName: 'getAccountsBalances',
+    args: [[operatorAccount.address], [USDH_ADDRESS]],
+  }) as bigint[][];
+  const operatorCustody = custodyBalances[0]?.[0] ?? 0n;
+
+  console.log(`[settlement] operator custody=${operatorCustody}, shortfall=${shortfall}`);
+
+  if (operatorCustody <= 0n) {
+    throw new Error(`No funds available in custody. Vault has ${vaultIdle} idle USDH but needs ${amount}. Custody settlement may still be pending.`);
+  }
+
+  // withdraw the lesser of shortfall or available custody balance
+  const toWithdraw = operatorCustody < shortfall ? operatorCustody : shortfall;
+
+  const rpcUrl = process.env.SEPOLIA_RPC_URL;
   const walletClient = createWalletClient({
-    account,
+    account: operatorAccount,
     chain: sepolia,
     transport: http(rpcUrl),
   });
 
-  // step 1: withdraw USDH from nitrolite custody to operator wallet
-  console.log(`[settlement] withdrawing ${amount} from custody...`);
+  // step 1: withdraw from custody to operator wallet
+  console.log(`[settlement] withdrawing ${toWithdraw} from custody...`);
   const withdrawHash = await walletClient.writeContract({
     address: CUSTODY_ADDRESS,
     abi: CUSTODY_ABI,
     functionName: 'withdraw',
-    args: [USDH_ADDRESS, amount],
+    args: [USDH_ADDRESS, toWithdraw],
   });
   await client.waitForTransactionReceipt({ hash: withdrawHash });
   console.log(`[settlement] custody withdraw tx: ${withdrawHash}`);
 
-  // step 2: transfer USDH from operator wallet to vault contract
-  console.log(`[settlement] transferring ${amount} to vault...`);
+  // step 2: transfer from operator wallet to vault contract
+  console.log(`[settlement] transferring ${toWithdraw} to vault...`);
   const transferHash = await walletClient.writeContract({
     address: USDH_ADDRESS,
     abi: ERC20_ABI,
     functionName: 'transfer',
-    args: [VAULT_ADDRESS, amount],
+    args: [VAULT_ADDRESS, toWithdraw],
   });
   await client.waitForTransactionReceipt({ hash: transferHash });
   console.log(`[settlement] vault transfer tx: ${transferHash}`);

@@ -147,18 +147,30 @@ export function SessionProvider({ children }: { children: ReactNode }) {
   const resumeAttempted = useRef(false)
 
   // withdraw player's funds from custody back to their wallet after session close.
-  // clearnode uses whole units, so we round down to match what custody actually holds.
-  const DECIMALS = 1000000n
+  // checks actual custody balance first since settlement timing can vary.
   const withdrawFromCustody = useCallback(async (finalPlayerBalance: string) => {
-    const rawBalance = BigInt(finalPlayerBalance)
-    // clearnode only tracks whole units, so custody balance is floored
-    const withdrawAmount = (rawBalance / DECIMALS) * DECIMALS
-    if (withdrawAmount <= 0n) return
+    if (BigInt(finalPlayerBalance) <= 0n) return
 
     const wallet = wallets[0]
     if (!wallet || !walletAddress) return
 
     try {
+      const publicClient = getPublicClient()
+
+      // check what the player actually has available in custody
+      const balances = await publicClient.readContract({
+        address: CUSTODY_ADDRESS,
+        abi: CUSTODY_ABI,
+        functionName: 'getAccountsBalances',
+        args: [[walletAddress as Address], [USDH_ADDRESS]],
+      }) as bigint[][]
+      const available = balances[0]?.[0] ?? 0n
+
+      if (available <= 0n) {
+        console.log('[session] no custody balance to withdraw (settlement may still be pending)')
+        return
+      }
+
       await wallet.switchChain(SEPOLIA_CHAIN_ID)
       const provider = await wallet.getEthereumProvider()
       const wc = createWalletClient({
@@ -171,10 +183,10 @@ export function SessionProvider({ children }: { children: ReactNode }) {
         address: CUSTODY_ADDRESS,
         abi: CUSTODY_ABI,
         functionName: 'withdraw',
-        args: [USDH_ADDRESS, withdrawAmount],
+        args: [USDH_ADDRESS, available],
       })
-      await getPublicClient().waitForTransactionReceipt({ hash: txHash })
-      console.log(`[session] custody withdraw complete: ${txHash}`)
+      await publicClient.waitForTransactionReceipt({ hash: txHash })
+      console.log(`[session] custody withdraw complete: ${txHash}, amount=${available}`)
     } catch (err) {
       console.error('[session] custody withdraw failed:', (err as Error).message)
       // don't throw, session is already closed on backend side
