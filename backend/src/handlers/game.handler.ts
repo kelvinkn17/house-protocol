@@ -168,21 +168,16 @@ async function handleCreateSession(ws: WebSocket, playerId: string, payload: Cre
   for (const stale of staleSessions) {
     console.log(`[session] force-closing stale session ${stale.id} for ${playerId}`);
 
-    // try clearnode close, best effort (old sessions might have weight [100,0] so broker can't close)
+    // try clearnode close, best effort (old sessions may not close, that's fine)
     if (stale.channelId) {
       const brokerAddr = getBrokerAddress();
       try {
-        // clearnode tracks whole units. derive one side from the other to avoid
-        // truncation rounding that makes the total not add up.
         const clearnodeTotal = BigInt(stale.playerDeposit) / DECIMALS + BigInt(stale.houseDeposit) / DECIMALS;
-        const playerAmt = BigInt(stale.currentPlayerBalance || stale.playerDeposit) / DECIMALS;
-        const houseAmt = clearnodeTotal - playerAmt;
         await ClearnodeBackend.closeAppSession(stale.channelId, [
-          { participant: playerId as Address, asset: ASSET_SYMBOL, amount: playerAmt.toString() },
-          { participant: brokerAddr, asset: ASSET_SYMBOL, amount: houseAmt.toString() },
+          { participant: brokerAddr, asset: ASSET_SYMBOL, amount: clearnodeTotal.toString() },
         ]);
       } catch {
-        // old sessions with [100,0] weights won't close, that's expected
+        // old sessions created with different participant layout won't close, that's expected
       }
     }
 
@@ -250,10 +245,12 @@ async function handleCreateSession(ws: WebSocket, playerId: string, payload: Cre
   // build nitrolite app session definition
   const brokerAddr = getBrokerAddress();
 
+  // broker-only session: clearnode requires signatures from every listed participant,
+  // so we only list the broker. player funds are tracked in our DB + custody contract.
   const definition = {
     protocol: RPCProtocolVersion.NitroRPC_0_4,
-    participants: [playerId as Address, brokerAddr],
-    weights: [100, 100], // either player or broker can close
+    participants: [brokerAddr],
+    weights: [100],
     quorum: 100,
     challenge: 0,
     nonce: Date.now(),
@@ -261,9 +258,10 @@ async function handleCreateSession(ws: WebSocket, playerId: string, payload: Cre
   };
 
   // clearnode expects human-readable amounts, not 6-decimal on-chain units
+  // total pool = player deposit + house deposit, all under broker custody
+  const totalDeposit = (playerDeposit + houseDeposit) / DECIMALS;
   const allocations = [
-    { participant: playerId as Address, asset: ASSET_SYMBOL, amount: (playerDeposit / DECIMALS).toString() },
-    { participant: brokerAddr, asset: ASSET_SYMBOL, amount: (houseDeposit / DECIMALS).toString() },
+    { participant: brokerAddr, asset: ASSET_SYMBOL, amount: totalDeposit.toString() },
   ];
 
   // backend creates the clearnode session directly (broker weight alone meets quorum)
@@ -287,6 +285,7 @@ async function handleCreateSession(ws: WebSocket, playerId: string, payload: Cre
     sessionId: session.id,
     playerDeposit: playerDeposit.toString(),
     houseDeposit: houseDeposit.toString(),
+    channelId: appSessionId,
   });
 }
 
@@ -600,19 +599,12 @@ async function closeClearnodeAndFinalize(
   const dbSession = await db.session.findUnique({ where: { id: sessionId } });
   const brokerAddr = getBrokerAddress();
 
-  // close clearnode app session as broker
+  // close clearnode app session as broker (broker-only, total pool)
   if (dbSession?.channelId) {
     try {
-      // clearnode tracks whole units. integer division truncates both sides,
-      // so playerAmt + houseAmt can end up less than the original total.
-      // fix: compute one side, derive the other from the original clearnode total.
       const clearnodeTotal = BigInt(dbSession.playerDeposit) / DECIMALS + BigInt(dbSession.houseDeposit) / DECIMALS;
-      const playerAmt = session.playerBalance / DECIMALS;
-      const houseAmt = clearnodeTotal - playerAmt;
-
       await ClearnodeBackend.closeAppSession(dbSession.channelId, [
-        { participant: session.playerId as Address, asset: ASSET_SYMBOL, amount: playerAmt.toString() },
-        { participant: brokerAddr, asset: ASSET_SYMBOL, amount: houseAmt.toString() },
+        { participant: brokerAddr, asset: ASSET_SYMBOL, amount: clearnodeTotal.toString() },
       ]);
     } catch (err) {
       // log but don't fail the session close, clearnode might already be closed
@@ -685,10 +677,13 @@ async function handleResumeSession(ws: WebSocket, playerId: string, payload: Res
     }
 
     const game = activeGames.get(sessionId);
+    const existingDb = await db.session.findUnique({ where: { id: sessionId }, select: { playerDeposit: true, channelId: true } });
     send(ws, 'session_resumed', {
       sessionId,
       playerBalance: existing.playerBalance.toString(),
       houseBalance: existing.houseBalance.toString(),
+      playerDeposit: existingDb?.playerDeposit || existing.playerBalance.toString(),
+      channelId: existingDb?.channelId || null,
       activeGame: game ? {
         gameSlug: game.config.builderParams.slug,
         gameType: game.config.gameType,
@@ -758,6 +753,8 @@ async function handleResumeSession(ws: WebSocket, playerId: string, payload: Res
     sessionId,
     playerBalance: playerBalance.toString(),
     houseBalance: houseBalance.toString(),
+    playerDeposit: dbSession.playerDeposit,
+    channelId: dbSession.channelId,
     activeGame: activeGameInfo,
   });
 }

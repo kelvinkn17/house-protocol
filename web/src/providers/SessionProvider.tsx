@@ -81,6 +81,7 @@ interface SessionContextValue {
   // session level
   sessionPhase: SessionPhase
   sessionId: string | null
+  channelId: string | null
   playerBalance: string
   houseBalance: string
   depositAmount: string
@@ -117,6 +118,7 @@ export function SessionProvider({ children }: { children: ReactNode }) {
   // session state
   const [sessionPhase, setSessionPhase] = useState<SessionPhase>(walletAddress ? 'idle' : 'no_wallet')
   const [sessionId, setSessionId] = useState<string | null>(null)
+  const [channelId, setChannelId] = useState<string | null>(null)
   const [playerBalance, setPlayerBalance] = useState('0')
   const [houseBalance, setHouseBalance] = useState('0')
   const [depositAmount, setDepositAmount] = useState('0')
@@ -198,8 +200,19 @@ export function SessionProvider({ children }: { children: ReactNode }) {
     if (sessionPhase !== 'idle') return
 
     resumeAttempted.current = true
-    const savedId = localStorage.getItem(SESSION_STORAGE_KEY)
-    if (!savedId) return
+    const saved = localStorage.getItem(SESSION_STORAGE_KEY)
+    if (!saved) return
+
+    // parse localStorage, handle legacy format (plain string) and new format (JSON)
+    let savedId: string
+    let savedDeposit: string | null = null
+    try {
+      const parsed = JSON.parse(saved)
+      savedId = parsed.sessionId
+      savedDeposit = parsed.depositAmount || null
+    } catch {
+      savedId = saved
+    }
 
     const doResume = async () => {
       setSessionPhase('resuming')
@@ -219,6 +232,8 @@ export function SessionProvider({ children }: { children: ReactNode }) {
           sessionId: string
           playerBalance: string
           houseBalance: string
+          playerDeposit: string
+          channelId: string | null
           activeGame: {
             gameSlug: string
             gameType: string
@@ -230,9 +245,11 @@ export function SessionProvider({ children }: { children: ReactNode }) {
         }>('session_resumed')
 
         setSessionId(result.sessionId)
+        setChannelId(result.channelId)
         setPlayerBalance(result.playerBalance)
         setHouseBalance(result.houseBalance)
-        setDepositAmount(result.playerBalance)
+        // restore original deposit from backend or localStorage
+        setDepositAmount(result.playerDeposit || savedDeposit || result.playerBalance)
 
         if (result.activeGame) {
           setActiveGame({
@@ -341,12 +358,17 @@ export function SessionProvider({ children }: { children: ReactNode }) {
         sessionId: string
         playerDeposit: string
         houseDeposit: string
+        channelId: string
       }>('session_created')
 
-      // persist sessionId for resume on refresh
-      localStorage.setItem(SESSION_STORAGE_KEY, result.sessionId)
+      // persist session for resume on refresh
+      localStorage.setItem(SESSION_STORAGE_KEY, JSON.stringify({
+        sessionId: result.sessionId,
+        depositAmount: deposit,
+      }))
 
       setSessionId(result.sessionId)
+      setChannelId(result.channelId)
       setPlayerBalance(result.playerDeposit)
       setHouseBalance(result.houseDeposit)
       setDepositAmount(result.playerDeposit)
@@ -580,6 +602,7 @@ export function SessionProvider({ children }: { children: ReactNode }) {
     setSessionPhase(walletAddress ? 'idle' : 'no_wallet')
     setSessionError(null)
     setSessionId(null)
+    setChannelId(null)
     setPlayerBalance('0')
     setHouseBalance('0')
     setDepositAmount('0')
@@ -593,6 +616,7 @@ export function SessionProvider({ children }: { children: ReactNode }) {
     <SessionContext.Provider value={{
       sessionPhase,
       sessionId,
+      channelId,
       playerBalance,
       houseBalance,
       depositAmount,

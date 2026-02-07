@@ -1,5 +1,5 @@
 import { createFileRoute, Outlet, Link, useLocation } from '@tanstack/react-router'
-import { Coins, Skull, Target, type LucideIcon } from 'lucide-react'
+import { Coins, Skull, Target, ExternalLink, type LucideIcon } from 'lucide-react'
 import { cnm } from '@/utils/style'
 import { SessionProvider, useSession } from '@/providers/SessionProvider'
 import { useAuthContext } from '@/providers/AuthProvider'
@@ -144,17 +144,27 @@ function SessionBar() {
   const { login, walletAddress } = useAuthContext()
   const { play } = useSound()
   const session = useSession()
-  const [betInput, setBetInput] = useState('10')
+  const [depositInput, setDepositInput] = useState('100')
 
-  const { sessionPhase, playerBalance, depositAmount, sessionError, stats, sessionId } = session
+  const { sessionPhase, playerBalance, depositAmount, sessionError, stats, sessionId, channelId } = session
 
-  const balanceFormatted = playerBalance !== '0'
-    ? parseFloat(formatUnits(BigInt(playerBalance), 6)).toFixed(2)
-    : '0.00'
+  const balanceNum = playerBalance !== '0'
+    ? parseFloat(formatUnits(BigInt(playerBalance), 6))
+    : 0
 
-  const depositFormatted = depositAmount !== '0'
-    ? parseFloat(formatUnits(BigInt(depositAmount), 6)).toFixed(2)
-    : '0.00'
+  const depositNum = depositAmount !== '0'
+    ? parseFloat(formatUnits(BigInt(depositAmount), 6))
+    : 0
+
+  const balanceFormatted = balanceNum.toFixed(2)
+  const depositFormatted = depositNum.toFixed(2)
+  const pnl = balanceNum - depositNum
+  const pnlFormatted = (pnl >= 0 ? '+' : '') + pnl.toFixed(2)
+  const isProfit = pnl >= 0
+
+  const scannerUrl = channelId
+    ? `https://nitrolite-scanner.kwek.dev/sessions/${channelId}`
+    : null
 
   // no wallet
   if (sessionPhase === 'no_wallet') {
@@ -188,7 +198,7 @@ function SessionBar() {
         <div className="flex items-center justify-between mb-3">
           <div>
             <p className="text-xs font-mono text-black/40 uppercase mb-0.5">Open Session</p>
-            <p className="text-sm text-black/50">Deposit USDH to start playing any game</p>
+            <p className="text-sm text-black/50">Deposit USDH to start playing. You choose your bet per game.</p>
           </div>
           {walletAddress && (
             <p className="text-[10px] font-mono text-black/30">
@@ -198,13 +208,13 @@ function SessionBar() {
         </div>
         <div className="flex items-center gap-3">
           <div className="flex gap-1.5">
-            {[5, 10, 50, 100].map((amt) => (
+            {[10, 50, 100, 500].map((amt) => (
               <button
                 key={amt}
-                onClick={() => { play('click'); setBetInput(String(amt)) }}
+                onClick={() => { play('click'); setDepositInput(String(amt)) }}
                 className={cnm(
                   'px-3 py-1.5 text-xs font-black border-2 border-black rounded-lg transition-transform hover:translate-x-0.5 hover:translate-y-0.5',
-                  betInput === String(amt) ? 'bg-black text-white' : 'bg-white text-black',
+                  depositInput === String(amt) ? 'bg-black text-white' : 'bg-white text-black',
                 )}
               >
                 {amt}
@@ -214,8 +224,8 @@ function SessionBar() {
           <div className="flex items-center border-2 border-black rounded-lg overflow-hidden">
             <input
               type="number"
-              value={betInput}
-              onChange={(e) => setBetInput(e.target.value)}
+              value={depositInput}
+              onChange={(e) => setDepositInput(e.target.value)}
               className="w-20 px-2 py-1.5 text-xs font-black text-black bg-white outline-none [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none"
               min="1"
             />
@@ -227,26 +237,27 @@ function SessionBar() {
           <button
             onClick={() => {
               play('action')
-              const amount = parseUnits(betInput, 6).toString()
+              const amount = parseUnits(depositInput, 6).toString()
               session.openSession(amount)
             }}
             className="ml-auto px-6 py-2.5 text-xs font-black uppercase bg-black text-white border-2 border-black rounded-xl transition-transform hover:translate-x-0.5 hover:translate-y-0.5"
             style={{ boxShadow: '3px 3px 0px #CDFF57' }}
           >
-            Open Session ({betInput} USDH)
+            Open Session ({depositInput} USDH)
           </button>
         </div>
       </div>
     )
   }
 
-  // approving / depositing / connecting / creating
-  if (sessionPhase === 'approving' || sessionPhase === 'depositing' || sessionPhase === 'connecting' || sessionPhase === 'creating') {
+  // loading states: approving, depositing, connecting, creating, resuming
+  if (sessionPhase === 'approving' || sessionPhase === 'depositing' || sessionPhase === 'connecting' || sessionPhase === 'creating' || sessionPhase === 'resuming') {
     const phaseLabel: Record<string, string> = {
       approving: 'Approving USDH...',
       depositing: 'Depositing to custody...',
       connecting: 'Connecting...',
       creating: 'Creating session...',
+      resuming: 'Resuming session...',
     }
     return (
       <div
@@ -284,9 +295,6 @@ function SessionBar() {
 
   // closed: session summary
   if (sessionPhase === 'closed') {
-    const netResult = parseFloat(balanceFormatted) - parseFloat(depositFormatted)
-    const isProfit = netResult > 0
-
     return (
       <div
         className="mb-6 bg-white border-2 border-black rounded-2xl p-5"
@@ -300,7 +308,7 @@ function SessionBar() {
               isProfit ? 'text-[#7BA318]' : 'text-[#FF6B9D]',
             )}>
               <img src="/assets/images/usdh.png" alt="USDH" className="w-6 h-6 rounded-full" />
-              {isProfit ? '+' : ''}{netResult.toFixed(2)} USDH
+              {pnlFormatted} USDH
             </p>
           </div>
           <div className="flex items-center gap-4 text-[10px] font-mono text-black/40">
@@ -310,15 +318,32 @@ function SessionBar() {
           </div>
         </div>
 
+        {/* details row */}
+        <div className="flex items-center gap-4 mb-3 text-[10px] font-mono text-black/30">
+          <span>Deposited: {depositFormatted} USDH</span>
+          <span className="text-black/10">|</span>
+          <span>Withdrew: {balanceFormatted} USDH</span>
+        </div>
+
         <div className="flex items-center justify-between">
-          {sessionId && (
-            <div className="flex items-center gap-2">
-              <span className="text-[10px] font-mono text-black/30 uppercase">Provably Fair</span>
+          <div className="flex items-center gap-3">
+            {sessionId && (
               <span className="text-[10px] font-mono text-black/20">
                 {sessionId.slice(0, 8)}...{sessionId.slice(-4)}
               </span>
-            </div>
-          )}
+            )}
+            {scannerUrl && (
+              <a
+                href={scannerUrl}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="text-[10px] font-mono text-black/30 hover:text-black/60 flex items-center gap-1 transition-colors"
+              >
+                <ExternalLink size={10} />
+                Nitrolite Scanner
+              </a>
+            )}
+          </div>
           <button
             onClick={() => { play('action'); session.reset() }}
             className="px-6 py-2.5 text-xs font-black uppercase bg-black text-white border-2 border-black rounded-xl transition-transform hover:translate-x-0.5 hover:translate-y-0.5"
@@ -333,39 +358,80 @@ function SessionBar() {
 
   const isClosing = sessionPhase === 'closing' || sessionPhase === 'withdrawing'
 
-  // active session: show balance bar
+  // active session: balance bar with P&L tracking
   return (
     <div
-      className="mb-6 bg-white border-2 border-black rounded-2xl px-5 py-3 flex items-center justify-between"
+      className="mb-6 bg-white border-2 border-black rounded-2xl p-4"
       style={{ boxShadow: '4px 4px 0px black' }}
     >
-      <div className="flex items-center gap-5">
-        <div>
-          <p className="text-[10px] font-mono text-black/40 uppercase">Balance</p>
-          <p className="text-lg font-black text-black flex items-center gap-1.5">
-            <img src="/assets/images/usdh.png" alt="USDH" className="w-6 h-6 rounded-full" />
-            {balanceFormatted} USDH
-          </p>
+      {/* main row */}
+      <div className="flex items-center justify-between">
+        <div className="flex items-center gap-5">
+          {/* session balance */}
+          <div>
+            <p className="text-[10px] font-mono text-black/40 uppercase">Session Balance</p>
+            <p className="text-lg font-black text-black flex items-center gap-1.5">
+              <img src="/assets/images/usdh.png" alt="USDH" className="w-5 h-5 rounded-full" />
+              {balanceFormatted}
+            </p>
+          </div>
+
+          <div className="h-8 w-px bg-black/10" />
+
+          {/* deposit + P&L */}
+          <div className="flex items-center gap-4">
+            <div>
+              <p className="text-[10px] font-mono text-black/30 uppercase">Deposited</p>
+              <p className="text-xs font-bold text-black/50">{depositFormatted}</p>
+            </div>
+            <div>
+              <p className="text-[10px] font-mono text-black/30 uppercase">P&L</p>
+              <p className={cnm(
+                'text-xs font-black',
+                isProfit ? 'text-[#7BA318]' : 'text-[#FF6B9D]',
+              )}>
+                {pnlFormatted}
+              </p>
+            </div>
+          </div>
+
+          <div className="h-8 w-px bg-black/10 hidden sm:block" />
+
+          {/* stats */}
+          <div className="hidden sm:flex items-center gap-3 text-[10px] font-mono text-black/40">
+            <span>R{stats.totalRounds}</span>
+            <span className="text-[#7BA318]">W{stats.wins}</span>
+            <span className="text-[#FF6B9D]">L{stats.losses}</span>
+          </div>
         </div>
-        <div className="h-6 w-px bg-black/10" />
-        <div className="flex items-center gap-3 text-[10px] font-mono text-black/40">
-          <span>R{stats.totalRounds}</span>
-          <span className="text-[#7BA318]">W{stats.wins}</span>
-          <span className="text-[#FF6B9D]">L{stats.losses}</span>
-        </div>
+
+        <button
+          onClick={() => session.closeSession()}
+          disabled={isClosing}
+          className="shrink-0 px-5 py-2 text-xs font-black uppercase bg-black/5 text-black/60 border-2 border-black/20 rounded-xl transition-all hover:bg-black hover:text-white hover:border-black disabled:opacity-50"
+        >
+          {sessionPhase === 'withdrawing' ? 'Withdrawing...' : isClosing ? 'Closing...' : 'Close Session'}
+        </button>
       </div>
 
       {sessionError && (
-        <p className="text-xs font-mono text-[#FF6B9D] mx-4">{sessionError}</p>
+        <p className="text-xs font-mono text-[#FF6B9D] mt-2">{sessionError}</p>
       )}
 
-      <button
-        onClick={() => session.closeSession()}
-        disabled={isClosing}
-        className="px-5 py-2 text-xs font-black uppercase bg-black/5 text-black/60 border-2 border-black/20 rounded-xl transition-all hover:bg-black hover:text-white hover:border-black disabled:opacity-50"
-      >
-        {sessionPhase === 'withdrawing' ? 'Withdrawing...' : isClosing ? 'Closing...' : 'Close Session'}
-      </button>
+      {/* scanner link */}
+      {scannerUrl && (
+        <div className="mt-2 pt-2 border-t border-black/5">
+          <a
+            href={scannerUrl}
+            target="_blank"
+            rel="noopener noreferrer"
+            className="text-[10px] font-mono text-black/25 hover:text-black/50 flex items-center gap-1 transition-colors"
+          >
+            <ExternalLink size={9} />
+            View on Nitrolite Scanner
+          </a>
+        </div>
+      )}
     </div>
   )
 }

@@ -4,7 +4,9 @@ import { useSound } from '@/providers/SoundProvider'
 import AnimateComponent from '@/components/elements/AnimateComponent'
 import SdkPanel from './SdkPanel'
 import SessionGate from './SessionGate'
+import BetInput from './BetInput'
 import { useSession } from '@/providers/SessionProvider'
+import { parseUnits, formatUnits } from 'viem'
 
 type AnimPhase = 'idle' | 'flipping' | 'won' | 'lost'
 
@@ -60,12 +62,17 @@ export default function DoubleOrNothing() {
   const { play } = useSound()
   const session = useSession()
   const [animPhase, setAnimPhase] = useState<AnimPhase>('idle')
+  const [betInput, setBetInput] = useState('10')
   const gameStarted = useRef(false)
 
-  const { sessionPhase, activeGame, gamePhase, stats } = session
+  const { sessionPhase, activeGame, gamePhase, stats, playerBalance } = session
 
   const multiplier = activeGame?.cumulativeMultiplier ?? 1
   const streak = stats.wins
+
+  // bet in raw units for playRound
+  const betRaw = parseUnits(betInput || '0', 6).toString()
+  const betDisplay = betInput || '0'
 
   // auto-start game when session becomes active
   useEffect(() => {
@@ -97,7 +104,7 @@ export default function DoubleOrNothing() {
     play('action')
     setAnimPhase('flipping')
 
-    const result = await session.playRound({ action: 'continue' })
+    const result = await session.playRound({ action: 'continue' }, betRaw)
 
     setTimeout(() => {
       if (result?.playerWon) {
@@ -185,14 +192,22 @@ export default function DoubleOrNothing() {
             {/* controls */}
             <div className="border-t-2 border-black/10 pt-5">
               {animPhase === 'idle' && isActive && (
-                <button
-                  onClick={flip}
-                  disabled={gamePhase === 'playing_round'}
-                  className="w-full py-4 text-sm font-black uppercase bg-black text-white border-2 border-black rounded-xl transition-transform hover:translate-x-1 hover:translate-y-1 disabled:opacity-50"
-                  style={{ boxShadow: '4px 4px 0px #CDFF57' }}
-                >
-                  Flip for 2x
-                </button>
+                <div className="space-y-3">
+                  <BetInput
+                    value={betInput}
+                    onChange={setBetInput}
+                    maxBet={playerBalance}
+                    accentColor="#CDFF57"
+                  />
+                  <button
+                    onClick={flip}
+                    disabled={gamePhase === 'playing_round' || !betInput || parseFloat(betInput) <= 0}
+                    className="w-full py-4 text-sm font-black uppercase bg-black text-white border-2 border-black rounded-xl transition-transform hover:translate-x-1 hover:translate-y-1 disabled:opacity-50"
+                    style={{ boxShadow: '4px 4px 0px #CDFF57' }}
+                  >
+                    Flip {betDisplay} USDH for 2x
+                  </button>
+                </div>
               )}
 
               {animPhase === 'won' && isActive && (
@@ -217,13 +232,21 @@ export default function DoubleOrNothing() {
               )}
 
               {animPhase === 'lost' && (
-                <button
-                  onClick={handlePlayAgain}
-                  className="w-full py-4 text-sm font-black uppercase bg-black text-white border-2 border-black rounded-xl transition-transform hover:translate-x-1 hover:translate-y-1"
-                  style={{ boxShadow: '4px 4px 0px #FF6B9D' }}
-                >
-                  Play Again
-                </button>
+                <div className="space-y-3">
+                  <BetInput
+                    value={betInput}
+                    onChange={setBetInput}
+                    maxBet={playerBalance}
+                    accentColor="#CDFF57"
+                  />
+                  <button
+                    onClick={handlePlayAgain}
+                    className="w-full py-4 text-sm font-black uppercase bg-black text-white border-2 border-black rounded-xl transition-transform hover:translate-x-1 hover:translate-y-1"
+                    style={{ boxShadow: '4px 4px 0px #FF6B9D' }}
+                  >
+                    Play Again
+                  </button>
+                </div>
               )}
 
               {animPhase === 'flipping' && (

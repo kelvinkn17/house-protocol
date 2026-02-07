@@ -34,6 +34,11 @@ export const ERC20_ABI = parseAbi([
   'function decimals() view returns (uint8)',
 ])
 
+// USDH is the demo token, anyone can mint
+export const USDH_MINT_ABI = parseAbi([
+  'function mint(address to, uint256 amount)',
+])
+
 let _publicClient: ReturnType<typeof createPublicClient> | null = null
 
 export function getPublicClient() {
