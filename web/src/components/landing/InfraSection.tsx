@@ -1,5 +1,4 @@
 import AnimateComponent from '@/components/elements/AnimateComponent'
-import AnimatedText from '@/components/elements/AnimatedText'
 
 const DIAGONAL_ANGLE = -7
 
@@ -32,17 +31,6 @@ export default function InfraSection() {
     <>
       <section className="py-32 px-4 md:px-8 relative bg-[#EDEBE6]">
         <div className="mx-auto max-w-6xl relative">
-          <div className="mb-16">
-            <AnimateComponent onScroll variant="fadeInUp">
-              <span className="text-xs font-black uppercase tracking-widest text-black/50 block mb-4">
-                [006] Infrastructure
-              </span>
-            </AnimateComponent>
-            <h2 className="text-3xl md:text-4xl font-black tracking-tight text-black overflow-hidden">
-              <AnimatedText text="THE TECH UNDER THE HOOD" delay={100} stagger={20} onScroll />
-            </h2>
-          </div>
-
           <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-5">
             {infra.map((item, i) => (
               <AnimateComponent key={item.name} onScroll delay={200 + i * 70}>

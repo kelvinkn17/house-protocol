@@ -6,9 +6,10 @@ import ConnectButton from '@/components/ConnectButton'
 interface AppLayoutProps {
   children: React.ReactNode
   noPadding?: boolean
+  hideNavLogo?: boolean
 }
 
-export default function AppLayout({ children, noPadding }: AppLayoutProps) {
+export default function AppLayout({ children, noPadding, hideNavLogo }: AppLayoutProps) {
   const location = useLocation()
   const path = location.pathname
   const isBuild = path.startsWith('/build')
@@ -23,7 +24,7 @@ export default function AppLayout({ children, noPadding }: AppLayoutProps) {
             <img
               src="/assets/logos/house-protocol-horizontal-logo.svg"
               alt="House Protocol"
-              className="h-12 sm:h-16"
+              className={cnm('h-12 sm:h-16', hideNavLogo && 'invisible')}
             />
           </Link>
 

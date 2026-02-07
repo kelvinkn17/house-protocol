@@ -14,6 +14,7 @@ interface AnimatedTextProps {
   style?: React.CSSProperties
   /** trigger animation when scrolled into view */
   onScroll?: boolean
+  trigger?: boolean
 }
 
 // clean bouncy easing
@@ -26,6 +27,7 @@ export default function AnimatedText({
   stagger = 25,
   style,
   onScroll = false,
+  trigger,
 }: AnimatedTextProps) {
   const ref = useRef<HTMLSpanElement>(null)
   // trigger when element enters bottom 15% of viewport
@@ -35,7 +37,8 @@ export default function AnimatedText({
   const delayInSec = delay / 1000
   const staggerInSec = stagger / 1000
 
-  const shouldAnimate = onScroll ? isInView : true
+  const shouldAnimate =
+    trigger !== undefined ? trigger : onScroll ? isInView : true
 
   return (
     <span ref={ref} className={className} style={style}>
@@ -43,7 +46,11 @@ export default function AnimatedText({
         <motion.span
           key={i}
           initial={{ y: 40, opacity: 0, scale: 0.9 }}
-          animate={shouldAnimate ? { y: 0, opacity: 1, scale: 1 } : { y: 40, opacity: 0, scale: 0.9 }}
+          animate={
+            shouldAnimate
+              ? { y: 0, opacity: 1, scale: 1 }
+              : { y: 40, opacity: 0, scale: 0.9 }
+          }
           transition={{
             duration: 0.4,
             delay: delayInSec + i * staggerInSec,

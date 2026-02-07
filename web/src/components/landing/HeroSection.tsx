@@ -13,7 +13,7 @@ const mascotQuotes = [
   'Provably fair, actually fun',
 ]
 
-export default function HeroSection() {
+export default function HeroSection({ introComplete }: { introComplete?: boolean }) {
   const [quoteIndex, setQuoteIndex] = useState(0)
   const [isVisible, setIsVisible] = useState(true)
 
@@ -68,7 +68,7 @@ export default function HeroSection() {
         {/* main hero content */}
         <div className="relative mb-16">
           {/* hackathon badge */}
-          <AnimateComponent delay={0}>
+          <AnimateComponent delay={0} trigger={introComplete}>
             <div
               className="inline-flex items-center gap-2 px-4 py-2 bg-[#CDFF57] text-black text-xs font-black uppercase tracking-wide rounded-full border-2 border-black mb-6"
               style={{ boxShadow: '3px 3px 0px black' }}
@@ -84,16 +84,17 @@ export default function HeroSection() {
             style={{ fontSize: 'clamp(2.25rem, 10vw, 9rem)' }}
           >
             <span className="block overflow-hidden">
-              <AnimatedText text="EVERYONE" delay={50} stagger={30} />
+              <AnimatedText text="EVERYONE" delay={50} stagger={30} trigger={introComplete} />
             </span>
             <span className="block overflow-hidden">
-              <AnimatedText text="CAN BE THE" delay={200} stagger={30} />
+              <AnimatedText text="CAN BE THE" delay={200} stagger={30} trigger={introComplete} />
             </span>
             <span className="block overflow-hidden">
               <AnimatedText
                 text="HOUSE."
                 delay={420}
                 stagger={35}
+                trigger={introComplete}
                 style={{
                   color: 'white',
                   WebkitTextStroke: '3px black',
@@ -106,7 +107,7 @@ export default function HeroSection() {
           {/* mascot with speech bubble, inline on mobile, absolute on desktop */}
           <div className="flex flex-col items-center my-6 lg:my-0 lg:absolute lg:right-0 xl:right-4 lg:top-12">
             {/* speech bubble, fixed height so face doesn't jump */}
-            <AnimateComponent variant="fadeInUp" delay={750}>
+            <AnimateComponent variant="fadeInUp" delay={750} trigger={introComplete}>
               <div
                 className={`relative bg-[#CDFF57] px-5 rounded-2xl border-3 border-black w-[200px] lg:w-[220px] xl:w-[240px] h-[72px] lg:h-[80px] flex items-center justify-center mb-3 lg:ml-8 transition-all duration-300 ease-out origin-bottom ${
                   isVisible ? 'scale-100 opacity-100 rotate-[5deg]' : 'scale-75 opacity-0 rotate-0'
@@ -122,19 +123,19 @@ export default function HeroSection() {
               </div>
             </AnimateComponent>
             {/* mascot face */}
-            <AnimateComponent variant="fadeInUp" delay={600}>
+            <AnimateComponent variant="fadeInUp" delay={600} trigger={introComplete}>
               <AnimatedMascot className="w-28 h-28 sm:w-36 sm:h-36 lg:w-44 lg:h-44 xl:w-64 xl:h-64 animate-mascot-sway drop-shadow-[6px_6px_0px_rgba(0,0,0,0.3)]" />
             </AnimateComponent>
           </div>
 
           <div className="flex flex-col lg:flex-row lg:items-end lg:justify-between gap-8 lg:gap-12">
             <div className="flex flex-col gap-4">
-              <AnimateComponent variant="fadeInUp" delay={650}>
+              <AnimateComponent variant="fadeInUp" delay={650} trigger={introComplete}>
                 <p className="max-w-md text-base md:text-lg text-black/70 font-mono leading-relaxed">
                   ** Yield from real probability, not inflation.
                 </p>
               </AnimateComponent>
-              <AnimateComponent delay={720}>
+              <AnimateComponent delay={720} trigger={introComplete}>
                 <div className="inline-flex flex-col items-start gap-1 px-4 py-3 bg-white text-black rounded-2xl border-2 border-black" style={{ boxShadow: '4px 4px 0px black' }}>
                   <span className="text-[10px] font-mono opacity-60 uppercase tracking-wider mb-2">Powered by</span>
                   <div className="flex items-center gap-3">
@@ -146,7 +147,7 @@ export default function HeroSection() {
               </AnimateComponent>
             </div>
 
-            <AnimateComponent variant="fadeInUp" delay={780} className="flex flex-col sm:flex-row gap-3">
+            <AnimateComponent variant="fadeInUp" delay={780} trigger={introComplete} className="flex flex-col sm:flex-row gap-3">
               <Link
                 to="/app/stake"
                 className="group px-8 py-4 bg-black text-white text-sm font-black uppercase tracking-wide rounded-full hover:translate-x-1 hover:translate-y-1 transition-transform duration-200"
@@ -167,13 +168,13 @@ export default function HeroSection() {
 
         {/* role cards */}
         <div>
-          <AnimateComponent variant="fadeInUp" delay={850} className="text-xs font-mono text-black/50 uppercase tracking-widest mb-6 flex items-center gap-4">
+          <AnimateComponent variant="fadeInUp" delay={850} trigger={introComplete} className="text-xs font-mono text-black/50 uppercase tracking-widest mb-6 flex items-center gap-4">
             <span>CHOOSE YOUR PATH</span>
             <div className="flex-1 h-px bg-black/20" />
           </AnimateComponent>
           <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
             {heroRoles.map((role, i) => (
-              <AnimateComponent key={role.title} delay={920 + i * 100}>
+              <AnimateComponent key={role.title} delay={920 + i * 100} trigger={introComplete}>
                 <Link
                   to={role.to}
                   className={`group relative ${role.color} ${role.textColor} p-6 lg:p-8 rounded-2xl border-2 border-black hover:translate-x-1 hover:translate-y-1 transition-transform duration-200 min-h-[180px] md:min-h-[200px] block overflow-hidden`}

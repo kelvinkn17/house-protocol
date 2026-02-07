@@ -1,12 +1,13 @@
 import { createFileRoute } from '@tanstack/react-router'
+import { useState } from 'react'
 import AppLayout from '@/components/layout/AppLayout'
 import HeroSection from '@/components/landing/HeroSection'
+import IntroAnimation from '@/components/landing/IntroAnimation'
 import MarqueeStrip from '@/components/landing/MarqueeStrip'
+import VideoSection from '@/components/landing/VideoSection'
 import StatsSection from '@/components/landing/StatsSection'
-import RolesSection from '@/components/landing/RolesSection'
 import HowItWorksSection from '@/components/landing/HowItWorksSection'
 import GamePrimitivesSection from '@/components/landing/GamePrimitivesSection'
-import TestimonialsSection from '@/components/landing/TestimonialsSection'
 import InfraSection from '@/components/landing/InfraSection'
 import FinalCTA from '@/components/landing/FinalCTA'
 
@@ -15,19 +16,25 @@ export const Route = createFileRoute('/')({
 })
 
 function LandingPage() {
+  const [introComplete, setIntroComplete] = useState(false)
+
   return (
-    <AppLayout noPadding>
-      <div className="overflow-x-hidden selection:bg-[#CDFF57] selection:text-black relative">
-        <HeroSection />
-        <MarqueeStrip />
-        <StatsSection />
-        {/* <RolesSection /> */}
-        <HowItWorksSection />
-        <GamePrimitivesSection />
-        <TestimonialsSection />
-        <InfraSection />
-        <FinalCTA />
-      </div>
-    </AppLayout>
+    <>
+      {!introComplete && (
+        <IntroAnimation onComplete={() => setIntroComplete(true)} />
+      )}
+      <AppLayout noPadding hideNavLogo={!introComplete}>
+        <div className="overflow-x-hidden selection:bg-[#CDFF57] selection:text-black relative">
+          <HeroSection introComplete={introComplete} />
+          <MarqueeStrip />
+          <VideoSection />
+          <StatsSection />
+          <HowItWorksSection />
+          <GamePrimitivesSection />
+          <InfraSection />
+          <FinalCTA />
+        </div>
+      </AppLayout>
+    </>
   )
 }
