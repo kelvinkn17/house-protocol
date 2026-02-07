@@ -1,5 +1,5 @@
-@import "tailwindcss";
-@import "@fontsource-variable/inter";
+@import 'tailwindcss';
+@import '@fontsource-variable/inter';
 
 /* Enable class-based dark mode (instead of prefers-color-scheme) */
 @custom-variant dark (&:where(.dark, .dark *));
@@ -27,14 +27,25 @@
 
   body {
     @apply m-0 antialiased;
-    font-family: "Inter Variable", -apple-system, BlinkMacSystemFont, "Segoe UI",
-      "Roboto", "Oxygen", "Ubuntu", "Cantarell", "Fira Sans", "Droid Sans",
-      "Helvetica Neue", sans-serif;
+    font-family:
+      'Inter Variable',
+      -apple-system,
+      BlinkMacSystemFont,
+      'Segoe UI',
+      'Roboto',
+      'Oxygen',
+      'Ubuntu',
+      'Cantarell',
+      'Fira Sans',
+      'Droid Sans',
+      'Helvetica Neue',
+      sans-serif;
   }
 
   code {
-    font-family: "JetBrains Mono", "Fira Code", source-code-pro, Menlo, Monaco,
-      Consolas, "Courier New", monospace;
+    font-family:
+      'JetBrains Mono', 'Fira Code', source-code-pro, Menlo, Monaco, Consolas,
+      'Courier New', monospace;
   }
 
   /* Custom scrollbar - light */
@@ -44,16 +55,16 @@
   }
 
   html.light ::-webkit-scrollbar-track {
-    background: theme("colors.neutral.100");
+    background: theme('colors.neutral.100');
   }
 
   html.light ::-webkit-scrollbar-thumb {
-    background: theme("colors.neutral.300");
+    background: theme('colors.neutral.300');
     border-radius: 4px;
   }
 
   html.light ::-webkit-scrollbar-thumb:hover {
-    background: theme("colors.neutral.400");
+    background: theme('colors.neutral.400');
   }
 
   /* Custom scrollbar - dark */
@@ -63,28 +74,28 @@
   }
 
   html.dark ::-webkit-scrollbar-track {
-    background: theme("colors.neutral.900");
+    background: theme('colors.neutral.900');
   }
 
   html.dark ::-webkit-scrollbar-thumb {
-    background: theme("colors.neutral.700");
+    background: theme('colors.neutral.700');
     border-radius: 4px;
   }
 
   html.dark ::-webkit-scrollbar-thumb:hover {
-    background: theme("colors.neutral.600");
+    background: theme('colors.neutral.600');
   }
 }
 
 /* Selection styling */
 html.light ::selection {
-  background: theme("colors.neutral.200");
-  color: theme("colors.neutral.900");
+  background: theme('colors.neutral.200');
+  color: theme('colors.neutral.900');
 }
 
 html.dark ::selection {
-  background: theme("colors.neutral.700");
-  color: theme("colors.neutral.100");
+  background: theme('colors.neutral.700');
+  color: theme('colors.neutral.100');
 }
 
 /* Focus ring styling */
@@ -104,7 +115,8 @@ html.dark ::selection {
 
 /* Gradient animation */
 @keyframes gradient {
-  0%, 100% {
+  0%,
+  100% {
     background-position: 0% center;
   }
   50% {
@@ -173,7 +185,8 @@ html.dark ::selection {
 
 /* Mascot sway animation */
 @keyframes mascot-sway {
-  0%, 100% {
+  0%,
+  100% {
     transform: rotate(-6deg) translateY(0px);
   }
   25% {
@@ -194,7 +207,8 @@ html.dark ::selection {
 
 /* Subtle eye look animation */
 @keyframes eye-look {
-  0%, 100% {
+  0%,
+  100% {
     transform: translate(0, 0);
   }
   20% {
@@ -216,3 +230,30 @@ html.dark ::selection {
   transform-origin: center center;
 }
 
+@keyframes expand-padding {
+  from {
+    padding-left: 24px;
+    padding-right: 24px;
+  }
+  to {
+    padding-left: 0;
+    padding-right: 0;
+  }
+}
+
+@keyframes expand-radius {
+  from {
+    border-radius: 32px 32px 0 0;
+  }
+  to {
+    border-radius: 0;
+  }
+}
+
+.animate-expand-padding {
+  animation: expand-padding 0.4s ease-out forwards;
+}
+
+.animate-expand-radius {
+  animation: expand-radius 0.4s ease-out forwards;
+}

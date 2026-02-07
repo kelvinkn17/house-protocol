@@ -6,10 +6,11 @@ import ConnectButton from '@/components/ConnectButton'
 interface AppLayoutProps {
   children: React.ReactNode
   noPadding?: boolean
+  fullWidth?: boolean
   hideNavLogo?: boolean
 }
 
-export default function AppLayout({ children, noPadding, hideNavLogo }: AppLayoutProps) {
+export default function AppLayout({ children, noPadding, fullWidth, hideNavLogo }: AppLayoutProps) {
   const location = useLocation()
   const path = location.pathname
   const isBuild = path.startsWith('/build')
@@ -87,21 +88,34 @@ export default function AppLayout({ children, noPadding, hideNavLogo }: AppLayou
       </div>
 
       {/* Sticky inverted corners */}
-      <div className="pointer-events-none sticky top-20 z-20 mx-2 flex justify-between sm:mx-6">
+      <div className={cnm(
+        'pointer-events-none sticky top-20 z-20 mx-2 flex justify-between sm:mx-6',
+        fullWidth && 'invisible',
+      )}>
         <div className="h-6 w-6 bg-[#cdff57] sm:h-8 sm:w-8 [mask-image:radial-gradient(circle_at_100%_100%,transparent_23px,black_24px)] sm:[mask-image:radial-gradient(circle_at_100%_100%,transparent_31px,black_32px)]" />
         <div className="h-6 w-6 bg-[#cdff57] sm:h-8 sm:w-8 [mask-image:radial-gradient(circle_at_0%_100%,transparent_23px,black_24px)] sm:[mask-image:radial-gradient(circle_at_0%_100%,transparent_31px,black_32px)]" />
       </div>
 
       {/* Main content wrapper with rounded top card */}
-      <div className="relative -mt-6 px-2 sm:-mt-8 sm:px-6">
-        <main className="relative min-h-[calc(100vh-56px)] overflow-hidden rounded-t-[24px] bg-[#EDEBE6] sm:rounded-t-[32px]">
+      <div className={cnm(
+        'relative -mt-6 px-2 sm:-mt-8 sm:px-6',
+        fullWidth && 'animate-expand-padding !px-0',
+      )}>
+        <main className={cnm(
+          'relative min-h-[calc(100vh-56px)] overflow-hidden rounded-t-[24px] bg-[#EDEBE6] sm:rounded-t-[32px]',
+          fullWidth && 'animate-expand-radius !rounded-none h-[calc(100vh-5rem)] !min-h-0 border-t-2 border-black',
+        )}>
           <div
             className={cnm(
               'min-h-[calc(100vh-56px)]',
-              !noPadding && 'px-4 py-12 sm:px-6 sm:py-16 lg:px-12 lg:py-20',
+              fullWidth && 'h-full !min-h-0',
+              !noPadding && !fullWidth && 'px-4 py-12 sm:px-6 sm:py-16 lg:px-12 lg:py-20',
             )}
           >
-            <div className={cnm(!noPadding && 'mx-auto max-w-7xl')}>
+            <div className={cnm(
+              !noPadding && !fullWidth && 'mx-auto max-w-7xl',
+              fullWidth && 'h-full',
+            )}>
               {children}
             </div>
           </div>
