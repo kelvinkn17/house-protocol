@@ -26,6 +26,8 @@ interface MyRouterContext {
   queryClient: QueryClient
 }
 
+const siteUrl = (import.meta.env.VITE_SITE_URL || '').replace(/\/$/, '')
+
 export const Route = createRootRouteWithContext<MyRouterContext>()({
   errorComponent: ({ error, reset }) => <ErrorPage error={error} reset={reset} />,
   notFoundComponent: () => <NotFoundPage />,
@@ -44,6 +46,38 @@ export const Route = createRootRouteWithContext<MyRouterContext>()({
       {
         name: 'description',
         content: 'Everyone can be the house. Shared liquidity for on-chain gambling.',
+      },
+      {
+        property: 'og:title',
+        content: 'House Protocol',
+      },
+      {
+        property: 'og:description',
+        content: 'Everyone can be the house. Shared liquidity for on-chain gambling.',
+      },
+      {
+        property: 'og:image',
+        content: `${siteUrl}/house-og.jpeg`,
+      },
+      {
+        property: 'og:type',
+        content: 'website',
+      },
+      {
+        name: 'twitter:card',
+        content: 'summary_large_image',
+      },
+      {
+        name: 'twitter:title',
+        content: 'House Protocol',
+      },
+      {
+        name: 'twitter:description',
+        content: 'Everyone can be the house. Shared liquidity for on-chain gambling.',
+      },
+      {
+        name: 'twitter:image',
+        content: `${siteUrl}/house-og.jpeg`,
       },
     ],
     links: [
