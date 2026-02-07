@@ -42,6 +42,7 @@ export type SessionPhase =
   | 'resuming'
   | 'active'
   | 'closing'
+  | 'withdrawing'
   | 'closed'
   | 'error'
 
@@ -144,6 +145,41 @@ export function SessionProvider({ children }: { children: ReactNode }) {
   const errorUnsub = useRef<(() => void) | null>(null)
   const bustedUnsub = useRef<(() => void) | null>(null)
   const resumeAttempted = useRef(false)
+
+  // withdraw player's funds from custody back to their wallet after session close.
+  // clearnode uses whole units, so we round down to match what custody actually holds.
+  const DECIMALS = 1000000n
+  const withdrawFromCustody = useCallback(async (finalPlayerBalance: string) => {
+    const rawBalance = BigInt(finalPlayerBalance)
+    // clearnode only tracks whole units, so custody balance is floored
+    const withdrawAmount = (rawBalance / DECIMALS) * DECIMALS
+    if (withdrawAmount <= 0n) return
+
+    const wallet = wallets[0]
+    if (!wallet || !walletAddress) return
+
+    try {
+      await wallet.switchChain(SEPOLIA_CHAIN_ID)
+      const provider = await wallet.getEthereumProvider()
+      const wc = createWalletClient({
+        account: walletAddress as Address,
+        chain: sepolia,
+        transport: custom(provider),
+      })
+
+      const txHash = await wc.writeContract({
+        address: CUSTODY_ADDRESS,
+        abi: CUSTODY_ABI,
+        functionName: 'withdraw',
+        args: [USDH_ADDRESS, withdrawAmount],
+      })
+      await getPublicClient().waitForTransactionReceipt({ hash: txHash })
+      console.log(`[session] custody withdraw complete: ${txHash}`)
+    } catch (err) {
+      console.error('[session] custody withdraw failed:', (err as Error).message)
+      // don't throw, session is already closed on backend side
+    }
+  }, [wallets, walletAddress])
 
   // try to resume session from localStorage on mount
   useEffect(() => {
@@ -355,6 +391,7 @@ export function SessionProvider({ children }: { children: ReactNode }) {
         setGamePhase('none')
         setSessionPhase('closed')
         localStorage.removeItem(SESSION_STORAGE_KEY)
+        // busted means player balance is 0, nothing to withdraw
       })
     } catch (err) {
       setSessionError((err as Error).message)
@@ -529,7 +566,7 @@ export function SessionProvider({ children }: { children: ReactNode }) {
     }
   }, [sessionId])
 
-  // simplified close: backend handles clearnode close, we just wait for confirmation
+  // close: backend handles clearnode close, then we withdraw from custody
   const closeSession = useCallback(async () => {
     if (!sessionId) return
 
@@ -547,13 +584,18 @@ export function SessionProvider({ children }: { children: ReactNode }) {
       setHouseBalance(result.finalHouseBalance)
       setActiveGame(null)
       setGamePhase('none')
+
+      // withdraw player funds from custody back to wallet
+      setSessionPhase('withdrawing')
+      await withdrawFromCustody(result.finalPlayerBalance)
+
       setSessionPhase('closed')
       localStorage.removeItem(SESSION_STORAGE_KEY)
     } catch (err) {
       setSessionError((err as Error).message)
       setSessionPhase('error')
     }
-  }, [sessionId])
+  }, [sessionId, withdrawFromCustody])
 
   const reset = useCallback(() => {
     ClearnodeClient.disconnect()

@@ -9,6 +9,7 @@ export const SEPOLIA_CHAIN_ID = 11155111
 // Nitrolite custody: deposit USDH before opening a state channel session
 export const CUSTODY_ABI = parseAbi([
   'function deposit(address account, address token, uint256 amount) payable',
+  'function withdraw(address token, uint256 amount)',
 ])
 
 // ERC-4626 vault: deposit, withdraw, and read functions

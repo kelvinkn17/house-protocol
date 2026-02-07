@@ -331,7 +331,7 @@ function SessionBar() {
     )
   }
 
-  const isClosing = sessionPhase === 'closing'
+  const isClosing = sessionPhase === 'closing' || sessionPhase === 'withdrawing'
 
   // active session: show balance bar
   return (
@@ -364,7 +364,7 @@ function SessionBar() {
         disabled={isClosing}
         className="px-5 py-2 text-xs font-black uppercase bg-black/5 text-black/60 border-2 border-black/20 rounded-xl transition-all hover:bg-black hover:text-white hover:border-black disabled:opacity-50"
       >
-        {isClosing ? 'Closing...' : 'Close Session'}
+        {sessionPhase === 'withdrawing' ? 'Withdrawing...' : isClosing ? 'Closing...' : 'Close Session'}
       </button>
     </div>
   )
