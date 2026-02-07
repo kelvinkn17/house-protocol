@@ -11,6 +11,7 @@ import {
 import { sepolia } from 'viem/chains';
 import { privateKeyToAccount } from 'viem/accounts';
 import { OPERATOR_PRIVATE_KEY } from '../config/main-config.ts';
+import { prismaQuery } from '../lib/prisma.ts';
 
 // contract addresses from env
 const VAULT_ADDRESS = (process.env.HOUSE_VAULT_ADDRESS || '') as Address;
@@ -68,13 +69,38 @@ function getPublicClient(): PublicClient {
   return publicClient;
 }
 
-// read vault state from on-chain. totalAssets() already includes custody balance
-// which reflects settled session PnL, so no off-chain adjustment needed.
-// share price must match on-chain reality so deposits/withdrawals don't distort it.
+// net house PnL from sessions that clearnode hasn't settled on-chain yet.
+// close_app_session updates clearnode's off-chain ledger but doesn't move custody funds,
+// so the vault contract's totalAssets() misses this. we add it back here.
+async function getUnsettledSessionPnL(): Promise<bigint> {
+  const sessions = await prismaQuery.session.findMany({
+    where: { status: { in: ['ACTIVE', 'CLOSED'] } },
+    select: {
+      status: true,
+      houseDeposit: true,
+      currentHouseBalance: true,
+      finalHouseBalance: true,
+    },
+  });
+
+  let pnl = 0n;
+  for (const s of sessions) {
+    const deposit = BigInt(s.houseDeposit);
+    const balance = s.status === 'CLOSED'
+      ? (s.finalHouseBalance ? BigInt(s.finalHouseBalance) : deposit)
+      : (s.currentHouseBalance ? BigInt(s.currentHouseBalance) : deposit);
+    pnl += balance - deposit;
+  }
+  return pnl;
+}
+
+// read vault state from on-chain + unsettled session PnL from DB.
+// clearnode settles custody balances asynchronously (channel close, not app session close),
+// so we add the off-chain PnL so the share price reflects actual house performance.
 export async function getVaultState() {
   const client = getPublicClient();
 
-  const [totalAssets, totalSupply, custodyBalance] = await Promise.all([
+  const [totalAssets, totalSupply, custodyBalance, unsettledPnL] = await Promise.all([
     client.readContract({
       address: VAULT_ADDRESS,
       abi: VAULT_ABI,
@@ -90,15 +116,19 @@ export async function getVaultState() {
       abi: VAULT_ABI,
       functionName: 'getCustodyBalance',
     }) as Promise<bigint>,
+    getUnsettledSessionPnL(),
   ]);
+
+  // effective total includes off-chain session PnL that clearnode hasn't settled yet
+  const effectiveTotal = totalAssets + unsettledPnL;
 
   // assets are 6 decimals (USDH), shares are 9 decimals (sUSDH, 3-decimal offset)
   const sharePrice = totalSupply > 0n
-    ? Number(formatUnits(totalAssets, 6)) / Number(formatUnits(totalSupply, 9))
+    ? Number(formatUnits(effectiveTotal, 6)) / Number(formatUnits(totalSupply, 9))
     : 1.0;
 
   return {
-    totalAssets,
+    totalAssets: effectiveTotal,
     totalSupply,
     custodyBalance,
     sharePrice,
