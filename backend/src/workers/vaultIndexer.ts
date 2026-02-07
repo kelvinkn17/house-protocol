@@ -216,6 +216,15 @@ const runIndexer = async (): Promise<void> => {
   }
 };
 
+// force a snapshot right now, used by game handler after session close
+export async function triggerSnapshot() {
+  try {
+    await takeSnapshot();
+  } catch (err) {
+    console.error('[VaultIndexer] triggerSnapshot failed:', err);
+  }
+}
+
 export const startVaultIndexer = (): void => {
   console.log('[VaultIndexer] Worker scheduled (every 15s)');
   // every 15 seconds

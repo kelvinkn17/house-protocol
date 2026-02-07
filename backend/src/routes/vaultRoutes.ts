@@ -1,6 +1,6 @@
 import type { FastifyInstance, FastifyPluginCallback, FastifyRequest, FastifyReply } from 'fastify';
 import { prismaQuery } from '../lib/prisma.ts';
-import { getVaultState, getUserPosition, USDH_ADDRESS } from '../services/vault.service.ts';
+import { getVaultState, getUserPosition, settleForWithdrawal, USDH_ADDRESS } from '../services/vault.service.ts';
 import { handleError, handleServerError } from '../utils/errorHandler.ts';
 import { formatUnits, type Address } from 'viem';
 
@@ -170,6 +170,40 @@ export const vaultRoutes: FastifyPluginCallback = (app: FastifyInstance, _opts, 
           usdhBalanceFormatted: Number(formatUnits(position.usdhBalance, 6)),
           allowance: position.allowance.toString(),
         },
+      });
+    } catch (error) {
+      return handleServerError(reply, error as Error);
+    }
+  });
+
+  /**
+   * POST /vault/prepare-withdraw
+   * Move funds from custody to vault so staker can redeem.
+   * Call this before vault.redeem() on-chain.
+   */
+  app.post('/prepare-withdraw', async (request: FastifyRequest, reply: FastifyReply) => {
+    try {
+      const { amount, userAddress } = request.body as { amount?: string; userAddress?: string };
+
+      if (!amount || !userAddress) {
+        return handleError(reply, 400, 'Missing amount or userAddress', 'MISSING_FIELDS');
+      }
+
+      if (!/^0x[a-fA-F0-9]{40}$/.test(userAddress)) {
+        return handleError(reply, 400, 'Invalid address', 'INVALID_ADDRESS');
+      }
+
+      const amountBigInt = BigInt(amount);
+      if (amountBigInt <= 0n) {
+        return handleError(reply, 400, 'Amount must be greater than zero', 'INVALID_AMOUNT');
+      }
+
+      const txHash = await settleForWithdrawal(amountBigInt);
+
+      return reply.status(200).send({
+        success: true,
+        error: null,
+        data: { txHash },
       });
     } catch (error) {
       return handleServerError(reply, error as Error);

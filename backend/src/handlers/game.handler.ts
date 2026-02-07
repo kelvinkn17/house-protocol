@@ -7,6 +7,7 @@ import type { FastifyInstance } from 'fastify';
 import type WebSocket from 'ws';
 import { GameService } from '../services/game.service.ts';
 import { getVaultState } from '../services/vault.service.ts';
+import { triggerSnapshot } from '../workers/vaultIndexer.ts';
 import { getPrimitive } from '../services/primitives/registry.ts';
 import { getGameConfig } from '../services/primitives/configs.ts';
 import { prismaQuery } from '../lib/prisma.ts';
@@ -186,11 +187,14 @@ async function handleCreateSession(ws: WebSocket, playerId: string, payload: Cre
     if (stale.channelId) {
       const { address: brokerAddr } = getBrokerSigner();
       try {
-        const playerAmt = (BigInt(stale.currentPlayerBalance || stale.playerDeposit) / DECIMALS).toString();
-        const houseAmt = (BigInt(stale.currentHouseBalance || stale.houseDeposit) / DECIMALS).toString();
+        // clearnode tracks whole units. derive one side from the other to avoid
+        // truncation rounding that makes the total not add up.
+        const clearnodeTotal = BigInt(stale.playerDeposit) / DECIMALS + BigInt(stale.houseDeposit) / DECIMALS;
+        const playerAmt = BigInt(stale.currentPlayerBalance || stale.playerDeposit) / DECIMALS;
+        const houseAmt = clearnodeTotal - playerAmt;
         await ClearnodeBackend.closeAppSession(stale.channelId, [
-          { participant: playerId as Address, asset: ASSET_SYMBOL, amount: playerAmt },
-          { participant: brokerAddr, asset: ASSET_SYMBOL, amount: houseAmt },
+          { participant: playerId as Address, asset: ASSET_SYMBOL, amount: playerAmt.toString() },
+          { participant: brokerAddr, asset: ASSET_SYMBOL, amount: houseAmt.toString() },
         ]);
       } catch {
         // old sessions with [100,0] weights won't close, that's expected
@@ -651,12 +655,16 @@ async function closeClearnodeAndFinalize(
   // close clearnode app session as broker
   if (dbSession?.channelId) {
     try {
-      const playerAmt = (session.playerBalance / DECIMALS).toString();
-      const houseAmt = (session.houseBalance / DECIMALS).toString();
+      // clearnode tracks whole units. integer division truncates both sides,
+      // so playerAmt + houseAmt can end up less than the original total.
+      // fix: compute one side, derive the other from the original clearnode total.
+      const clearnodeTotal = BigInt(dbSession.playerDeposit) / DECIMALS + BigInt(dbSession.houseDeposit) / DECIMALS;
+      const playerAmt = session.playerBalance / DECIMALS;
+      const houseAmt = clearnodeTotal - playerAmt;
 
       await ClearnodeBackend.closeAppSession(dbSession.channelId, [
-        { participant: session.playerId as Address, asset: ASSET_SYMBOL, amount: playerAmt },
-        { participant: brokerAddr, asset: ASSET_SYMBOL, amount: houseAmt },
+        { participant: session.playerId as Address, asset: ASSET_SYMBOL, amount: playerAmt.toString() },
+        { participant: brokerAddr, asset: ASSET_SYMBOL, amount: houseAmt.toString() },
       ]);
     } catch (err) {
       // log but don't fail the session close, clearnode might already be closed
@@ -685,7 +693,13 @@ async function closeClearnodeAndFinalize(
   sessions.delete(sessionId);
   activeGames.delete(sessionId);
 
-  console.log(`[session] ${sessionId} closed, player=${finalPlayer} house=${finalHouse}`);
+  // calculate and log session P&L for the house
+  const houseDeposit = BigInt(dbSession?.houseDeposit || '0');
+  const housePnL = session.houseBalance - houseDeposit;
+  console.log(`[session] ${sessionId} closed, player=${finalPlayer} house=${finalHouse} pnl=${housePnL > 0n ? '+' : ''}${housePnL}`);
+
+  // fire-and-forget snapshot so TVL/price updates immediately
+  triggerSnapshot().catch(() => {});
 }
 
 // backend handles close entirely, no more 2-step dance with frontend

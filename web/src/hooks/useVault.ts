@@ -231,7 +231,26 @@ export function useWithdraw() {
 
       const shareAmount = parseUnits(shares, 9)
 
+      // figure out how much USDH the shares are worth, then ask backend
+      // to move that amount from custody to vault so redeem doesn't revert
       setTxStatus('withdrawing')
+      const publicClient = getPublicClient()
+      const assetsNeeded = await publicClient.readContract({
+        address: VAULT_ADDRESS,
+        abi: VAULT_ABI,
+        functionName: 'previewRedeem',
+        args: [shareAmount],
+      }) as bigint
+
+      const prepareRes = await api.post<{ txHash: string }>('/vault/prepare-withdraw', {
+        amount: assetsNeeded.toString(),
+        userAddress,
+      })
+
+      if (!prepareRes.success) {
+        throw new Error(prepareRes.error?.message || 'Failed to prepare withdrawal')
+      }
+
       const redeemHash = await walletClient.writeContract({
         address: VAULT_ADDRESS,
         abi: VAULT_ABI,
@@ -240,7 +259,7 @@ export function useWithdraw() {
       })
 
       setTxStatus('confirming')
-      await getPublicClient().waitForTransactionReceipt({ hash: redeemHash })
+      await publicClient.waitForTransactionReceipt({ hash: redeemHash })
 
       setTxHash(redeemHash)
       setTxStatus('success')

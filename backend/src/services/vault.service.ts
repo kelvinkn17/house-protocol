@@ -1,5 +1,6 @@
 import {
   createPublicClient,
+  createWalletClient,
   http,
   parseAbi,
   parseAbiItem,
@@ -8,6 +9,9 @@ import {
   type Address,
 } from 'viem';
 import { sepolia } from 'viem/chains';
+import { privateKeyToAccount } from 'viem/accounts';
+import { prismaQuery } from '../lib/prisma.ts';
+import { OPERATOR_PRIVATE_KEY } from '../config/main-config.ts';
 
 // contract addresses from env
 const VAULT_ADDRESS = (process.env.HOUSE_VAULT_ADDRESS || '') as Address;
@@ -43,6 +47,11 @@ const ERC20_ABI = parseAbi([
   'function allowance(address owner, address spender) view returns (uint256)',
   'function decimals() view returns (uint8)',
   'function symbol() view returns (string)',
+  'function transfer(address to, uint256 amount) returns (bool)',
+]);
+
+const CUSTODY_ABI = parseAbi([
+  'function withdraw(address token, uint256 amount)',
 ]);
 
 // lazy singleton
@@ -59,7 +68,28 @@ function getPublicClient(): PublicClient {
   return publicClient;
 }
 
-// read vault state in one go, all from the vault contract
+// sum up house P&L from all closed sessions
+// positive = house won, negative = house lost
+export async function getSessionPnL(): Promise<bigint> {
+  const closedSessions = await (prismaQuery as any).session.findMany({
+    where: { status: 'CLOSED', finalHouseBalance: { not: null } },
+    select: { houseDeposit: true, finalHouseBalance: true },
+  });
+
+  let pnl = 0n;
+  for (const s of closedSessions) {
+    const deposit = BigInt(s.houseDeposit);
+    const final = BigInt(s.finalHouseBalance);
+    pnl += final - deposit;
+  }
+
+  return pnl;
+}
+
+// read vault state, adjusted for off-chain session P&L
+// on-chain totalAssets doesn't reflect session wins/losses since those
+// happen in state channels. we add the cumulative house P&L from closed
+// sessions to get an accurate TVL and share price.
 export async function getVaultState() {
   const client = getPublicClient();
 
@@ -81,17 +111,25 @@ export async function getVaultState() {
     }) as Promise<bigint>,
   ]);
 
-  // standard ERC-4626: totalAssets = vault USDH + operator custody balance
+  // off-chain P&L from closed game sessions
+  const sessionPnL = await getSessionPnL();
+
+  // adjusted total = on-chain total + cumulative house wins/losses
+  const adjustedTotalAssets = totalAssets + sessionPnL;
+
   // assets are 6 decimals (USDH), shares are 9 decimals (sUSDH, 3-decimal offset)
   const sharePrice = totalSupply > 0n
-    ? Number(formatUnits(totalAssets, 6)) / Number(formatUnits(totalSupply, 9))
+    ? Number(formatUnits(adjustedTotalAssets, 6)) / Number(formatUnits(totalSupply, 9))
     : 1.0;
 
   return {
-    totalAssets,
+    totalAssets: adjustedTotalAssets,
     totalSupply,
     custodyBalance,
     sharePrice,
+    // raw on-chain value, useful for debugging
+    onChainTotalAssets: totalAssets,
+    sessionPnL,
   };
 }
 
@@ -171,6 +209,46 @@ export async function getBlockTimestamp(blockNumber: bigint): Promise<bigint> {
   const client = getPublicClient();
   const block = await client.getBlock({ blockNumber });
   return block.timestamp;
+}
+
+// move funds from custody to vault so stakers can redeem
+// operator calls custody.withdraw() then transfers USDH to vault contract
+export async function settleForWithdrawal(amount: bigint): Promise<string> {
+  if (!OPERATOR_PRIVATE_KEY) throw new Error('OPERATOR_PRIVATE_KEY not configured');
+
+  const account = privateKeyToAccount(OPERATOR_PRIVATE_KEY as `0x${string}`);
+  const client = getPublicClient();
+  const rpcUrl = process.env.SEPOLIA_RPC_URL;
+
+  const walletClient = createWalletClient({
+    account,
+    chain: sepolia,
+    transport: http(rpcUrl),
+  });
+
+  // step 1: withdraw USDH from nitrolite custody to operator wallet
+  console.log(`[settlement] withdrawing ${amount} from custody...`);
+  const withdrawHash = await walletClient.writeContract({
+    address: CUSTODY_ADDRESS,
+    abi: CUSTODY_ABI,
+    functionName: 'withdraw',
+    args: [USDH_ADDRESS, amount],
+  });
+  await client.waitForTransactionReceipt({ hash: withdrawHash });
+  console.log(`[settlement] custody withdraw tx: ${withdrawHash}`);
+
+  // step 2: transfer USDH from operator wallet to vault contract
+  console.log(`[settlement] transferring ${amount} to vault...`);
+  const transferHash = await walletClient.writeContract({
+    address: USDH_ADDRESS,
+    abi: ERC20_ABI,
+    functionName: 'transfer',
+    args: [VAULT_ADDRESS, amount],
+  });
+  await client.waitForTransactionReceipt({ hash: transferHash });
+  console.log(`[settlement] vault transfer tx: ${transferHash}`);
+
+  return transferHash;
 }
 
 export {
