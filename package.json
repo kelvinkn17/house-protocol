@@ -16,6 +16,9 @@
   },
   "packageManager": "bun@1.1.0",
   "dependencies": {
-    "nitro-nightly": "^3.0.1-20260202-124820-1954b824"
+    "nitro": "npm:nitro-nightly@^3.0.1-20260202-124820-1954b824"
+  },
+  "overrides": {
+    "nitro": "npm:nitro-nightly@^3.0.1-20260202-124820-1954b824"
   }
 }

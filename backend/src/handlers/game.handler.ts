@@ -18,6 +18,8 @@ import { HOUSE_EDGE_BPS, BPS_BASE } from '../services/primitives/types.ts';
 import { RPCProtocolVersion } from '@erc7824/nitrolite';
 import { privateKeyToAccount } from 'viem/accounts';
 import { OPERATOR_PRIVATE_KEY } from '../config/main-config.ts';
+import { computeSessionHash, anchorSessionOnChain, revealSessionOnChain } from '../lib/houseSession.ts';
+import crypto from 'crypto';
 import type { Hex, Address } from 'viem';
 
 const db = prismaQuery;
@@ -93,6 +95,7 @@ const sessions = new Map<string, {
   playerBalance: bigint;
   houseBalance: bigint;
   isActive: boolean;
+  sessionSeed?: bigint;
 }>();
 
 // game-level state (reset when switching games)
@@ -248,12 +251,23 @@ async function handleCreateSession(ws: WebSocket, playerId: string, payload: Cre
     },
   });
 
+  // generate provably fair seed for this session
+  const sessionSeed = BigInt('0x' + crypto.randomBytes(32).toString('hex'));
+  const sessionHash = computeSessionHash(sessionSeed, playerId as Address);
+
+  // persist seed hash to DB
+  await db.session.update({
+    where: { id: session.id },
+    data: { sessionSeedHash: sessionHash },
+  });
+
   // store session state (not active yet)
   sessions.set(session.id, {
     playerId,
     playerBalance: playerDeposit,
     houseBalance: houseDeposit,
     isActive: false,
+    sessionSeed,
   });
 
   // build nitrolite app session definition (2 participants: player + broker)
@@ -314,11 +328,22 @@ async function handleCreateSession(ws: WebSocket, playerId: string, payload: Cre
 
     console.log(`[session] ${session.id} active, appSession=${appSessionId}`);
 
+    // anchor seed hash on-chain in background (fire and forget)
+    anchorSessionOnChain(sessionHash, playerId as Address).then((txHash) => {
+      if (txHash) {
+        db.session.update({
+          where: { id: session.id },
+          data: { openSessionTxHash: txHash },
+        }).catch(() => {});
+      }
+    });
+
     send(ws, 'session_created', {
       sessionId: session.id,
       playerDeposit: playerDeposit.toString(),
       houseDeposit: houseDeposit.toString(),
       channelId: appSessionId,
+      sessionSeedHash: sessionHash,
     });
   } catch (err) {
     // player didn't sign in time or clearnode error, clean up
@@ -470,8 +495,9 @@ async function handlePlaceBet(ws: WebSocket, playerId: string, payload: PlaceBet
     commitment,
   });
 
-  // house commits
-  const { houseCommitment } = await GameService.houseCommit(round.id);
+  // house commits (deterministic from session seed when available)
+  const memSession = sessions.get(sessionId);
+  const { houseCommitment } = await GameService.houseCommit(round.id, memSession?.sessionSeed, roundNumber);
 
   send(ws, 'bet_accepted', {
     roundId: round.id,
@@ -576,11 +602,13 @@ async function handleReveal(ws: WebSocket, playerId: string, payload: RevealPayl
 
   // auto-close on bust: close clearnode session and finalize
   if (busted) {
+    const seedForBust = session.sessionSeed;
     await closeClearnodeAndFinalize(sessionId, session, ws);
     send(ws, 'session_busted', {
       sessionId,
       finalPlayerBalance: session.playerBalance.toString(),
       finalHouseBalance: session.houseBalance.toString(),
+      sessionSeed: seedForBust !== undefined ? ('0x' + seedForBust.toString(16)) : undefined,
     });
   }
 }
@@ -644,9 +672,12 @@ async function handleCashOut(ws: WebSocket, playerId: string, payload: CashOutPa
 // shared close logic: close clearnode session as broker, persist final state
 async function closeClearnodeAndFinalize(
   sessionId: string,
-  session: { playerId: string; playerBalance: bigint; houseBalance: bigint; isActive: boolean },
+  session: { playerId: string; playerBalance: bigint; houseBalance: bigint; isActive: boolean; sessionSeed?: bigint },
   ws?: WebSocket,
 ) {
+  // grab seed before we delete session from memory
+  const sessionSeed = session.sessionSeed;
+
   const dbSession = await db.session.findUnique({ where: { id: sessionId } });
   const brokerAddr = getBrokerAddress();
 
@@ -723,6 +754,25 @@ async function closeClearnodeAndFinalize(
     console.error(`[settlement] ${sessionId} failed:`, (err as Error).message);
   }
 
+  // reveal seed on-chain + persist to DB
+  if (sessionSeed !== undefined) {
+    const seedHex = '0x' + sessionSeed.toString(16);
+    await db.session.update({
+      where: { id: sessionId },
+      data: { sessionSeed: seedHex },
+    }).catch(() => {});
+
+    // fire and forget on-chain reveal
+    revealSessionOnChain(sessionSeed, dbSession!.playerId as Address).then((txHash) => {
+      if (txHash) {
+        db.session.update({
+          where: { id: sessionId },
+          data: { verifySessionTxHash: txHash },
+        }).catch(() => {});
+      }
+    });
+  }
+
   // snapshot after settlement so TVL/price is up to date
   triggerSnapshot().catch(() => { });
 }
@@ -740,7 +790,8 @@ async function handleCloseSession(ws: WebSocket, playerId: string, payload: Clos
   // forfeit any running game
   activeGames.delete(sessionId);
 
-  // grab deposit before close (close deletes session from memory)
+  // grab seed + deposit before close (close deletes session from memory)
+  const seedForClose = session.sessionSeed;
   const dbSession = await db.session.findUnique({ where: { id: sessionId }, select: { playerDeposit: true } });
 
   await closeClearnodeAndFinalize(sessionId, session, ws);
@@ -755,6 +806,7 @@ async function handleCloseSession(ws: WebSocket, playerId: string, payload: Clos
     finalPlayerBalance: session.playerBalance.toString(),
     finalHouseBalance: session.houseBalance.toString(),
     playerDeposit: dbSession?.playerDeposit || '0',
+    sessionSeed: seedForClose !== undefined ? ('0x' + seedForClose.toString(16)) : undefined,
   });
 }
 
@@ -771,13 +823,15 @@ async function handleResumeSession(ws: WebSocket, playerId: string, payload: Res
     }
 
     const game = activeGames.get(sessionId);
-    const existingDb = await db.session.findUnique({ where: { id: sessionId }, select: { playerDeposit: true, channelId: true } });
+    const existingDb = await db.session.findUnique({ where: { id: sessionId }, select: { playerDeposit: true, channelId: true, sessionSeedHash: true, openSessionTxHash: true } });
     send(ws, 'session_resumed', {
       sessionId,
       playerBalance: existing.playerBalance.toString(),
       houseBalance: existing.houseBalance.toString(),
       playerDeposit: existingDb?.playerDeposit || existing.playerBalance.toString(),
       channelId: existingDb?.channelId || null,
+      sessionSeedHash: existingDb?.sessionSeedHash || null,
+      openSessionTxHash: existingDb?.openSessionTxHash || null,
       activeGame: game ? {
         gameSlug: game.config.builderParams.slug,
         gameType: game.config.gameType,
@@ -849,6 +903,8 @@ async function handleResumeSession(ws: WebSocket, playerId: string, payload: Res
     houseBalance: houseBalance.toString(),
     playerDeposit: dbSession.playerDeposit,
     channelId: dbSession.channelId,
+    sessionSeedHash: dbSession.sessionSeedHash || null,
+    openSessionTxHash: dbSession.openSessionTxHash || null,
     activeGame: activeGameInfo,
   });
 }

@@ -8,6 +8,7 @@ import { useState } from 'react'
 import { parseUnits, formatUnits } from 'viem'
 import FaucetBadge from '@/components/FaucetBadge'
 import PlayHistory from '@/components/games/PlayHistory'
+import ProvablyFair from '@/components/games/ProvablyFair'
 
 const GAMES: { slug: string; name: string; type: string; color: string; Icon: LucideIcon }[] = [
   { slug: 'double-or-nothing', name: 'Double or Nothing', type: 'cash-out', color: '#CDFF57', Icon: Coins },
@@ -350,6 +351,11 @@ function SessionBar() {
           <span>Withdrew: {balanceFormatted} USDH</span>
         </div>
 
+        {/* provably fair verification */}
+        <div className="mb-3">
+          <ProvablyFair />
+        </div>
+
         <div className="flex items-center justify-between">
           <div className="flex items-center gap-3">
             {sessionId && (
@@ -443,18 +449,21 @@ function SessionBar() {
         <p className="text-xs font-mono text-[#FF6B9D] mt-2">{sessionError}</p>
       )}
 
-      {/* scanner link */}
-      {scannerUrl && (
-        <div className="mt-2 pt-2 border-t border-black/5">
-          <a
-            href={scannerUrl}
-            target="_blank"
-            rel="noopener noreferrer"
-            className="text-[10px] font-mono text-black/25 hover:text-black/50 flex items-center gap-1 transition-colors"
-          >
-            <ExternalLink size={9} />
-            View on Nitrolite Scanner
-          </a>
+      {/* scanner link + provably fair */}
+      {(scannerUrl || session.sessionSeedHash) && (
+        <div className="mt-2 pt-2 border-t border-black/5 flex items-center gap-4">
+          {scannerUrl && (
+            <a
+              href={scannerUrl}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="text-[10px] font-mono text-black/25 hover:text-black/50 flex items-center gap-1 transition-colors"
+            >
+              <ExternalLink size={9} />
+              View on Nitrolite Scanner
+            </a>
+          )}
+          <ProvablyFair />
         </div>
       )}
     </div>

@@ -8,7 +8,7 @@ import { useEffect, useRef, useState } from 'react'
 import { gsap } from 'gsap'
 import { cnm } from '@/utils/style'
 import AppLayout from '@/components/layout/AppLayout'
-import { useBuilderProfile, useBuilderRegister, useBuilderAnalytics, useBuilderGames } from '@/hooks/useBuilder'
+import { useBuilderProfile, useBuilderRegister, useBuilderGames } from '@/hooks/useBuilder'
 import { useAuthContext } from '@/providers/AuthProvider'
 
 export const Route = createFileRoute('/build')({
@@ -19,8 +19,7 @@ const NAV_ITEMS = [
   { to: '/build', label: 'Overview', icon: '◉', exact: true },
   { to: '/build/games', label: 'My Games', icon: '◈', exact: false },
   { to: '/build/keys', label: 'API Keys', icon: '◇', exact: false },
-  { to: '/build/analytics', label: 'Analytics', icon: '◆', exact: false },
-  { to: '/build/docs', label: 'Docs', icon: '◎', exact: false },
+  { to: '/build/docs', label: 'SDK', icon: '◎', exact: false },
 ]
 
 function BuildLayout() {
@@ -336,7 +335,6 @@ function BuildRegistrationPage() {
 
 function BuildOverviewPage({ builder }: { builder: any }) {
   const containerRef = useRef<HTMLDivElement>(null)
-  const { data: analytics } = useBuilderAnalytics('7d')
   const { data: games } = useBuilderGames()
 
   useEffect(() => {
@@ -380,7 +378,7 @@ function BuildOverviewPage({ builder }: { builder: any }) {
             + Create Game
           </Link>
         </div>
-        <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+        <div className="grid grid-cols-3 gap-4">
           {[
             {
               label: 'Games',
@@ -388,20 +386,15 @@ function BuildOverviewPage({ builder }: { builder: any }) {
               sub: `${builder?.activeGames ?? 0} active`,
             },
             {
-              label: 'Total Volume',
-              value: analytics ? `$${(Number(analytics.totalVolume) / 1000).toFixed(1)}K` : '$0',
-              sub: 'All time',
-            },
-            {
               label: 'Total Earned',
-              value: analytics ? `$${Number(analytics.totalRevenue).toLocaleString()}` : '$0',
-              sub: 'Your cut',
+              value: `$${Number(builder?.totalRevenue ?? 0).toLocaleString()}`,
+              sub: '25% of house edge',
               highlight: true,
             },
             {
-              label: 'Players',
-              value: analytics?.uniquePlayers?.toString() ?? '0',
-              sub: 'Unique',
+              label: 'Total Bets',
+              value: (games || []).reduce((acc: number, g: any) => acc + (g.totalBets ?? 0), 0).toLocaleString(),
+              sub: 'All time',
             },
           ].map((stat) => (
             <div key={stat.label}>
@@ -503,73 +496,71 @@ function BuildOverviewPage({ builder }: { builder: any }) {
           </div>
         </div>
 
-        {/* right column: how it works + revenue */}
+        {/* right column: sdk + revenue */}
         <div
-          className="main-fade lg:col-span-2 bg-white border-2 border-black rounded-2xl overflow-hidden opacity-0"
-          style={{ boxShadow: '5px 5px 0px black' }}
+          className="main-fade lg:col-span-2 space-y-5 opacity-0"
         >
-          {/* how it works */}
-          <div className="p-4 border-b-2 border-black/10">
-            <p className="text-xs font-mono text-black/50 uppercase mb-3">
-              How It Works
-            </p>
-            <div className="space-y-2">
-              {[
-                { n: '1', text: 'Pick a game type' },
-                { n: '2', text: 'Configure house edge' },
-                { n: '3', text: 'Integrate SDK' },
-                { n: '4', text: 'Earn 25% of edge' },
-              ].map((step) => (
-                <div key={step.n} className="flex items-center gap-3">
-                  <span className="w-6 h-6 rounded bg-[#FF6B9D] text-black text-xs font-black flex items-center justify-center border border-black">
-                    {step.n}
-                  </span>
-                  <p className="text-sm text-black/80">{step.text}</p>
-                </div>
-              ))}
+          {/* sdk card */}
+          <div
+            className="bg-black border-2 border-black rounded-2xl overflow-hidden"
+            style={{ boxShadow: '5px 5px 0px #FF6B9D' }}
+          >
+            <div className="p-4 border-b border-white/10">
+              <div className="flex items-center justify-between mb-2">
+                <p className="text-xs font-mono text-white/50 uppercase">
+                  React SDK
+                </p>
+                <span className="px-2 py-0.5 text-[9px] font-black uppercase bg-[#CDFF57] text-black rounded">
+                  Coming Soon
+                </span>
+              </div>
+              <p className="text-[10px] font-mono text-white/40">
+                @house-protocol/react-sdk
+              </p>
+            </div>
+            <pre className="p-4 text-[11px] font-mono text-white/80 overflow-x-auto">
+{`import { HouseProvider, CoinFlip }
+  from '@house-protocol/react-sdk'
+
+<HouseProvider apiKey={API_KEY}>
+  <CoinFlip gameSlug="my-flip" />
+</HouseProvider>`}
+            </pre>
+            <div className="px-4 pb-4">
+              <Link
+                to="/build/docs"
+                className="block w-full py-2.5 text-center text-xs font-black uppercase text-black bg-[#CDFF57] rounded-lg border-2 border-black hover:translate-x-0.5 hover:translate-y-0.5 transition-transform"
+              >
+                View SDK Docs
+              </Link>
             </div>
           </div>
 
           {/* revenue split */}
-          <div className="p-4 bg-black">
-            <p className="text-xs font-mono text-white/50 uppercase mb-2">
+          <div
+            className="bg-white border-2 border-black rounded-2xl p-4"
+            style={{ boxShadow: '5px 5px 0px black' }}
+          >
+            <p className="text-xs font-mono text-black/50 uppercase mb-2">
               Revenue Split
             </p>
-            <p className="text-[10px] font-mono text-white/40 mb-3">
+            <p className="text-[10px] font-mono text-black/40 mb-3">
               $100 bet @ 2% edge = $2
             </p>
             <div className="space-y-1.5">
               <div className="flex justify-between text-xs">
-                <span className="text-white/60">Stakers</span>
-                <span className="font-bold text-white">$1.40 (70%)</span>
+                <span className="text-black/60">Stakers</span>
+                <span className="font-bold text-black">$1.40 (70%)</span>
               </div>
               <div className="flex justify-between text-xs">
-                <span className="text-white/60">You</span>
-                <span className="font-bold text-[#CDFF57]">$0.50 (25%)</span>
+                <span className="text-black/60">You</span>
+                <span className="font-bold text-[#7BA318]">$0.50 (25%)</span>
               </div>
               <div className="flex justify-between text-xs">
-                <span className="text-white/60">Protocol</span>
-                <span className="font-bold text-white/80">$0.10 (5%)</span>
+                <span className="text-black/60">Protocol</span>
+                <span className="font-bold text-black/50">$0.10 (5%)</span>
               </div>
             </div>
-          </div>
-
-          {/* sdk preview */}
-          <div className="border-t-2 border-black">
-            <div className="px-4 py-2 flex items-center justify-between bg-black/5 border-b border-black/10">
-              <span className="text-[10px] font-mono text-black/50">
-                SDK Preview
-              </span>
-              <span className="px-2 py-0.5 text-[9px] font-black uppercase bg-[#CDFF57] text-black rounded">
-                TS
-              </span>
-            </div>
-            <pre className="p-3 text-[11px] font-mono text-black/70 overflow-x-auto">
-              {`const { placeBet } = useBet('game-id')
-const result = await placeBet({
-  choice: 'heads', amount: 100
-})`}
-            </pre>
           </div>
         </div>
       </div>

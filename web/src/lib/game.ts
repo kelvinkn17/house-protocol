@@ -1,7 +1,7 @@
 // client side commit-reveal crypto helpers
 // must produce byte-identical commitments to backend/src/services/game.service.ts
 
-import { keccak256, toHex } from 'viem'
+import { keccak256, encodePacked, toHex, type Address } from 'viem'
 
 // generate a random 32 byte nonce as hex
 export function generateNonce(): string {
@@ -17,6 +17,22 @@ export function createCommitment(choiceData: string, nonce: string): string {
   const nonceBytes = hexToUint8Array(nonce)
   const packed = toHex(new Uint8Array([...choiceBytes, ...nonceBytes]))
   return keccak256(packed)
+}
+
+// provably fair verification helpers
+// mirrors backend/src/lib/houseSession.ts so player can verify locally
+
+export function deriveHouseNonce(sessionSeed: bigint, roundNumber: number): string {
+  return keccak256(encodePacked(['uint256', 'uint256'], [sessionSeed, BigInt(roundNumber)]))
+}
+
+export function verifyRound(sessionSeed: bigint, roundNumber: number, expectedHouseNonce: string): boolean {
+  const derived = deriveHouseNonce(sessionSeed, roundNumber)
+  return derived.toLowerCase() === expectedHouseNonce.toLowerCase()
+}
+
+export function computeSessionHash(sessionSeed: bigint, playerAddress: Address): string {
+  return keccak256(encodePacked(['uint256', 'address'], [sessionSeed, playerAddress]))
 }
 
 function hexToUint8Array(hex: string): Uint8Array {

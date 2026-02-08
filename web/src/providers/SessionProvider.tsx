@@ -89,6 +89,13 @@ interface SessionContextValue {
   depositAmount: string
   sessionError: string | null
 
+  // provably fair
+  sessionSeedHash: string | null
+  sessionSeed: string | null
+  openSessionTxHash: string | null
+  verifySessionTxHash: string | null
+  roundHistory: Array<RoundResult & { roundNumber: number }>
+
   // game level
   activeGame: ActiveGame | null
   gamePhase: GamePhase
@@ -125,6 +132,13 @@ export function SessionProvider({ children }: { children: ReactNode }) {
   const [houseBalance, setHouseBalance] = useState('0')
   const [depositAmount, setDepositAmount] = useState('0')
   const [sessionError, setSessionError] = useState<string | null>(null)
+
+  // provably fair state
+  const [sessionSeedHash, setSessionSeedHash] = useState<string | null>(null)
+  const [sessionSeed, setSessionSeed] = useState<string | null>(null)
+  const [openSessionTxHash, setOpenSessionTxHash] = useState<string | null>(null)
+  const [verifySessionTxHash, setVerifySessionTxHash] = useState<string | null>(null)
+  const [roundHistory, setRoundHistory] = useState<Array<RoundResult & { roundNumber: number }>>([])
 
   // sync phase when wallet loads async (privy takes a tick to hydrate)
   useEffect(() => {
@@ -242,6 +256,8 @@ export function SessionProvider({ children }: { children: ReactNode }) {
           houseBalance: string
           playerDeposit: string
           channelId: string | null
+          sessionSeedHash: string | null
+          openSessionTxHash: string | null
           activeGame: {
             gameSlug: string
             gameType: string
@@ -256,6 +272,8 @@ export function SessionProvider({ children }: { children: ReactNode }) {
         setChannelId(result.channelId)
         setPlayerBalance(result.playerBalance)
         setHouseBalance(result.houseBalance)
+        setSessionSeedHash(result.sessionSeedHash)
+        setOpenSessionTxHash(result.openSessionTxHash)
         // restore original deposit from backend or localStorage
         setDepositAmount(result.playerDeposit || savedDeposit || result.playerBalance)
 
@@ -274,14 +292,14 @@ export function SessionProvider({ children }: { children: ReactNode }) {
         // subscribe to session_busted
         if (bustedUnsub.current) bustedUnsub.current()
         bustedUnsub.current = GameSocket.subscribe('session_busted', (payload: unknown) => {
-          const p = payload as { sessionId: string; finalPlayerBalance: string; finalHouseBalance: string }
+          const p = payload as { sessionId: string; finalPlayerBalance: string; finalHouseBalance: string; sessionSeed?: string }
           setPlayerBalance(p.finalPlayerBalance)
           setHouseBalance(p.finalHouseBalance)
+          if (p.sessionSeed) setSessionSeed(p.sessionSeed)
           setActiveGame(null)
           setGamePhase('none')
           setSessionPhase('closed')
           localStorage.removeItem(SESSION_STORAGE_KEY)
-          // busted = player balance 0, nothing to withdraw. backend settles house side.
         })
 
         setSessionPhase('active')
@@ -403,6 +421,7 @@ export function SessionProvider({ children }: { children: ReactNode }) {
         playerDeposit: string
         houseDeposit: string
         channelId: string
+        sessionSeedHash?: string
       }>('session_created', 60000)
 
       // persist session for resume on refresh
@@ -416,6 +435,11 @@ export function SessionProvider({ children }: { children: ReactNode }) {
       setPlayerBalance(result.playerDeposit)
       setHouseBalance(result.houseDeposit)
       setDepositAmount(result.playerDeposit)
+      setSessionSeedHash(result.sessionSeedHash || null)
+      setSessionSeed(null)
+      setOpenSessionTxHash(null)
+      setVerifySessionTxHash(null)
+      setRoundHistory([])
       setStats({ wins: 0, losses: 0, totalRounds: 0 })
       setLastResult(null)
       setActiveGame(null)
@@ -425,14 +449,14 @@ export function SessionProvider({ children }: { children: ReactNode }) {
       // subscribe to session_busted
       if (bustedUnsub.current) bustedUnsub.current()
       bustedUnsub.current = GameSocket.subscribe('session_busted', (payload: unknown) => {
-        const p = payload as { sessionId: string; finalPlayerBalance: string; finalHouseBalance: string }
+        const p = payload as { sessionId: string; finalPlayerBalance: string; finalHouseBalance: string; sessionSeed?: string }
         setPlayerBalance(p.finalPlayerBalance)
         setHouseBalance(p.finalHouseBalance)
+        if (p.sessionSeed) setSessionSeed(p.sessionSeed)
         setActiveGame(null)
         setGamePhase('none')
         setSessionPhase('closed')
         localStorage.removeItem(SESSION_STORAGE_KEY)
-        // busted = player balance 0, nothing to withdraw. backend settles house side.
       })
     } catch (err) {
       setSessionError((err as Error).message)
@@ -553,6 +577,7 @@ export function SessionProvider({ children }: { children: ReactNode }) {
       }
 
       setLastResult(result)
+      setRoundHistory(prev => [...prev, { ...result, roundNumber: roundResult.currentRound }])
       setPlayerBalance(roundResult.newPlayerBalance)
       setHouseBalance(roundResult.newHouseBalance)
       setActiveGame(prev => prev ? {
@@ -619,10 +644,12 @@ export function SessionProvider({ children }: { children: ReactNode }) {
         sessionId: string
         finalPlayerBalance: string
         finalHouseBalance: string
+        sessionSeed?: string
       }>('session_closed')
 
       setPlayerBalance(result.finalPlayerBalance)
       setHouseBalance(result.finalHouseBalance)
+      if (result.sessionSeed) setSessionSeed(result.sessionSeed)
       setActiveGame(null)
       setGamePhase('none')
 
@@ -650,6 +677,11 @@ export function SessionProvider({ children }: { children: ReactNode }) {
     setPlayerBalance('0')
     setHouseBalance('0')
     setDepositAmount('0')
+    setSessionSeedHash(null)
+    setSessionSeed(null)
+    setOpenSessionTxHash(null)
+    setVerifySessionTxHash(null)
+    setRoundHistory([])
     setActiveGame(null)
     setGamePhase('none')
     setLastResult(null)
@@ -665,6 +697,11 @@ export function SessionProvider({ children }: { children: ReactNode }) {
       houseBalance,
       depositAmount,
       sessionError,
+      sessionSeedHash,
+      sessionSeed,
+      openSessionTxHash,
+      verifySessionTxHash,
+      roundHistory,
       activeGame,
       gamePhase,
       lastResult,

@@ -30,7 +30,7 @@ contract EscrowScript is Script {
         vm.startBroadcast(deployerPk);
 
         // 1. Deploy HouseSession
-        HouseSession session = new HouseSession(USDH, CUSTODY);
+        HouseSession session = new HouseSession(USDH, CUSTODY, deployer);
         console.log("HouseSession deployed to:", address(session));
 
         // // 2. Player deposits to custody directly (approve custody, then deposit)

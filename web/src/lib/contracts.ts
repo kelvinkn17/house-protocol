@@ -4,6 +4,7 @@ import { sepolia } from 'viem/chains'
 export const VAULT_ADDRESS = (import.meta.env.VITE_HOUSE_VAULT_ADDRESS || '') as Address
 export const USDH_ADDRESS = (import.meta.env.VITE_USDH_TOKEN_ADDRESS || '') as Address
 export const CUSTODY_ADDRESS = (import.meta.env.VITE_NITROLITE_CUSTODY_ADDRESS || '') as Address
+export const HOUSE_SESSION_ADDRESS = (import.meta.env.VITE_HOUSE_SESSION_ADDRESS || '') as Address
 export const SEPOLIA_CHAIN_ID = 11155111
 
 // Nitrolite custody: deposit USDH before opening a state channel session
@@ -33,6 +34,12 @@ export const ERC20_ABI = parseAbi([
   'function approve(address spender, uint256 amount) returns (bool)',
   'function transfer(address to, uint256 amount) returns (bool)',
   'function decimals() view returns (uint8)',
+])
+
+// HouseSession: view functions for provably fair verification
+export const HOUSE_SESSION_ABI = parseAbi([
+  'function sessionExists(address player) view returns (bool)',
+  'function getSessionHash(address player) view returns (bytes32)',
 ])
 
 // USDH is the demo token, anyone can mint

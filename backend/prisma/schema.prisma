@@ -159,6 +159,10 @@ model Session {
   currentHouseBalance  String? // updated every round, for resume
   finalPlayerBalance String? // persisted on session close
   finalHouseBalance  String? // persisted on session close
+  sessionSeedHash     String?   // keccak256(abi.encodePacked(seed, player))
+  sessionSeed         String?   // only set at close (reveal)
+  openSessionTxHash   String?   // tx that committed the hash on-chain
+  verifySessionTxHash String?   // tx that revealed the seed on-chain
   closedAt      DateTime?
   createdAt     DateTime  @default(now())
   updatedAt     DateTime  @updatedAt

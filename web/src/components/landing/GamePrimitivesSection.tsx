@@ -4,12 +4,9 @@ import AnimatedText from '@/components/elements/AnimatedText'
 export default function GamePrimitivesSection() {
 
   const primitives = [
-    { type: 'PICK ONE', example: 'Coinflip', desc: 'Pick option, one wins' },
-    { type: 'PICK NUMBER', example: 'Dice', desc: 'Over/under target' },
-    { type: 'SPIN WHEEL', example: 'Roulette', desc: 'Land on segment' },
-    { type: 'REVEAL TILES', example: 'Mines', desc: 'Avoid the bombs' },
-    { type: 'CASH OUT', example: 'Crash', desc: 'Bail before crash' },
-    { type: 'DEAL CARDS', example: 'Blackjack', desc: 'Beat the dealer' },
+    { type: 'CASH OUT', example: 'Crash, Double or Nothing', desc: 'Bail before crash', live: true },
+    { type: 'PICK NUMBER', example: 'Dice, Range', desc: 'Over/under target', live: true },
+    { type: 'REVEAL TILES', example: 'Mines, Tower', desc: 'Avoid the bombs', live: true },
   ]
 
   return (

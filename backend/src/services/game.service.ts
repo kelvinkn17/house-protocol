@@ -6,6 +6,7 @@ import { keccak256, toHex, hexToBytes, bytesToHex } from 'viem';
 import crypto from 'crypto';
 import { prismaQuery } from '../lib/prisma.ts';
 import { getPrimitive } from './primitives/registry.ts';
+import { deriveHouseNonce } from '../lib/houseSession.ts';
 import type { PlayerChoice, RoundOutcome, GameSessionState } from './primitives/types.ts';
 import type { GameConfig } from './primitives/types.ts';
 
@@ -62,8 +63,10 @@ export async function playerCommit(params: PlayerCommitParams) {
   return round;
 }
 
-export async function houseCommit(roundId: string) {
-  const houseNonce = generateNonce();
+export async function houseCommit(roundId: string, sessionSeed?: bigint, roundNumber?: number) {
+  const houseNonce = (sessionSeed !== undefined && roundNumber !== undefined)
+    ? deriveHouseNonce(sessionSeed, roundNumber)
+    : generateNonce();
   const houseCommitment = keccak256(houseNonce as `0x${string}`);
 
   const round = await db.round.update({
