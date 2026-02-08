@@ -4,14 +4,12 @@ import {
   http,
   parseAbi,
   parseAbiItem,
-  formatUnits,
   type PublicClient,
   type Address,
 } from 'viem';
 import { sepolia } from 'viem/chains';
 import { privateKeyToAccount } from 'viem/accounts';
 import { OPERATOR_PRIVATE_KEY } from '../config/main-config.ts';
-import { prismaQuery } from '../lib/prisma.ts';
 
 // contract addresses from env
 const VAULT_ADDRESS = (process.env.HOUSE_VAULT_ADDRESS || '') as Address;
@@ -48,6 +46,7 @@ const ERC20_ABI = parseAbi([
   'function decimals() view returns (uint8)',
   'function symbol() view returns (string)',
   'function transfer(address to, uint256 amount) returns (bool)',
+  'function mint(address to, uint256 amount)',
 ]);
 
 const CUSTODY_ABI = parseAbi([
@@ -69,38 +68,12 @@ function getPublicClient(): PublicClient {
   return publicClient;
 }
 
-// net house PnL from sessions that clearnode hasn't settled on-chain yet.
-// close_app_session updates clearnode's off-chain ledger but doesn't move custody funds,
-// so the vault contract's totalAssets() misses this. we add it back here.
-async function getUnsettledSessionPnL(): Promise<bigint> {
-  const sessions = await prismaQuery.session.findMany({
-    where: { status: { in: ['ACTIVE', 'CLOSED'] } },
-    select: {
-      status: true,
-      houseDeposit: true,
-      currentHouseBalance: true,
-      finalHouseBalance: true,
-    },
-  });
-
-  let pnl = 0n;
-  for (const s of sessions) {
-    const deposit = BigInt(s.houseDeposit);
-    const balance = s.status === 'CLOSED'
-      ? (s.finalHouseBalance ? BigInt(s.finalHouseBalance) : deposit)
-      : (s.currentHouseBalance ? BigInt(s.currentHouseBalance) : deposit);
-    pnl += balance - deposit;
-  }
-  return pnl;
-}
-
-// read vault state from on-chain + unsettled session PnL from DB.
-// clearnode settles custody balances asynchronously (channel close, not app session close),
-// so we add the off-chain PnL so the share price reflects actual house performance.
+// read vault state directly from contract. share price and TVL come straight
+// from on-chain totalAssets() and totalSupply(), no off-chain adjustments.
 export async function getVaultState() {
   const client = getPublicClient();
 
-  const [totalAssets, totalSupply, custodyBalance, unsettledPnL] = await Promise.all([
+  const [totalAssets, totalSupply, custodyBalance] = await Promise.all([
     client.readContract({
       address: VAULT_ADDRESS,
       abi: VAULT_ABI,
@@ -116,19 +89,23 @@ export async function getVaultState() {
       abi: VAULT_ABI,
       functionName: 'getCustodyBalance',
     }) as Promise<bigint>,
-    getUnsettledSessionPnL(),
   ]);
 
-  // effective total includes off-chain session PnL that clearnode hasn't settled yet
-  const effectiveTotal = totalAssets + unsettledPnL;
-
-  // assets are 6 decimals (USDH), shares are 9 decimals (sUSDH, 3-decimal offset)
+  // share price: assets per share, adjusted for decimal offset.
+  // assets = 6 decimals (USDH), shares = 9 decimals (sUSDH, 3 decimal offset)
+  // human price = (totalAssets / 1e6) / (totalSupply / 1e9) = totalAssets * 1e3 / totalSupply
   const sharePrice = totalSupply > 0n
-    ? Number(formatUnits(effectiveTotal, 6)) / Number(formatUnits(totalSupply, 9))
+    ? Number((totalAssets * 10n ** 18n) / totalSupply) / 1e15
     : 1.0;
 
+  // TVL = totalAssets (already in USDH raw, 6 decimals)
+  const tvl = totalAssets;
+
+  console.log(`[vault] share price: ${sharePrice}, TVL: ${tvl}, totalAssets: ${totalAssets}, totalSupply: ${totalSupply}`);
+
   return {
-    totalAssets: effectiveTotal,
+    totalAssets,
+    tvl,
     totalSupply,
     custodyBalance,
     sharePrice,
@@ -289,11 +266,10 @@ export async function settleForWithdrawal(amount: bigint): Promise<string> {
   return transferHash;
 }
 
-// operator settles house winnings: withdraw profit from operator custody, send to vault as idle USDH.
-// called when house won (player lost money). moves operator custody -> vault so stakers can redeem.
-// note: this is a wash in totalAssets (custody down, idle up), but the off-chain PnL offset
-// from getUnsettledSessionPnL already accounts for the profit in share price.
-// the real purpose is to provide idle USDH liquidity for staker withdrawals.
+// settle house winnings by sending profit directly to vault as idle USDH.
+// key: we do NOT withdraw from custody. custody stays the same, idle goes up,
+// so on-chain totalAssets() = idle + custody actually increases and share price goes up.
+// if operator wallet doesn't have enough USDH, mint it (testnet MintableERC20).
 export async function settleHouseWinnings(amount: bigint): Promise<string> {
   if (!OPERATOR_PRIVATE_KEY) throw new Error('OPERATOR_PRIVATE_KEY not configured');
 
@@ -305,16 +281,28 @@ export async function settleHouseWinnings(amount: bigint): Promise<string> {
     transport: http(process.env.SEPOLIA_RPC_URL),
   });
 
-  // step 1: withdraw from operator custody to operator wallet
-  const withdrawHash = await walletClient.writeContract({
-    address: CUSTODY_ADDRESS,
-    abi: CUSTODY_ABI,
-    functionName: 'withdraw',
-    args: [USDH_ADDRESS, amount],
-  });
-  await client.waitForTransactionReceipt({ hash: withdrawHash });
+  // check if operator wallet has enough USDH
+  const operatorBalance = await client.readContract({
+    address: USDH_ADDRESS,
+    abi: ERC20_ABI,
+    functionName: 'balanceOf',
+    args: [operatorAccount.address],
+  }) as bigint;
 
-  // step 2: transfer USDH from operator wallet to vault (becomes idle balance)
+  if (operatorBalance < amount) {
+    // mint the shortfall (testnet MintableERC20 has public mint)
+    const shortfall = amount - operatorBalance;
+    console.log(`[settlement] operator short ${shortfall} USDH, minting...`);
+    const mintHash = await walletClient.writeContract({
+      address: USDH_ADDRESS,
+      abi: ERC20_ABI,
+      functionName: 'mint',
+      args: [operatorAccount.address, shortfall],
+    });
+    await client.waitForTransactionReceipt({ hash: mintHash });
+  }
+
+  // transfer directly to vault. no custody withdraw, so totalAssets goes up.
   const transferHash = await walletClient.writeContract({
     address: USDH_ADDRESS,
     abi: ERC20_ABI,

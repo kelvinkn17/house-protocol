@@ -149,7 +149,7 @@ function PlayLayoutInner() {
 }
 
 function SessionBar() {
-  const { login, walletAddress } = useAuthContext()
+  const { login, walletAddress, ready } = useAuthContext()
   const { play } = useSound()
   const session = useSession()
   const [depositInput, setDepositInput] = useState('100')
@@ -173,6 +173,22 @@ function SessionBar() {
   const scannerUrl = channelId
     ? `https://nitrolite-scanner.kwek.dev/sessions/${channelId}`
     : null
+
+  // privy still initializing
+  if (!ready) {
+    return (
+      <div
+        className="mb-6 bg-white border-2 border-black rounded-2xl p-5 flex items-center gap-3"
+        style={{ boxShadow: '4px 4px 0px black' }}
+      >
+        <div className="w-5 h-5 border-2 border-black/30 border-t-black rounded-full animate-spin" />
+        <div>
+          <p className="text-xs font-mono text-black/40 uppercase mb-0.5">Session</p>
+          <p className="text-sm font-mono text-black/40">Initializing wallet...</p>
+        </div>
+      </div>
+    )
+  }
 
   // no wallet
   if (sessionPhase === 'no_wallet') {

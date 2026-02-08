@@ -22,7 +22,7 @@ export default function ConnectButton({ className }: ConnectButtonProps) {
       >
         <div className="h-5 w-5 rounded-full border-2 border-black/30 border-t-black animate-spin" />
         <span className="text-xs font-black text-black/40 uppercase tracking-wide hidden sm:inline">
-          Loading
+          Initializing...
         </span>
       </div>
     )
