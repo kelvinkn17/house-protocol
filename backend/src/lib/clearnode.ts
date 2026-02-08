@@ -274,6 +274,10 @@ async function closeAppSession(
     ws!.on('message', handleMessage);
 
     try {
+      console.log("ALLOCATIONS_WHEN_CLOSING", {
+        allocations,
+        appSessionId
+      })
       const msg = await createCloseAppSessionMessage(brokerSessionSigner, {
         app_session_id: appSessionId as Hex,
         allocations,

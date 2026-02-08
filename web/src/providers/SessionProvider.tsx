@@ -182,14 +182,18 @@ export function SessionProvider({ children }: { children: ReactNode }) {
         transport: custom(provider),
       })
 
+      // cap at what the player is actually owed, not the full custody balance
+      const owed = BigInt(finalPlayerBalance)
+      const toWithdraw = available < owed ? available : owed
+
       const txHash = await wc.writeContract({
         address: CUSTODY_ADDRESS,
         abi: CUSTODY_ABI,
         functionName: 'withdraw',
-        args: [USDH_ADDRESS, available],
+        args: [USDH_ADDRESS, toWithdraw],
       })
       await publicClient.waitForTransactionReceipt({ hash: txHash })
-      console.log(`[session] custody withdraw complete: ${txHash}, amount=${available}`)
+      console.log(`[session] custody withdraw complete: ${txHash}, amount=${toWithdraw}`)
     } catch (err) {
       console.error('[session] custody withdraw failed:', (err as Error).message)
       // don't throw, session is already closed on backend side

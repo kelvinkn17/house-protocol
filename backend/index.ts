@@ -9,6 +9,7 @@ import { APP_PORT } from './src/config/main-config.ts';
 import { exampletRoute } from './src/routes/exampleRoutes.ts';
 import { authRoutes } from './src/routes/authRoutes.ts';
 import { vaultRoutes } from './src/routes/vaultRoutes.ts';
+import { gameRoutes } from './src/routes/gameRoutes.ts';
 
 // Game handler
 import { GameHandler } from './src/handlers/game.handler.ts';
@@ -57,6 +58,7 @@ fastify.get('/', async (_request: FastifyRequest, reply: FastifyReply) => {
 fastify.register(authRoutes, { prefix: '/auth' });
 fastify.register(exampletRoute, { prefix: '/example' });
 fastify.register(vaultRoutes, { prefix: '/vault' });
+fastify.register(gameRoutes, { prefix: '/game' });
 
 // Register WebSocket game handler (must be a plugin so WS decorator is available)
 fastify.register(GameHandler.gameHandlerPlugin);

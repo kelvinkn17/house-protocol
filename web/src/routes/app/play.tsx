@@ -7,6 +7,7 @@ import { useSound } from '@/providers/SoundProvider'
 import { useState } from 'react'
 import { parseUnits, formatUnits } from 'viem'
 import FaucetBadge from '@/components/FaucetBadge'
+import PlayHistory from '@/components/games/PlayHistory'
 
 const GAMES: { slug: string; name: string; type: string; color: string; Icon: LucideIcon }[] = [
   { slug: 'double-or-nothing', name: 'Double or Nothing', type: 'cash-out', color: '#CDFF57', Icon: Coins },
@@ -138,6 +139,10 @@ function PlayLayoutInner() {
         <SessionBar />
 
         <Outlet />
+
+        <div className="mt-6">
+          <PlayHistory />
+        </div>
       </div>
     </div>
   )

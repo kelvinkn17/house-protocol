@@ -536,6 +536,7 @@ async function handleReveal(ws: WebSocket, playerId: string, payload: RevealPayl
   // update session-level balances
   session.playerBalance = newPlayerBalance;
   session.houseBalance = newHouseBalance;
+  console.log(`[session] round settled: player=${newPlayerBalance} house=${newHouseBalance} bet=${betAmount} won=${outcome.playerWon}`);
 
   // update game state
   game.state = updatedState;
@@ -655,6 +656,12 @@ async function closeClearnodeAndFinalize(
     try {
       const playerFinal = session.playerBalance / DECIMALS;
       const houseFinal = session.houseBalance / DECIMALS;
+
+      console.log("CLOSE_APP_SESSION", {
+        obj1: { participant: dbSession.playerId as Address, asset: ASSET_SYMBOL, amount: playerFinal.toString() },
+        obj2: { participant: brokerAddr, asset: ASSET_SYMBOL, amount: houseFinal.toString() }
+      })
+      
       await ClearnodeBackend.closeAppSession(dbSession.channelId, [
         { participant: dbSession.playerId as Address, asset: ASSET_SYMBOL, amount: playerFinal.toString() },
         { participant: brokerAddr, asset: ASSET_SYMBOL, amount: houseFinal.toString() },
@@ -693,7 +700,7 @@ async function closeClearnodeAndFinalize(
   console.log(`[session] ${sessionId} closed, player=${finalPlayer} house=${finalHouse} pnl=${housePnL > 0n ? '+' : ''}${housePnL}`);
 
   // fire-and-forget snapshot so TVL/price updates immediately
-  triggerSnapshot().catch(() => {});
+  triggerSnapshot().catch(() => { });
 }
 
 // backend handles close entirely, no more 2-step dance with frontend
@@ -710,6 +717,11 @@ async function handleCloseSession(ws: WebSocket, playerId: string, payload: Clos
   activeGames.delete(sessionId);
 
   await closeClearnodeAndFinalize(sessionId, session, ws);
+
+  console.log("CLOSING_SESSION", {
+    finalPlayerBalance: session.playerBalance.toString(),
+    finalHouseBalance: session.houseBalance.toString(),
+  })
 
   send(ws, 'session_closed', {
     sessionId,
