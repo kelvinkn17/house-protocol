@@ -243,7 +243,7 @@ async function printBalances(step: string): Promise<void> {
   const playerCustody = await getCustodyBalance(playerAccount.address)
   const brokerCustody = await getCustodyBalance(brokerAccount.address)
 
-  console.log(`  Custody:  Player=${formatUnits(playerCustody, 6)} | Broker=${formatUnits(brokerCustody, 6)} USDH`)
+  console.log(`  Custody:  Player=${(Number(playerCustody) / 1_000_000).toFixed(2)} | Broker=${(Number(brokerCustody) / 1_000_000).toFixed(2)} USDH`)
 
   try {
     const pKey = generatePrivateKey()
@@ -525,14 +525,14 @@ async function main() {
   // Initial balances
   await printBalances('INITIAL')
 
-  // Step 1: Deposit USDH to custody
-  console.log('\n=== STEP 1: Deposit USDH to custody (player=20, broker=200) ===')
-  await depositToCustody(playerWalletClient, playerAccount.address, 20n, 'Player')
-  await depositToCustody(brokerWalletClient, brokerAccount.address, 200n, 'Broker')
+  // // Step 1: Deposit USDH to custody
+  // console.log('\n=== STEP 1: Deposit USDH to custody (player=20, broker=200) ===')
+  // await depositToCustody(playerWalletClient, playerAccount.address, 20n, 'Player')
+  // await depositToCustody(brokerWalletClient, brokerAccount.address, 200n, 'Broker')
 
-  console.log('  Waiting for ledger sync (5s)...')
-  await new Promise(r => setTimeout(r, 5000))
-  await printBalances('After Deposit')
+  // console.log('  Waiting for ledger sync (5s)...')
+  // await new Promise(r => setTimeout(r, 5000))
+  // await printBalances('After Deposit')
 
   // Step 2: Open session with initial allocations
   // Player puts 20, broker puts 200 = total pool of 220
@@ -560,11 +560,11 @@ async function main() {
   await new Promise(r => setTimeout(r, 3000))
   await printBalances('After Session Close')
 
-  // Step 5: Each withdraws 2 USDH
-  console.log('\n=== STEP 5: Each withdraws 2 USDH ===')
-  await withdrawFromCustody(playerWalletClient, 2n, 'Player')
-  await withdrawFromCustody(brokerWalletClient, 2n, 'Broker')
-  await printBalances('After Withdraw')
+  // // Step 5: Each withdraws 2 USDH
+  // console.log('\n=== STEP 5: Each withdraws 2 USDH ===')
+  // await withdrawFromCustody(playerWalletClient, 2n, 'Player')
+  // await withdrawFromCustody(brokerWalletClient, 2n, 'Broker')
+  // await printBalances('After Withdraw')
 
   console.log('\n=== DONE ===')
   console.log('')

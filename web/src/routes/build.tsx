@@ -50,11 +50,11 @@ function BuildLayout() {
 
   return (
     <AppLayout noPadding fullWidth>
-      <div className="h-full bg-[#EDEBE6] flex">
+      <div className="h-[calc(100vh-5rem)] bg-[#EDEBE6] flex">
         {/* sidebar */}
         <aside
           ref={sidebarRef}
-          className="hidden lg:flex flex-col w-64 h-full bg-white border-r-2 border-black"
+          className="hidden lg:flex flex-col w-64 bg-white border-r-2 border-black"
           style={{ opacity: 0 }}
         >
           {/* header */}
@@ -158,7 +158,7 @@ function BuildLayout() {
         </div>
 
         {/* main content */}
-        <main className="flex-1 h-full overflow-y-auto pb-20 lg:pb-0">
+        <main className="flex-1 overflow-y-auto pb-20 lg:pb-0">
           {isIndex && (!authReady || isLoading) ? (
             <div className="p-4 md:p-6 lg:p-8 max-w-2xl mx-auto">
               <div className="bg-white border-2 border-black rounded-2xl p-8 text-center" style={{ boxShadow: '5px 5px 0px black' }}>

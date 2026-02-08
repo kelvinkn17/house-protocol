@@ -18,44 +18,8 @@ function PolkaDots({ className = '' }: { className?: string }) {
 }
 
 export default function InfraSection() {
-  const infra = [
-    { name: 'VAULTS', tech: 'ERC-4626' },
-    { name: 'RANDOMNESS', tech: 'Chainlink VRF' },
-    { name: 'STATE CHANNELS', tech: 'Yellow Network' },
-    { name: 'BRIDGE', tech: 'Circle CCTP v2' },
-    { name: 'FRONTEND', tech: 'TanStack Start' },
-    { name: 'DATABASE', tech: 'Prisma + PG' },
-  ]
-
   return (
     <>
-      <section className="py-32 px-4 md:px-8 relative bg-[#EDEBE6]">
-        <div className="mx-auto max-w-6xl relative">
-          <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-5">
-            {infra.map((item, i) => (
-              <AnimateComponent key={item.name} onScroll delay={200 + i * 70}>
-                <div
-                  className="bg-white p-5 sm:p-6 rounded-2xl border-2 border-black flex items-center justify-between gap-3 shadow-[5px_5px_0px_black] hover:translate-x-[5px] hover:translate-y-[5px] hover:shadow-none transition-all duration-150"
-                >
-                  <span className="text-base sm:text-lg font-black text-black tracking-tight">{item.name}</span>
-                  <span className="text-xs font-mono text-black/60 px-3 py-1.5 border-2 border-black rounded-full bg-[#EDEBE6] shrink-0">
-                    {item.tech}
-                  </span>
-                </div>
-              </AnimateComponent>
-            ))}
-          </div>
-
-          <AnimateComponent onScroll variant="fadeIn" delay={600}>
-            <div className="mt-8 flex items-center justify-center gap-4 text-xs font-mono text-black/50">
-              <span className="w-8 h-px bg-black/20" />
-              <span>Audited. Production-ready. Proven.</span>
-              <span className="w-8 h-px bg-black/20" />
-            </div>
-          </AnimateComponent>
-        </div>
-      </section>
-
       {/* diagonal cream-to-dark transition */}
       <div className="relative h-40 md:h-52 overflow-hidden">
         {/* cream background */}

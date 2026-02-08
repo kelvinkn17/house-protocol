@@ -1,5 +1,5 @@
 import Lenis from 'lenis'
-import { useEffect, useRef } from 'react'
+import { useEffect, useRef, useCallback } from 'react'
 import { useLocation } from '@tanstack/react-router'
 import { gsap } from 'gsap'
 import { ScrollTrigger } from 'gsap/ScrollTrigger'
@@ -8,44 +8,57 @@ gsap.registerPlugin(ScrollTrigger)
 
 export default function LenisSmoothScrollProvider() {
   const lenisRef = useRef<Lenis | null>(null)
+  const tickerRef = useRef<((time: number) => void) | null>(null)
   const location = useLocation()
+  const isBuild = location.pathname.startsWith('/build')
 
-  useEffect(() => {
+  const createLenis = useCallback(() => {
+    if (lenisRef.current) return
+
     const lenis = new Lenis({
       lerp: 0.1,
       smoothWheel: true,
     })
 
     lenisRef.current = lenis
-
     lenis.on('scroll', ScrollTrigger.update)
 
-    gsap.ticker.add((time) => {
+    const tick = (time: number) => {
       lenis.raf(time * 1000)
-    })
-
+    }
+    tickerRef.current = tick
+    gsap.ticker.add(tick)
     gsap.ticker.lagSmoothing(0)
+  }, [])
 
-    return () => {
-      lenis.destroy()
+  const destroyLenis = useCallback(() => {
+    if (tickerRef.current) {
+      gsap.ticker.remove(tickerRef.current)
+      tickerRef.current = null
+    }
+    if (lenisRef.current) {
+      lenisRef.current.destroy()
+      lenisRef.current = null
     }
   }, [])
 
-  // disable smooth scroll on build pages, it breaks normal scrolling there
+  // create or destroy based on route
   useEffect(() => {
-    const lenis = lenisRef.current
-    if (!lenis) return
-
-    if (location.pathname.startsWith('/build')) {
-      lenis.stop()
+    if (isBuild) {
+      destroyLenis()
     } else {
-      lenis.start()
+      createLenis()
     }
-  }, [location.pathname])
+  }, [isBuild, createLenis, destroyLenis])
+
+  // cleanup on unmount
+  useEffect(() => {
+    return () => destroyLenis()
+  }, [destroyLenis])
 
   // scroll to top on route change
   useEffect(() => {
-    if (location.pathname.startsWith('/build')) {
+    if (isBuild) {
       window.scrollTo(0, 0)
       return
     }

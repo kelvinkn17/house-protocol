@@ -16,11 +16,9 @@ import {
     createAuthVerifyMessageFromChallenge,
     createEIP712AuthMessageSigner,
     createAppSessionMessage,
-    createSubmitAppStateMessage,
     createCloseAppSessionMessage,
     createGetLedgerBalancesMessage,
     RPCProtocolVersion,
-    RPCAppStateIntent,
 } from '@erc7824/nitrolite'
 import { USDH_ADDRESS, CUSTODY_ADDRESS, BROKER_ADDRESS } from './types'
 
@@ -245,7 +243,7 @@ async function printBalances(step: string): Promise<void> {
     const playerCustody = await getCustodyBalance(playerAccount.address)
     const brokerCustody = await getCustodyBalance(brokerAccount.address)
 
-    console.log(`  Custody:  Player=${formatUnits(playerCustody, 6)} | Broker=${formatUnits(brokerCustody, 6)} USDH`)
+    console.log(`  Custody:  Player=${(Number(playerCustody) / 1_000_000).toFixed(2)} | Broker=${(Number(brokerCustody) / 1_000_000).toFixed(2)} USDH`)
 
     try {
         const pKey = generatePrivateKey()
@@ -331,8 +329,6 @@ interface SessionState {
     ws: WebSocket
     sessionId: Hex | null
     authenticated: boolean
-    stateVersion: number
-    lastAllocations: { participant: Address; asset: string; amount: string }[]
 }
 
 async function openSession(
@@ -341,7 +337,7 @@ async function openSession(
 ): Promise<SessionState> {
     return new Promise((resolve, reject) => {
         const ws = new WebSocket(CLEARNODE_URL)
-        const state: SessionState = { ws, sessionId: null, authenticated: false, stateVersion: 1, lastAllocations: [] }
+        const state: SessionState = { ws, sessionId: null, authenticated: false }
 
         const authParams = {
             address: playerAccount.address,
@@ -401,7 +397,7 @@ async function openSession(
                         const definition = {
                             protocol: RPCProtocolVersion.NitroRPC_0_4,
                             participants: [playerAccount.address, brokerAccount.address],
-                            weights: [100, 100],
+                            weights: [100, 0],
                             quorum: 100,
                             challenge: 0,
                             nonce: Date.now(),
@@ -450,16 +446,21 @@ async function openSession(
     })
 }
 
-async function closeSession(state: SessionState): Promise<void> {
+async function closeSession(
+    state: SessionState,
+    playerAmount: number,
+    brokerAmount: number
+): Promise<void> {
     return new Promise((resolve, reject) => {
         if (!state.sessionId) {
             reject(new Error('No session to close'))
             return
         }
-        if (state.lastAllocations.length === 0) {
-            reject(new Error('No allocations to close with'))
-            return
-        }
+
+        const allocations = [
+            { participant: playerAccount.address, asset: ASSET_SYMBOL, amount: playerAmount.toString() },
+            { participant: brokerAccount.address, asset: ASSET_SYMBOL, amount: brokerAmount.toString() },
+        ]
 
         const handleMessage = async (data: any) => {
             try {
@@ -492,7 +493,7 @@ async function closeSession(state: SessionState): Promise<void> {
 
         createCloseAppSessionMessage(playerSessionSigner, {
             app_session_id: state.sessionId,
-            allocations: state.lastAllocations,
+            allocations,
         }).then((msg) => {
             state.ws.send(msg)
         })
@@ -505,81 +506,6 @@ async function closeSession(state: SessionState): Promise<void> {
 }
 
 // =============================================================================
-// SEND PAYMENT (State Transition)
-// =============================================================================
-
-// With weights [100, 100] and quorum 100, either participant's signature
-// alone meets the quorum — so either player or broker can initiate state updates.
-async function sendPayment(
-    session: SessionState,
-    signer: ReturnType<typeof createECDSAMessageSigner>,
-    newPlayerAmount: bigint,
-    newBrokerAmount: bigint
-) {
-    session.stateVersion++
-    const version = session.stateVersion
-    console.log(`\n--- Sending payment: v${version} (player=${newPlayerAmount}, broker=${newBrokerAmount}) ---`)
-
-    const allocations = [
-        { participant: playerAccount.address, asset: ASSET_SYMBOL, amount: newPlayerAmount.toString() },
-        { participant: brokerAccount.address, asset: ASSET_SYMBOL, amount: newBrokerAmount.toString() },
-    ]
-    session.lastAllocations = allocations
-
-    const msg = await createSubmitAppStateMessage<RPCProtocolVersion.NitroRPC_0_4>(
-        signer,
-        {
-            app_session_id: session.sessionId!,
-            intent: RPCAppStateIntent.Operate,
-            version,
-            allocations,
-        }
-    )
-
-    // Send instantly through ClearNode
-    session.ws.send(msg)
-    console.log(`  Payment sent! v${version}: player=${newPlayerAmount}, broker=${newBrokerAmount}`)
-
-    // Wait for ClearNode response
-    const response = await new Promise<any>((resolve, reject) => {
-        const timeout = setTimeout(() => {
-            session.ws.off('message', handler)
-            reject(new Error(`Payment v${version} timeout`))
-        }, 10000)
-
-        const handler = (data: any) => {
-            try {
-                const parsed = JSON.parse(data.toString())
-                if (parsed.res) {
-                    const method = parsed.res[1]
-                    const params = parsed.res[2]
-                    if (method === 'asu' && params?.participant_allocations) {
-                        console.log('  Allocations:', JSON.stringify(params.participant_allocations))
-                        console.log(`    ✓ State updated to v${version}`)
-                    }
-                    // if (method === 'bu' && params?.balance_updates) {
-                    //     console.log('  Balance Update:', JSON.stringify(params.balance_updates))
-                    // }
-                    if (method === 'submit_app_state') {
-                        session.ws.off('message', handler)
-                        clearTimeout(timeout)
-                        resolve(params)
-                    }
-                    if (method === 'error') {
-                        session.ws.off('message', handler)
-                        clearTimeout(timeout)
-                        reject(new Error(params?.error || params?.message))
-                    }
-                }
-            } catch (e) { /* ignore */ }
-        }
-        session.ws.on('message', handler)
-    })
-
-    return response
-}
-
-// =============================================================================
 // MAIN
 // =============================================================================
 
@@ -589,9 +515,8 @@ async function main() {
     console.log('Flow:')
     console.log('  1. Deposit USDH to custody (player=20, broker=200)')
     console.log('  2. Open session: player=20, broker=200')
-    console.log('  3. Real off-chain transfers via state transitions (weights [100,100])')
-    console.log('  4. Close session: player=2, broker=218')
-    console.log('  5. Each withdraws 2 USDH from custody')
+    console.log('  3. Close session: player=20.5, broker=199.5')
+    console.log('  4. Each withdraws 2 USDH from custody')
     console.log('')
     console.log(`Player: ${playerAccount.address}`)
     console.log(`Broker: ${brokerAccount.address}`)
@@ -599,7 +524,7 @@ async function main() {
     // Initial balances
     await printBalances('INITIAL')
 
-    // Step 1: Deposit USDH to custody
+    // // Step 1: Deposit USDH to custody
     // console.log('\n=== STEP 1: Deposit USDH to custody (player=20, broker=200) ===')
     // await depositToCustody(playerWalletClient, playerAccount.address, 20n, 'Player')
     // await depositToCustody(brokerWalletClient, brokerAccount.address, 200n, 'Broker')
@@ -614,40 +539,19 @@ async function main() {
     const session = await openSession(20n, 200n)
     await printBalances('After Session Open')
 
-    // Step 3: Off-chain transfers via state transitions
-    // Each sendPayment submits new allocations signed by the sender.
-    // With weights [100, 100], either signer can initiate.
-    // Running: 20/200 → 18/202 → 28/192 → 0/220 → 2/218
-    console.log('\n=== STEP 3: Off-chain transfers (state transitions) ===', session.sessionId!)
-
-    // Transfer 1: player sends 2 to broker (player signs)
-    await sendPayment(session, playerSessionSigner, 18n, 202n)
-
-    // Transfer 2: broker sends 10 to player (broker signs — weights [100,100] allows this)
-    await sendPayment(session, brokerSigner, 28n, 192n)
-
-    // // Transfer 3: player sends 28 to broker (player signs)
-    // await sendPayment(session, playerSessionSigner, 0n, 220n)
-
-    // // Transfer 4: broker sends 2 to player (broker signs)
-    // await sendPayment(session, brokerSigner, 2n, 218n)
-
-    // Small delay for state to settle before closing
-    await new Promise(r => setTimeout(r, 2000))
-
-    // Step 4: Close session with final allocations
-    // Player gets 2, broker gets 218 (from the original 220 pool)
-    console.log('\n=== STEP 4: Close Session (player=2, broker=218) ===')
-    await closeSession(session)
+    // Step 3: Close session with final allocations
+    // Player gets 20.5 (+0.5), broker gets 199.5 (-0.5)
+    console.log('\n=== STEP 3: Close Session (player=20.5, broker=199.5) ===')
+    await closeSession(session, 20.5, 199.5)
     session.ws.close()
     await new Promise(r => setTimeout(r, 3000))
     await printBalances('After Session Close')
 
-    // // Step 5: Each withdraws 2 USDH
-    // console.log('\n=== STEP 5: Each withdraws 2 USDH ===')
-    // await withdrawFromCustody(playerWalletClient, 2n, 'Player')
-    // await withdrawFromCustody(brokerWalletClient, 2n, 'Broker')
-    // await printBalances('After Withdraw')
+    // Step 4: Each withdraws 2 USDH
+    console.log('\n=== STEP 4: Each withdraws 2 USDH ===')
+    await withdrawFromCustody(playerWalletClient, 2n, 'Player')
+    await withdrawFromCustody(brokerWalletClient, 2n, 'Broker')
+    await printBalances('After Withdraw')
 
     console.log('\n=== DONE ===')
     console.log('')

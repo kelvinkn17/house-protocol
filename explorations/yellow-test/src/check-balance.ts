@@ -1,7 +1,9 @@
 import 'dotenv/config'
-import { privateKeyToAccount } from 'viem/accounts'
+import { WebSocket } from 'ws'
+import { privateKeyToAccount, generatePrivateKey } from 'viem/accounts'
 import {
   createPublicClient,
+  createWalletClient,
   http,
   type Hex,
   type Address,
@@ -9,21 +11,19 @@ import {
   formatEther,
 } from 'viem'
 import { sepolia } from 'viem/chains'
-import { USDH_ADDRESS, CUSTODY_ADDRESS, BROKER_ADDRESS } from './types'
+import {
+  createECDSAMessageSigner,
+  createAuthRequestMessage,
+  createAuthVerifyMessageFromChallenge,
+  createEIP712AuthMessageSigner,
+  createGetLedgerBalancesMessage,
+} from '@erc7824/nitrolite'
+import { USDH_ADDRESS, CUSTODY_ADDRESS, BROKER_ADDRESS, CLEARNODE_URL, ASSET_SYMBOL } from './types'
 
-const PRIVATE_KEY = process.env.PRIVATE_KEY as Hex
-const BROKER_PRIVATE_KEY = process.env.BROKER_PRIVATE_KEY as Hex
-const OPERATOR_PRIVATE_KEY = process.env.OPERATOR_PRIVATE_KEY as Hex
 const RPC_URL = process.env.RPC_URL || 'https://ethereum-sepolia-rpc.publicnode.com'
 
-if (!PRIVATE_KEY) {
-  console.error('ERROR: Missing PRIVATE_KEY in .env')
-  process.exit(1)
-}
-
-const mainAccount = privateKeyToAccount(PRIVATE_KEY)
-const brokerAccount = BROKER_PRIVATE_KEY ? privateKeyToAccount(BROKER_PRIVATE_KEY) : null
-const operatorAccount = OPERATOR_PRIVATE_KEY ? privateKeyToAccount(OPERATOR_PRIVATE_KEY) : null
+const PLAYER = '0x8d74843D6f308ab6D509b2C67f7d82720e98B640';
+const OPERATOR = '0x7952a3087B0f48F427CcA652fe0EEf1a2d516A62';
 
 const publicClient = createPublicClient({
   chain: sepolia,
@@ -76,6 +76,105 @@ async function getCustodyBalance(account: Address): Promise<bigint> {
   return balances[0]?.[0] ?? 0n
 }
 
+async function getLedgerBalance(address: Address): Promise<bigint> {
+  const sessionKey = generatePrivateKey()
+  const sessionAccount = privateKeyToAccount(sessionKey)
+  const sessionSigner = createECDSAMessageSigner(sessionKey)
+
+  const walletClient = createWalletClient({
+    account,
+    chain: sepolia,
+    transport: http(RPC_URL),
+  })
+
+  return new Promise((resolve, reject) => {
+    const ws = new WebSocket(CLEARNODE_URL)
+    let ledgerBalance = 0n
+
+    const authParams = {
+      address: account.address,
+      session_key: sessionAccount.address,
+      application: 'check-balance',
+      scope: 'check-balance',
+      expires_at: BigInt(Math.floor(Date.now() / 1000) + 300),
+      allowances: [{ asset: ASSET_SYMBOL, amount: '0' }],
+    }
+
+    ws.on('open', async () => {
+      try {
+        const authRequestMsg = await createAuthRequestMessage({
+          address: authParams.address,
+          application: authParams.application,
+          session_key: authParams.session_key,
+          allowances: authParams.allowances,
+          expires_at: authParams.expires_at,
+          scope: authParams.scope,
+        })
+        ws.send(authRequestMsg)
+      } catch (err) {
+        reject(err)
+      }
+    })
+
+    ws.on('message', async (data) => {
+      try {
+        const parsed = JSON.parse(data.toString())
+        if (parsed.res) {
+          const method = parsed.res[1]
+          const params = parsed.res[2]
+
+          if (method === 'auth_challenge') {
+            const challenge = params?.challenge_message
+            if (challenge) {
+              const eip712Signer = createEIP712AuthMessageSigner(
+                walletClient,
+                {
+                  scope: authParams.scope,
+                  session_key: authParams.session_key,
+                  expires_at: authParams.expires_at,
+                  allowances: authParams.allowances,
+                },
+                { name: authParams.application }
+              )
+              const verifyMsg = await createAuthVerifyMessageFromChallenge(eip712Signer, challenge)
+              ws.send(verifyMsg)
+            }
+          }
+
+          if (method === 'auth_verify' && params?.success) {
+            const msg = await createGetLedgerBalancesMessage(sessionSigner)
+            ws.send(msg)
+          }
+
+          if (method === 'get_ledger_balances') {
+            const balances = params?.ledger_balances || params?.balances
+            if (balances && Array.isArray(balances)) {
+              for (const bal of balances) {
+                if (bal.asset === ASSET_SYMBOL) {
+                  ledgerBalance = BigInt(Math.floor(parseFloat(bal.amount)))
+                }
+              }
+            }
+            ws.close()
+            resolve(ledgerBalance)
+          }
+        }
+      } catch (e) {
+        // ignore parse errors
+      }
+    })
+
+    ws.on('error', (err) => {
+      reject(err)
+    })
+
+    setTimeout(() => {
+      ws.close()
+      reject(new Error('Timeout getting ledger balance'))
+    }, 15000)
+  })
+}
+
 async function main() {
   console.log('=== Balance Check ===\n')
 
@@ -86,49 +185,38 @@ async function main() {
 
   // Player balances
   console.log('PLAYER:')
-  console.log(`  Address: ${mainAccount.address}`)
-  const playerETH = await getETHBalance(mainAccount.address)
-  const playerUSDH = await getUSDHBalance(mainAccount.address)
-  const playerCustody = await getCustodyBalance(mainAccount.address)
+  console.log(`  Address: ${PLAYER}`)
+  const playerETH = await getETHBalance(PLAYER)
+  const playerUSDH = await getUSDHBalance(PLAYER)
+  const playerCustody = await getCustodyBalance(PLAYER)
   console.log(`  ETH (wallet):   ${formatEther(playerETH)} ETH`)
   console.log(`  USDH (wallet):  ${formatUnits(playerUSDH, 6)} USDH`)
   console.log(`  USDH (custody): ${formatUnits(playerCustody, 6)} USDH`)
   console.log('')
 
-  // Broker balances
-  const brokerAddr = brokerAccount?.address || BROKER_ADDRESS
-  console.log('BROKER:')
-  console.log(`  Address: ${brokerAddr}`)
-  const brokerETH = await getETHBalance(brokerAddr)
-  const brokerUSDH = await getUSDHBalance(brokerAddr)
-  const brokerCustody = await getCustodyBalance(brokerAddr)
-  console.log(`  ETH (wallet):   ${formatEther(brokerETH)} ETH`)
-  console.log(`  USDH (wallet):  ${formatUnits(brokerUSDH, 6)} USDH`)
-  console.log(`  USDH (custody): ${formatUnits(brokerCustody, 6)} USDH`)
-  console.log('')
+  console.log('OPERATOR:')
+  console.log(`  Address: ${OPERATOR}`)
+  const operatorETH = await getETHBalance(OPERATOR)
+  const operatorUSDH = await getUSDHBalance(OPERATOR)
+  const operatorCustody = await getCustodyBalance(OPERATOR)
+  console.log(`  ETH (wallet):   ${formatEther(operatorETH)} ETH`)
+  console.log(`  USDH (wallet):  ${formatUnits(operatorUSDH, 6)} USDH`)
+  console.log(`  USDH (custody): ${formatUnits(operatorCustody, 6)} USDH`)
 
-  // Operator balances
-  if (operatorAccount) {
-    console.log('OPERATOR (broker):')
-    console.log(`  Address: ${operatorAccount.address}`)
-    const operatorETH = await getETHBalance(operatorAccount.address)
-    const operatorUSDH = await getUSDHBalance(operatorAccount.address)
-    const operatorCustody = await getCustodyBalance(operatorAccount.address)
-    console.log(`  ETH (wallet):   ${formatEther(operatorETH)} ETH`)
-    console.log(`  USDH (wallet):  ${formatUnits(operatorUSDH, 6)} USDH`)
-    console.log(`  USDH (custody): ${formatUnits(operatorCustody, 6)} USDH`)
-    console.log('')
-  }
-
-  // Summary
-  console.log('SUMMARY:')
-  console.log(`  Total USDH in custody: ${formatUnits(playerCustody + brokerCustody, 6)} USDH`)
-  console.log(`  Player custody (ledger units): ${playerCustody / 1000000n}`)
-  console.log(`  Broker custody (ledger units): ${brokerCustody / 1000000n}`)
-  if (operatorAccount) {
-    const operatorCustody = await getCustodyBalance(operatorAccount.address)
-    console.log(`  Operator custody (ledger units): ${operatorCustody / 1000000n}`)
-  }
+  // // Ledger balance (off-chain)
+  // console.log('LEDGER (off-chain):')
+  // console.log('  Fetching ledger balance...')
+  // try {
+  //   const playerLedger = await getLedgerBalance(addie as Address)
+  //   console.log(`  USDH (ledger):  ${playerLedger} ${ASSET_SYMBOL}`)
+  //   console.log('')
+  //   console.log('TOTAL:')
+  //   console.log(`  Wallet + Custody: ${formatUnits(playerCustody + playerUSDH, 6)} USDH`)
+  //   console.log(`  Ledger:           ${playerLedger} ${ASSET_SYMBOL}`)
+  // } catch (err) {
+  //   console.log(`  Failed to fetch ledger: ${err}`)
+  // }
+  // console.log('')
 }
 
 main().catch(console.error)

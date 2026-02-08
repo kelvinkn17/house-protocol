@@ -476,17 +476,17 @@ async function fullChannelFlow(
             console.log(`    ✓ Channel created: ${channelId}`)
             step = 'resize'
 
-            // Step 2: Resize (add funds) - wait a moment
-            await new Promise(r => setTimeout(r, 1000))
+            // // Step 2: Resize (add funds) - wait a moment
+            // await new Promise(r => setTimeout(r, 1000))
 
-            const resizeParams = {
-              channel_id: channelId,
-              allocate_amount: amount,
-              funds_destination: playerAccount.address,
-            }
-            const msg = await createResizeChannelMessage(sessionSigner, resizeParams)
-            console.log('    Sending resize_channel...')
-            ws.send(msg)
+            // const resizeParams = {
+            //   channel_id: channelId,
+            //   allocate_amount: amount,
+            //   funds_destination: playerAccount.address,
+            // }
+            // const msg = await createResizeChannelMessage(sessionSigner, resizeParams)
+            // console.log('    Sending resize_channel...')
+            // ws.send(msg)
           } else {
             ws.close()
             resolve({ success: false, error: params?.error || 'No channel_id' })
