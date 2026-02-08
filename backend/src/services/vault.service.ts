@@ -289,6 +289,80 @@ export async function settleForWithdrawal(amount: bigint): Promise<string> {
   return transferHash;
 }
 
+// operator settles house winnings: withdraw profit from operator custody, send to vault as idle USDH.
+// called when house won (player lost money). moves operator custody -> vault so stakers can redeem.
+// note: this is a wash in totalAssets (custody down, idle up), but the off-chain PnL offset
+// from getUnsettledSessionPnL already accounts for the profit in share price.
+// the real purpose is to provide idle USDH liquidity for staker withdrawals.
+export async function settleHouseWinnings(amount: bigint): Promise<string> {
+  if (!OPERATOR_PRIVATE_KEY) throw new Error('OPERATOR_PRIVATE_KEY not configured');
+
+  const client = getPublicClient();
+  const operatorAccount = privateKeyToAccount(OPERATOR_PRIVATE_KEY as `0x${string}`);
+  const walletClient = createWalletClient({
+    account: operatorAccount,
+    chain: sepolia,
+    transport: http(process.env.SEPOLIA_RPC_URL),
+  });
+
+  // step 1: withdraw from operator custody to operator wallet
+  const withdrawHash = await walletClient.writeContract({
+    address: CUSTODY_ADDRESS,
+    abi: CUSTODY_ABI,
+    functionName: 'withdraw',
+    args: [USDH_ADDRESS, amount],
+  });
+  await client.waitForTransactionReceipt({ hash: withdrawHash });
+
+  // step 2: transfer USDH from operator wallet to vault (becomes idle balance)
+  const transferHash = await walletClient.writeContract({
+    address: USDH_ADDRESS,
+    abi: ERC20_ABI,
+    functionName: 'transfer',
+    args: [VAULT_ADDRESS, amount],
+  });
+  await client.waitForTransactionReceipt({ hash: transferHash });
+  console.log(`[settlement] house winnings ${amount} -> vault idle: ${transferHash}`);
+
+  return transferHash;
+}
+
+// operator settles player winnings: withdraw from operator custody, transfer to player wallet.
+// called when player won (balance > deposit) and session closes.
+export async function settlePlayerWinnings(playerAddress: Address, amount: bigint): Promise<string> {
+  if (!OPERATOR_PRIVATE_KEY) throw new Error('OPERATOR_PRIVATE_KEY not configured');
+
+  const client = getPublicClient();
+  const operatorAccount = privateKeyToAccount(OPERATOR_PRIVATE_KEY as `0x${string}`);
+  const walletClient = createWalletClient({
+    account: operatorAccount,
+    chain: sepolia,
+    transport: http(process.env.SEPOLIA_RPC_URL),
+  });
+
+  // step 1: withdraw from operator custody to operator wallet
+  const withdrawHash = await walletClient.writeContract({
+    address: CUSTODY_ADDRESS,
+    abi: CUSTODY_ABI,
+    functionName: 'withdraw',
+    args: [USDH_ADDRESS, amount],
+  });
+  await client.waitForTransactionReceipt({ hash: withdrawHash });
+  console.log(`[settlement] operator custody withdraw: ${withdrawHash}`);
+
+  // step 2: transfer USDH from operator wallet to player
+  const transferHash = await walletClient.writeContract({
+    address: USDH_ADDRESS,
+    abi: ERC20_ABI,
+    functionName: 'transfer',
+    args: [playerAddress, amount],
+  });
+  await client.waitForTransactionReceipt({ hash: transferHash });
+  console.log(`[settlement] sent ${amount} to player ${playerAddress}: ${transferHash}`);
+
+  return transferHash;
+}
+
 export {
   VAULT_ADDRESS,
   USDH_ADDRESS,

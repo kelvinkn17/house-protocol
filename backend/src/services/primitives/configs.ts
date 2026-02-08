@@ -1,8 +1,9 @@
 // protocol fixed configs for our 3 demo games
 // these are the configs used by the House Protocol frontend
-// builders would create their own via the Builder Dashboard
+// builders create their own via the Builder Dashboard, stored in DB
 
 import type { GameConfig } from './types.ts';
+import { prismaQuery } from '../../lib/prisma.ts';
 
 export const DEMO_GAMES: Record<string, GameConfig> = {
   'double-or-nothing': {
@@ -60,8 +61,34 @@ export const DEMO_GAMES: Record<string, GameConfig> = {
   },
 };
 
-export function getGameConfig(slug: string): GameConfig | null {
-  return DEMO_GAMES[slug] || null;
+const PAYOUT_FORMULAS: Record<string, string> = {
+  'cash-out': '2^wins * (1 - houseEdge)',
+  'reveal-tiles': 'product(tiles/(tiles-1)) * (1 - houseEdge)',
+  'pick-number': '(1 / winProbability) * (1 - houseEdge)',
+};
+
+export async function getGameConfig(slug: string): Promise<GameConfig | null> {
+  // check hardcoded demos first
+  if (DEMO_GAMES[slug]) return DEMO_GAMES[slug];
+
+  // fall through to DB for builder games
+  const dbConfig = await (prismaQuery as any).builderGameConfig.findUnique({ where: { slug } });
+  if (!dbConfig || !dbConfig.isActive) return null;
+
+  return {
+    gameType: dbConfig.gameType,
+    protocolParams: {
+      houseEdgeBps: dbConfig.houseEdgeBps,
+      payoutFormula: PAYOUT_FORMULAS[dbConfig.gameType] || '',
+      maxBetFormula: 'custodyBalance / 100',
+    },
+    builderParams: {
+      name: dbConfig.name,
+      description: dbConfig.description,
+      slug: dbConfig.slug,
+      options: dbConfig.params as Record<string, unknown>,
+    },
+  };
 }
 
 export function getAllGameConfigs(): GameConfig[] {

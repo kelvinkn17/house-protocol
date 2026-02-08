@@ -6,7 +6,7 @@
 import type { FastifyInstance } from 'fastify';
 import type WebSocket from 'ws';
 import { GameService } from '../services/game.service.ts';
-import { getVaultState } from '../services/vault.service.ts';
+import { getVaultState, settlePlayerWinnings, settleHouseWinnings } from '../services/vault.service.ts';
 import { triggerSnapshot } from '../workers/vaultIndexer.ts';
 import { getPrimitive } from '../services/primitives/registry.ts';
 import { getGameConfig } from '../services/primitives/configs.ts';
@@ -357,7 +357,7 @@ async function handleStartGame(ws: WebSocket, playerId: string, payload: StartGa
     return;
   }
 
-  const config = getGameConfig(gameSlug);
+  const config = await getGameConfig(gameSlug);
   if (!config) {
     sendError(ws, `Unknown game: ${gameSlug}`, 'INVALID_GAME');
     return;
@@ -695,11 +695,35 @@ async function closeClearnodeAndFinalize(
   activeGames.delete(sessionId);
 
   // calculate and log session P&L for the house
+  const playerDeposit = BigInt(dbSession?.playerDeposit || '0');
   const houseDeposit = BigInt(dbSession?.houseDeposit || '0');
   const housePnL = session.houseBalance - houseDeposit;
   console.log(`[session] ${sessionId} closed, player=${finalPlayer} house=${finalHouse} pnl=${housePnL > 0n ? '+' : ''}${housePnL}`);
 
-  // fire-and-forget snapshot so TVL/price updates immediately
+  // settle on-chain immediately, then snapshot so TVL reflects the result.
+  // settlement worker is the safety net if this fails.
+  const playerPnL = session.playerBalance - playerDeposit;
+  try {
+    if (playerPnL > 0n) {
+      // player won: operator sends winnings from operator custody to player wallet
+      const tx = await settlePlayerWinnings(dbSession!.playerId as Address, playerPnL);
+      console.log(`[settlement] player winnings ${playerPnL} sent: ${tx}`);
+      await db.session.update({ where: { id: sessionId }, data: { status: 'SETTLED' } });
+    } else if (playerPnL < 0n) {
+      // house won: operator moves profit from operator custody to vault idle
+      const houseProfit = -playerPnL;
+      const tx = await settleHouseWinnings(houseProfit);
+      console.log(`[settlement] house winnings ${houseProfit} -> vault: ${tx}`);
+      await db.session.update({ where: { id: sessionId }, data: { status: 'SETTLED' } });
+    } else {
+      await db.session.update({ where: { id: sessionId }, data: { status: 'SETTLED' } });
+    }
+  } catch (err) {
+    // settlement failed, worker will retry later. session stays CLOSED.
+    console.error(`[settlement] ${sessionId} failed:`, (err as Error).message);
+  }
+
+  // snapshot after settlement so TVL/price is up to date
   triggerSnapshot().catch(() => { });
 }
 
@@ -716,6 +740,9 @@ async function handleCloseSession(ws: WebSocket, playerId: string, payload: Clos
   // forfeit any running game
   activeGames.delete(sessionId);
 
+  // grab deposit before close (close deletes session from memory)
+  const dbSession = await db.session.findUnique({ where: { id: sessionId }, select: { playerDeposit: true } });
+
   await closeClearnodeAndFinalize(sessionId, session, ws);
 
   console.log("CLOSING_SESSION", {
@@ -727,6 +754,7 @@ async function handleCloseSession(ws: WebSocket, playerId: string, payload: Clos
     sessionId,
     finalPlayerBalance: session.playerBalance.toString(),
     finalHouseBalance: session.houseBalance.toString(),
+    playerDeposit: dbSession?.playerDeposit || '0',
   });
 }
 
@@ -784,7 +812,7 @@ async function handleResumeSession(ws: WebSocket, playerId: string, payload: Res
   // restore active game if there's a saved game state
   let activeGameInfo = null;
   if (dbSession.gameConfigSlug && dbSession.gameState) {
-    const config = getGameConfig(dbSession.gameConfigSlug);
+    const config = await getGameConfig(dbSession.gameConfigSlug);
     if (config) {
       const savedState = dbSession.gameState as Record<string, unknown>;
       // rebuild GameSessionState from saved JSON

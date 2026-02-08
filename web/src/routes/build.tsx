@@ -4,27 +4,23 @@ import {
   Outlet,
   useLocation,
 } from '@tanstack/react-router'
-import { useEffect, useRef } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { gsap } from 'gsap'
 import { cnm } from '@/utils/style'
 import AppLayout from '@/components/layout/AppLayout'
+import { useBuilderProfile, useBuilderRegister, useBuilderAnalytics, useBuilderGames } from '@/hooks/useBuilder'
+import { useAuthContext } from '@/providers/AuthProvider'
 
 export const Route = createFileRoute('/build')({
   component: BuildLayout,
 })
-
-const BUILDER_STATS = {
-  totalGames: 3,
-  activeGames: 2,
-  totalEarnings: 2_770,
-  pendingPayout: 124.5,
-}
 
 const NAV_ITEMS = [
   { to: '/build', label: 'Overview', icon: '◉', exact: true },
   { to: '/build/games', label: 'My Games', icon: '◈', exact: false },
   { to: '/build/keys', label: 'API Keys', icon: '◇', exact: false },
   { to: '/build/analytics', label: 'Analytics', icon: '◆', exact: false },
+  { to: '/build/docs', label: 'Docs', icon: '◎', exact: false },
 ]
 
 function BuildLayout() {
@@ -32,6 +28,9 @@ function BuildLayout() {
   const path = location.pathname
   const isIndex = path === '/build' || path === '/build/'
   const sidebarRef = useRef<HTMLElement>(null)
+  const { authenticated, isBackendSynced, isSyncing } = useAuthContext()
+
+  const { data: builder, isLoading } = useBuilderProfile()
 
   useEffect(() => {
     if (sidebarRef.current) {
@@ -42,6 +41,10 @@ function BuildLayout() {
       )
     }
   }, [])
+
+  // wait for auth to fully sync before deciding what to show
+  const authReady = !isSyncing && (!authenticated || isBackendSynced)
+  const showRegistration = isIndex && authReady && !isLoading && !builder
 
   return (
     <AppLayout noPadding fullWidth>
@@ -98,13 +101,13 @@ function BuildLayout() {
                   Total Earned
                 </p>
                 <p className="text-2xl font-black text-[#CDFF57]">
-                  ${BUILDER_STATS.totalEarnings.toLocaleString()}
+                  ${builder ? Number(builder.totalRevenue).toLocaleString() : '0'}
                 </p>
                 <div className="mt-3 pt-3 border-t border-white/10">
                   <div className="flex justify-between text-xs">
-                    <span className="font-mono text-white/50">Pending</span>
+                    <span className="font-mono text-white/50">Games</span>
                     <span className="font-bold text-white">
-                      ${BUILDER_STATS.pendingPayout}
+                      {builder?.totalGames ?? 0}
                     </span>
                   </div>
                 </div>
@@ -154,42 +157,187 @@ function BuildLayout() {
 
         {/* main content */}
         <main className="flex-1 h-full overflow-y-auto pb-20 lg:pb-0">
-          {isIndex ? <BuildOverviewPage /> : <Outlet />}
+          {isIndex && (!authReady || isLoading) ? (
+            <div className="p-4 md:p-6 lg:p-8 max-w-2xl mx-auto">
+              <div className="bg-white border-2 border-black rounded-2xl p-8 text-center" style={{ boxShadow: '5px 5px 0px black' }}>
+                <p className="text-black/50 font-mono">Loading...</p>
+              </div>
+            </div>
+          ) : showRegistration ? (
+            <BuildRegistrationPage />
+          ) : isIndex ? (
+            <BuildOverviewPage builder={builder} />
+          ) : (
+            <Outlet />
+          )}
         </main>
       </div>
     </AppLayout>
   )
 }
 
-const RECENT_GAMES = [
-  {
-    id: 'lucky-flip',
-    name: 'Lucky Flip',
-    type: 'pick-one',
-    status: 'active',
-    earnings24h: 62,
-    volume24h: 12400,
-  },
-  {
-    id: 'dice-royale',
-    name: 'Dice Royale',
-    type: 'pick-number',
-    status: 'active',
-    earnings24h: 30.75,
-    volume24h: 8200,
-  },
-  {
-    id: 'moon-crash',
-    name: 'Moon Crash',
-    type: 'cash-out',
-    status: 'pending',
-    earnings24h: 0,
-    volume24h: 0,
-  },
-]
-
-function BuildOverviewPage() {
+function BuildRegistrationPage() {
   const containerRef = useRef<HTMLDivElement>(null)
+  const [name, setName] = useState('')
+  const [website, setWebsite] = useState('')
+  const [email, setEmail] = useState('')
+  const [createdKey, setCreatedKey] = useState<string | null>(null)
+  const { authenticated, login } = useAuthContext()
+
+  const register = useBuilderRegister()
+
+  useEffect(() => {
+    const ctx = gsap.context(() => {
+      gsap.set('.reg-fade', { y: 20, opacity: 0 })
+      gsap.to('.reg-fade', {
+        y: 0,
+        opacity: 1,
+        duration: 0.5,
+        stagger: 0.08,
+        ease: 'power2.out',
+        delay: 0.15,
+      })
+    }, containerRef)
+    return () => ctx.revert()
+  }, [])
+
+  const handleRegister = async () => {
+    if (!name.trim()) return
+    try {
+      const result = await register.mutateAsync({ name: name.trim(), website: website.trim() || undefined, email: email.trim() || undefined })
+      setCreatedKey(result.apiKey)
+    } catch (e) {
+      // error handled by mutation
+    }
+  }
+
+  if (!authenticated) {
+    return (
+      <div ref={containerRef} className="p-4 md:p-6 lg:p-8 max-w-2xl mx-auto">
+        <div
+          className="reg-fade bg-white border-2 border-black rounded-2xl p-8 text-center opacity-0"
+          style={{ boxShadow: '5px 5px 0px black' }}
+        >
+          <h1 className="text-3xl font-black text-black mb-2">Become a Builder</h1>
+          <p className="text-black/50 font-mono text-sm mb-6">Connect your wallet to get started</p>
+          <button
+            onClick={() => login()}
+            className="px-8 py-3 bg-black text-white font-black uppercase text-sm rounded-full hover:translate-x-0.5 hover:translate-y-0.5 transition-transform"
+            style={{ boxShadow: '3px 3px 0px #FF6B9D' }}
+          >
+            Connect Wallet
+          </button>
+        </div>
+      </div>
+    )
+  }
+
+  if (createdKey) {
+    return (
+      <div ref={containerRef} className="p-4 md:p-6 lg:p-8 max-w-2xl mx-auto">
+        <div
+          className="reg-fade bg-white border-2 border-black rounded-2xl p-8 opacity-0"
+          style={{ boxShadow: '5px 5px 0px black' }}
+        >
+          <div className="text-center mb-6">
+            <span className="inline-flex w-16 h-16 rounded-full bg-[#CDFF57] border-2 border-black items-center justify-center text-3xl font-black mb-4">
+              ✓
+            </span>
+            <h1 className="text-2xl font-black text-black">You're in!</h1>
+            <p className="text-black/50 font-mono text-xs mt-1">Builder account created</p>
+          </div>
+          <div className="bg-black rounded-xl p-4 mb-4">
+            <p className="text-xs font-mono text-white/50 uppercase mb-2">Your API Key (save this, shown only once)</p>
+            <code className="text-sm font-mono text-[#CDFF57] break-all">{createdKey}</code>
+          </div>
+          <button
+            onClick={() => navigator.clipboard.writeText(createdKey)}
+            className="w-full py-3 bg-[#CDFF57] text-black font-black uppercase text-sm rounded-xl border-2 border-black hover:translate-x-0.5 hover:translate-y-0.5 transition-transform mb-3"
+            style={{ boxShadow: '3px 3px 0px black' }}
+          >
+            Copy Key
+          </button>
+          <Link
+            to="/build"
+            className="block text-center text-sm font-bold text-black/50 hover:text-black"
+          >
+            Go to Dashboard
+          </Link>
+        </div>
+      </div>
+    )
+  }
+
+  return (
+    <div ref={containerRef} className="p-4 md:p-6 lg:p-8 max-w-2xl mx-auto">
+      <div
+        className="reg-fade bg-white border-2 border-black rounded-2xl p-8 opacity-0"
+        style={{ boxShadow: '5px 5px 0px black' }}
+      >
+        <h1 className="text-2xl font-black text-black mb-1">Register as Builder</h1>
+        <p className="text-black/50 font-mono text-xs mb-6">Create games, earn 25% of house edge</p>
+
+        <div className="space-y-4 mb-6">
+          <div>
+            <label className="text-xs font-bold text-black mb-2 block">Builder Name *</label>
+            <input
+              type="text"
+              value={name}
+              onChange={(e) => setName(e.target.value)}
+              placeholder="Your studio or project name"
+              className="w-full border-2 border-black rounded-xl px-4 py-3 text-black font-bold placeholder-black/30 outline-none focus:ring-2 focus:ring-black/20"
+            />
+          </div>
+          <div>
+            <label className="text-xs font-bold text-black mb-2 block">Website</label>
+            <input
+              type="text"
+              value={website}
+              onChange={(e) => setWebsite(e.target.value)}
+              placeholder="https://..."
+              className="w-full border-2 border-black rounded-xl px-4 py-3 text-black placeholder-black/30 outline-none focus:ring-2 focus:ring-black/20"
+            />
+          </div>
+          <div>
+            <label className="text-xs font-bold text-black mb-2 block">Email</label>
+            <input
+              type="text"
+              value={email}
+              onChange={(e) => setEmail(e.target.value)}
+              placeholder="you@example.com"
+              className="w-full border-2 border-black rounded-xl px-4 py-3 text-black placeholder-black/30 outline-none focus:ring-2 focus:ring-black/20"
+            />
+          </div>
+        </div>
+
+        <button
+          onClick={handleRegister}
+          disabled={!name.trim() || register.isPending}
+          className={cnm(
+            'w-full py-3 text-sm font-black uppercase rounded-xl border-2 border-black transition-all',
+            name.trim() && !register.isPending
+              ? 'bg-[#CDFF57] text-black hover:translate-x-0.5 hover:translate-y-0.5'
+              : 'bg-black/10 text-black/40 cursor-not-allowed',
+          )}
+          style={name.trim() ? { boxShadow: '3px 3px 0px black' } : {}}
+        >
+          {register.isPending ? 'Creating...' : 'Register'}
+        </button>
+
+        {register.isError && (
+          <p className="text-xs font-mono text-[#FF6B9D] mt-3 text-center">
+            {register.error?.message || 'Something went wrong'}
+          </p>
+        )}
+      </div>
+    </div>
+  )
+}
+
+function BuildOverviewPage({ builder }: { builder: any }) {
+  const containerRef = useRef<HTMLDivElement>(null)
+  const { data: analytics } = useBuilderAnalytics('7d')
+  const { data: games } = useBuilderGames()
 
   useEffect(() => {
     const ctx = gsap.context(() => {
@@ -206,6 +354,8 @@ function BuildOverviewPage() {
     return () => ctx.revert()
   }, [])
 
+  const recentGames = (games || []).slice(0, 3)
+
   return (
     <div ref={containerRef} className="p-4 md:p-6 lg:p-8 max-w-5xl">
       {/* header + stats combined */}
@@ -216,7 +366,7 @@ function BuildOverviewPage() {
         <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 mb-5 pb-5 border-b-2 border-black/10">
           <div>
             <h1 className="text-2xl md:text-3xl font-black text-black tracking-tight">
-              Welcome back
+              Welcome back{builder?.name ? `, ${builder.name}` : ''}
             </h1>
             <p className="text-black/50 font-mono text-xs mt-1">
               ** Build games, earn 25% of house edge
@@ -234,17 +384,25 @@ function BuildOverviewPage() {
           {[
             {
               label: 'Games',
-              value: BUILDER_STATS.totalGames,
-              sub: `${BUILDER_STATS.activeGames} active`,
+              value: builder?.totalGames ?? 0,
+              sub: `${builder?.activeGames ?? 0} active`,
             },
-            { label: '24h Volume', value: '$20.6K', sub: '+12% vs 7d' },
             {
-              label: '24h Earnings',
-              value: '$92.75',
+              label: 'Total Volume',
+              value: analytics ? `$${(Number(analytics.totalVolume) / 1000).toFixed(1)}K` : '$0',
+              sub: 'All time',
+            },
+            {
+              label: 'Total Earned',
+              value: analytics ? `$${Number(analytics.totalRevenue).toLocaleString()}` : '$0',
               sub: 'Your cut',
               highlight: true,
             },
-            { label: 'Players', value: '342', sub: 'Unique' },
+            {
+              label: 'Players',
+              value: analytics?.uniquePlayers?.toString() ?? '0',
+              sub: 'Unique',
+            },
           ].map((stat) => (
             <div key={stat.label}>
               <p className="text-[10px] font-mono text-black/50 uppercase">
@@ -283,52 +441,65 @@ function BuildOverviewPage() {
             </Link>
           </div>
           <div className="divide-y divide-black/10">
-            {RECENT_GAMES.map((game) => (
-              <Link
-                key={game.id}
-                to="/build/games/$id"
-                params={{ id: game.id }}
-                className="flex items-center justify-between p-4 hover:bg-black/5 transition-colors group"
-              >
-                <div className="flex items-center gap-3">
-                  <div
-                    className={cnm(
-                      'w-10 h-10 rounded-xl border-2 border-black flex items-center justify-center text-sm font-black',
-                      game.status === 'active'
-                        ? 'bg-[#CDFF57] text-black'
-                        : 'bg-black/10 text-black/40',
-                    )}
-                  >
-                    {game.name.charAt(0)}
+            {recentGames.length === 0 ? (
+              <div className="p-8 text-center">
+                <p className="text-black/40 font-mono text-sm mb-3">No games yet</p>
+                <Link
+                  to="/build/games/new"
+                  className="inline-flex px-5 py-2.5 bg-[#CDFF57] text-black text-xs font-black uppercase rounded-full border-2 border-black"
+                  style={{ boxShadow: '3px 3px 0px black' }}
+                >
+                  Create your first game
+                </Link>
+              </div>
+            ) : (
+              recentGames.map((game: any) => (
+                <Link
+                  key={game.slug}
+                  to="/build/games/$id"
+                  params={{ id: game.slug }}
+                  className="flex items-center justify-between p-4 hover:bg-black/5 transition-colors group"
+                >
+                  <div className="flex items-center gap-3">
+                    <div
+                      className={cnm(
+                        'w-10 h-10 rounded-xl border-2 border-black flex items-center justify-center text-sm font-black',
+                        game.isActive
+                          ? 'bg-[#CDFF57] text-black'
+                          : 'bg-black/10 text-black/40',
+                      )}
+                    >
+                      {game.name.charAt(0)}
+                    </div>
+                    <div>
+                      <p className="font-bold text-black text-sm">{game.name}</p>
+                      <p className="text-[10px] font-mono text-black/50">
+                        {game.gameType} {game.isActive ? '• active' : '• paused'}
+                      </p>
+                    </div>
                   </div>
-                  <div>
-                    <p className="font-bold text-black text-sm">{game.name}</p>
-                    <p className="text-[10px] font-mono text-black/50">
-                      {game.type} • {game.status}
-                    </p>
+                  <div className="flex items-center gap-4">
+                    <div className="text-right hidden sm:block">
+                      <p className="text-[10px] font-mono text-black/40">Vol</p>
+                      <p className="font-bold text-black text-sm">
+                        ${Number(game.totalVolume).toLocaleString()}
+                      </p>
+                    </div>
+                    <div className="text-right">
+                      <p className="text-[10px] font-mono text-black/40">
+                        Earned
+                      </p>
+                      <p className="font-bold text-[#7BA318] text-sm">
+                        ${Number(game.totalRevenue).toLocaleString()}
+                      </p>
+                    </div>
+                    <span className="text-black/30 group-hover:text-black transition-colors">
+                      →
+                    </span>
                   </div>
-                </div>
-                <div className="flex items-center gap-4">
-                  <div className="text-right hidden sm:block">
-                    <p className="text-[10px] font-mono text-black/40">Vol</p>
-                    <p className="font-bold text-black text-sm">
-                      ${game.volume24h.toLocaleString()}
-                    </p>
-                  </div>
-                  <div className="text-right">
-                    <p className="text-[10px] font-mono text-black/40">
-                      Earned
-                    </p>
-                    <p className="font-bold text-[#7BA318] text-sm">
-                      ${game.earnings24h.toFixed(2)}
-                    </p>
-                  </div>
-                  <span className="text-black/30 group-hover:text-black transition-colors">
-                    →
-                  </span>
-                </div>
-              </Link>
-            ))}
+                </Link>
+              ))
+            )}
           </div>
         </div>
 
