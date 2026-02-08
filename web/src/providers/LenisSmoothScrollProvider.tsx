@@ -31,8 +31,24 @@ export default function LenisSmoothScrollProvider() {
     }
   }, [])
 
+  // disable smooth scroll on build pages, it breaks normal scrolling there
+  useEffect(() => {
+    const lenis = lenisRef.current
+    if (!lenis) return
+
+    if (location.pathname.startsWith('/build')) {
+      lenis.stop()
+    } else {
+      lenis.start()
+    }
+  }, [location.pathname])
+
   // scroll to top on route change
   useEffect(() => {
+    if (location.pathname.startsWith('/build')) {
+      window.scrollTo(0, 0)
+      return
+    }
     if (lenisRef.current) {
       lenisRef.current.scrollTo(0, { immediate: true })
     } else {

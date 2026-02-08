@@ -215,9 +215,9 @@ function StakePage() {
             className="bg-white border-2 border-black rounded-2xl p-5 mb-6"
             style={{ boxShadow: '6px 6px 0px black' }}
           >
-            <div className="grid grid-cols-2 lg:grid-cols-4 gap-6">
+            <div className="grid grid-cols-3 gap-6">
               {vaultLoading ? (
-                Array.from({ length: 4 }).map((_, i) => (
+                Array.from({ length: 3 }).map((_, i) => (
                   <div key={i} className="py-2">
                     <Shimmer className="h-3 w-12 mb-2" />
                     <Shimmer className="h-8 w-24" />
@@ -228,11 +228,10 @@ function StakePage() {
                   { label: 'TVL', value: fmtUsd(vault?.tvlFormatted || 0) },
                   { label: 'hUSDH Price', value: `$${(vault?.sharePrice || 1).toFixed(4)}` },
                   { label: 'hUSDH Supply', value: fmtToken(vault?.totalSupplyFormatted || 0) },
-                  { label: 'Custody', value: fmtUsd(vault?.custodyFormatted || 0) },
                 ].map((stat, i) => (
                   <div
                     key={stat.label}
-                    className={cnm('py-2', i < 3 && 'lg:border-r-2 lg:border-black/10')}
+                    className={cnm('py-2', i < 2 && 'border-r-2 border-black/10')}
                   >
                     <p className="text-xs font-mono text-black/50 mb-1">{stat.label}</p>
                     <p className="text-2xl font-black text-black">{stat.value}</p>

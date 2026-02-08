@@ -10,6 +10,7 @@ import { cnm } from '@/utils/style'
 import AppLayout from '@/components/layout/AppLayout'
 import { useBuilderProfile, useBuilderRegister, useBuilderGames } from '@/hooks/useBuilder'
 import { useAuthContext } from '@/providers/AuthProvider'
+import { isBuilderTestMode } from '@/data/builderTestData'
 
 export const Route = createFileRoute('/build')({
   component: BuildLayout,
@@ -41,9 +42,11 @@ function BuildLayout() {
     }
   }, [])
 
+  const testMode = isBuilderTestMode()
+
   // wait for auth to fully sync before deciding what to show
-  const authReady = !isSyncing && (!authenticated || isBackendSynced)
-  const showRegistration = isIndex && authReady && !isLoading && !builder
+  const authReady = testMode || (!isSyncing && (!authenticated || isBackendSynced))
+  const showRegistration = isIndex && authReady && !isLoading && !builder && !testMode
 
   return (
     <AppLayout noPadding fullWidth>
