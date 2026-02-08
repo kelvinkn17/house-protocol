@@ -7,46 +7,23 @@ import { formatUnits, type Address } from 'viem';
 export const vaultRoutes: FastifyPluginCallback = (app: FastifyInstance, _opts, done) => {
   /**
    * GET /vault/info
-   * Current vault stats. Reads from latest snapshot, falls back to on-chain.
+   * Current vault stats. Always reads live from chain + unsettled PnL.
+   * Snapshots are only used for chart history, not for live price.
    */
   app.get('/info', async (_request: FastifyRequest, reply: FastifyReply) => {
     try {
-      // try latest snapshot first (instant, no RPC)
-      const snapshot = await (prismaQuery as any).vaultSnapshot.findFirst({
-        orderBy: { timestamp: 'desc' },
-      });
-
-      if (snapshot) {
-        return reply.status(200).send({
-          success: true,
-          error: null,
-          data: {
-            tvl: snapshot.totalAssets,
-            totalSupply: snapshot.totalSupply,
-            sharePrice: snapshot.sharePrice,
-            custodyBalance: snapshot.custodyBalance,
-            usdhAddress: USDH_ADDRESS,
-            tvlFormatted: Number(formatUnits(BigInt(snapshot.totalAssets), 6)),
-            totalSupplyFormatted: Number(formatUnits(BigInt(snapshot.totalSupply), 9)),
-            custodyFormatted: Number(formatUnits(BigInt(snapshot.custodyBalance), 6)),
-            updatedAt: snapshot.timestamp,
-          },
-        });
-      }
-
-      // fallback: read from chain
       const state = await getVaultState();
 
       return reply.status(200).send({
         success: true,
         error: null,
         data: {
-          tvl: state.totalAssets.toString(),
+          tvl: state.tvl.toString(),
           totalSupply: state.totalSupply.toString(),
           sharePrice: state.sharePrice,
           custodyBalance: state.custodyBalance.toString(),
           usdhAddress: USDH_ADDRESS,
-          tvlFormatted: Number(formatUnits(state.totalAssets, 6)),
+          tvlFormatted: Number(formatUnits(state.tvl, 6)),
           totalSupplyFormatted: Number(formatUnits(state.totalSupply, 9)),
           custodyFormatted: Number(formatUnits(state.custodyBalance, 6)),
           updatedAt: new Date().toISOString(),

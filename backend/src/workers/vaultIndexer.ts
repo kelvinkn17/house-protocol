@@ -170,7 +170,7 @@ async function takeSnapshot() {
   const now = Date.now();
 
   // skip if nothing changed and we snapshotted recently
-  const tvlStr = state.totalAssets.toString();
+  const tvlStr = state.tvl.toString();
   const priceChanged = lastSnapshotPrice !== null
     ? Math.abs(state.sharePrice - lastSnapshotPrice) / lastSnapshotPrice > PRICE_CHANGE_THRESHOLD
     : true;
@@ -183,7 +183,7 @@ async function takeSnapshot() {
 
   await (prismaQuery as any).vaultSnapshot.create({
     data: {
-      totalAssets: state.totalAssets.toString(),
+      totalAssets: state.tvl.toString(),
       totalSupply: state.totalSupply.toString(),
       sharePrice: state.sharePrice,
       custodyBalance: state.custodyBalance.toString(),
@@ -196,7 +196,7 @@ async function takeSnapshot() {
   lastSnapshotTvl = tvlStr;
   lastSnapshotTime = now;
 
-  console.log(`[VaultIndexer] Snapshot: TVL=${state.totalAssets}, price=${state.sharePrice.toFixed(6)}`);
+  console.log(`[VaultIndexer] Snapshot: TVL=${state.tvl}, price=${state.sharePrice.toFixed(6)}`);
 }
 
 const runIndexer = async (): Promise<void> => {

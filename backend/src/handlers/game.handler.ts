@@ -710,7 +710,7 @@ async function closeClearnodeAndFinalize(
       console.log(`[settlement] player winnings ${playerPnL} sent: ${tx}`);
       await db.session.update({ where: { id: sessionId }, data: { status: 'SETTLED' } });
     } else if (playerPnL < 0n) {
-      // house won: operator moves profit from operator custody to vault idle
+      // house won: send profit directly to vault as idle USDH (increases on-chain totalAssets)
       const houseProfit = -playerPnL;
       const tx = await settleHouseWinnings(houseProfit);
       console.log(`[settlement] house winnings ${houseProfit} -> vault: ${tx}`);
