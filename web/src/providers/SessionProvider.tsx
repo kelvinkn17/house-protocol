@@ -149,8 +149,9 @@ export function SessionProvider({ children }: { children: ReactNode }) {
   const bustedUnsub = useRef<(() => void) | null>(null)
   const resumeAttempted = useRef(false)
 
-  // withdraw player's funds from custody back to their wallet after session close.
-  // checks actual custody balance first since settlement timing can vary.
+  // withdraw player's owed funds from custody back to their wallet.
+  // only withdraws what the player is owed, nothing more.
+  // house settlement is handled entirely by the backend operator.
   const withdrawFromCustody = useCallback(async (finalPlayerBalance: string) => {
     if (BigInt(finalPlayerBalance) <= 0n) return
 
@@ -182,7 +183,8 @@ export function SessionProvider({ children }: { children: ReactNode }) {
         transport: custom(provider),
       })
 
-      // cap at what the player is actually owed, not the full custody balance
+      // only withdraw what the player is owed, not the full custody balance.
+      // custody may have more due to deficit recovery from past sessions.
       const owed = BigInt(finalPlayerBalance)
       const toWithdraw = available < owed ? available : owed
 
@@ -279,6 +281,7 @@ export function SessionProvider({ children }: { children: ReactNode }) {
           setGamePhase('none')
           setSessionPhase('closed')
           localStorage.removeItem(SESSION_STORAGE_KEY)
+          // busted = player balance 0, nothing to withdraw. backend settles house side.
         })
 
         setSessionPhase('active')
@@ -419,7 +422,7 @@ export function SessionProvider({ children }: { children: ReactNode }) {
       setGamePhase('none')
       setSessionPhase('active')
 
-      // subscribe to session_busted for auto-close on bust
+      // subscribe to session_busted
       if (bustedUnsub.current) bustedUnsub.current()
       bustedUnsub.current = GameSocket.subscribe('session_busted', (payload: unknown) => {
         const p = payload as { sessionId: string; finalPlayerBalance: string; finalHouseBalance: string }
@@ -429,7 +432,7 @@ export function SessionProvider({ children }: { children: ReactNode }) {
         setGamePhase('none')
         setSessionPhase('closed')
         localStorage.removeItem(SESSION_STORAGE_KEY)
-        // busted means player balance is 0, nothing to withdraw
+        // busted = player balance 0, nothing to withdraw. backend settles house side.
       })
     } catch (err) {
       setSessionError((err as Error).message)
@@ -623,7 +626,7 @@ export function SessionProvider({ children }: { children: ReactNode }) {
       setActiveGame(null)
       setGamePhase('none')
 
-      // withdraw player funds from custody back to wallet
+      // withdraw only what the player is owed. backend handles house settlement.
       setSessionPhase('withdrawing')
       await withdrawFromCustody(result.finalPlayerBalance)
 

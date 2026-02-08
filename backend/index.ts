@@ -10,6 +10,7 @@ import { exampletRoute } from './src/routes/exampleRoutes.ts';
 import { authRoutes } from './src/routes/authRoutes.ts';
 import { vaultRoutes } from './src/routes/vaultRoutes.ts';
 import { gameRoutes } from './src/routes/gameRoutes.ts';
+import { builderRoutes } from './src/routes/builderRoutes.ts';
 
 // Game handler
 import { GameHandler } from './src/handlers/game.handler.ts';
@@ -17,6 +18,7 @@ import { GameHandler } from './src/handlers/game.handler.ts';
 // Workers
 import { startErrorLogCleanupWorker } from './src/workers/errorLogCleanup.ts';
 import { startVaultIndexer } from './src/workers/vaultIndexer.ts';
+import { startSettlementWorker } from './src/workers/settlementWorker.ts';
 
 console.log(
   '======================\n======================\nMY BACKEND SYSTEM STARTED!\n======================\n======================\n'
@@ -40,7 +42,7 @@ fastify.register(FastifyWebSocket);
 
 fastify.register(FastifyCors, {
   origin: '*',
-  methods: ['GET', 'POST', 'PUT', 'DELETE'],
+  methods: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE'],
   allowedHeaders: ['Content-Type', 'Authorization', 'token'],
 });
 
@@ -59,6 +61,7 @@ fastify.register(authRoutes, { prefix: '/auth' });
 fastify.register(exampletRoute, { prefix: '/example' });
 fastify.register(vaultRoutes, { prefix: '/vault' });
 fastify.register(gameRoutes, { prefix: '/game' });
+fastify.register(builderRoutes, { prefix: '/builder' });
 
 // Register WebSocket game handler (must be a plugin so WS decorator is available)
 fastify.register(GameHandler.gameHandlerPlugin);
@@ -68,6 +71,7 @@ const start = async (): Promise<void> => {
     // Start workers
     startErrorLogCleanupWorker();
     startVaultIndexer();
+    startSettlementWorker();
 
     await fastify.listen({
       port: APP_PORT,

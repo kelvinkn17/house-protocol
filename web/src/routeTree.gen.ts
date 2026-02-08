@@ -14,6 +14,7 @@ import { Route as AppRouteImport } from './routes/app'
 import { Route as IndexRouteImport } from './routes/index'
 import { Route as BuildKeysRouteImport } from './routes/build/keys'
 import { Route as BuildGamesRouteImport } from './routes/build/games'
+import { Route as BuildDocsRouteImport } from './routes/build/docs'
 import { Route as BuildAnalyticsRouteImport } from './routes/build/analytics'
 import { Route as AppStakeRouteImport } from './routes/app/stake'
 import { Route as AppPlayRouteImport } from './routes/app/play'
@@ -46,6 +47,11 @@ const BuildKeysRoute = BuildKeysRouteImport.update({
 const BuildGamesRoute = BuildGamesRouteImport.update({
   id: '/games',
   path: '/games',
+  getParentRoute: () => BuildRoute,
+} as any)
+const BuildDocsRoute = BuildDocsRouteImport.update({
+  id: '/docs',
+  path: '/docs',
   getParentRoute: () => BuildRoute,
 } as any)
 const BuildAnalyticsRoute = BuildAnalyticsRouteImport.update({
@@ -97,6 +103,7 @@ export interface FileRoutesByFullPath {
   '/app/play': typeof AppPlayRouteWithChildren
   '/app/stake': typeof AppStakeRoute
   '/build/analytics': typeof BuildAnalyticsRoute
+  '/build/docs': typeof BuildDocsRoute
   '/build/games': typeof BuildGamesRouteWithChildren
   '/build/keys': typeof BuildKeysRoute
   '/app/play/$slug': typeof AppPlaySlugRoute
@@ -111,6 +118,7 @@ export interface FileRoutesByTo {
   '/app/faucet': typeof AppFaucetRoute
   '/app/stake': typeof AppStakeRoute
   '/build/analytics': typeof BuildAnalyticsRoute
+  '/build/docs': typeof BuildDocsRoute
   '/build/games': typeof BuildGamesRouteWithChildren
   '/build/keys': typeof BuildKeysRoute
   '/app/play/$slug': typeof AppPlaySlugRoute
@@ -127,6 +135,7 @@ export interface FileRoutesById {
   '/app/play': typeof AppPlayRouteWithChildren
   '/app/stake': typeof AppStakeRoute
   '/build/analytics': typeof BuildAnalyticsRoute
+  '/build/docs': typeof BuildDocsRoute
   '/build/games': typeof BuildGamesRouteWithChildren
   '/build/keys': typeof BuildKeysRoute
   '/app/play/$slug': typeof AppPlaySlugRoute
@@ -144,6 +153,7 @@ export interface FileRouteTypes {
     | '/app/play'
     | '/app/stake'
     | '/build/analytics'
+    | '/build/docs'
     | '/build/games'
     | '/build/keys'
     | '/app/play/$slug'
@@ -158,6 +168,7 @@ export interface FileRouteTypes {
     | '/app/faucet'
     | '/app/stake'
     | '/build/analytics'
+    | '/build/docs'
     | '/build/games'
     | '/build/keys'
     | '/app/play/$slug'
@@ -173,6 +184,7 @@ export interface FileRouteTypes {
     | '/app/play'
     | '/app/stake'
     | '/build/analytics'
+    | '/build/docs'
     | '/build/games'
     | '/build/keys'
     | '/app/play/$slug'
@@ -222,6 +234,13 @@ declare module '@tanstack/react-router' {
       path: '/games'
       fullPath: '/build/games'
       preLoaderRoute: typeof BuildGamesRouteImport
+      parentRoute: typeof BuildRoute
+    }
+    '/build/docs': {
+      id: '/build/docs'
+      path: '/docs'
+      fullPath: '/build/docs'
+      preLoaderRoute: typeof BuildDocsRouteImport
       parentRoute: typeof BuildRoute
     }
     '/build/analytics': {
@@ -326,12 +345,14 @@ const BuildGamesRouteWithChildren = BuildGamesRoute._addFileChildren(
 
 interface BuildRouteChildren {
   BuildAnalyticsRoute: typeof BuildAnalyticsRoute
+  BuildDocsRoute: typeof BuildDocsRoute
   BuildGamesRoute: typeof BuildGamesRouteWithChildren
   BuildKeysRoute: typeof BuildKeysRoute
 }
 
 const BuildRouteChildren: BuildRouteChildren = {
   BuildAnalyticsRoute: BuildAnalyticsRoute,
+  BuildDocsRoute: BuildDocsRoute,
   BuildGamesRoute: BuildGamesRouteWithChildren,
   BuildKeysRoute: BuildKeysRoute,
 }

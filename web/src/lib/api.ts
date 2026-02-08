@@ -13,7 +13,7 @@ interface ApiResponse<T> {
 }
 
 interface RequestOptions {
-  method?: 'GET' | 'POST' | 'PUT' | 'DELETE'
+  method?: 'GET' | 'POST' | 'PUT' | 'PATCH' | 'DELETE'
   body?: unknown
   headers?: Record<string, string>
 }
@@ -91,4 +91,29 @@ export const authApi = {
 
   // get current user
   me: () => api.get<{ user: { id: string; walletAddress: string | null; email: string | null } }>('/auth/me'),
+}
+
+// builder endpoints
+export const builderApi = {
+  register: (data: { name: string; website?: string; email?: string }) =>
+    api.post<{ builder: any; apiKey: string }>('/builder/register', data),
+
+  me: () => api.get<{ builder: any }>('/builder/me'),
+
+  createApiKey: (data: { environment: string }) =>
+    api.post<{ apiKey: string; key: any }>('/builder/api-keys', data),
+
+  listApiKeys: () => api.get<{ keys: any[] }>('/builder/api-keys'),
+
+  deleteApiKey: (id: string) => api.delete<{ deleted: boolean }>(`/builder/api-keys/${id}`),
+
+  createGame: (data: any) => api.post<{ game: any }>('/builder/games', data),
+
+  listGames: () => api.get<{ games: any[] }>('/builder/games'),
+
+  getGame: (slug: string) => api.get<{ game: any }>(`/builder/games/${slug}`),
+
+  updateGame: (slug: string, data: any) => api.request<{ game: any }>(`/builder/games/${slug}`, { method: 'PATCH', body: data }),
+
+  analytics: (period?: string) => api.get<any>(`/builder/analytics${period ? `?period=${period}` : ''}`),
 }

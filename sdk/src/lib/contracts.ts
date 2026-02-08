@@ -1,19 +1,17 @@
+// contract ABIs and factory for public client
+// no import.meta.env, addresses come from HouseConfig
+
 import { createPublicClient, http, parseAbi, type Address } from 'viem'
 import { sepolia } from 'viem/chains'
 
-export const VAULT_ADDRESS = (import.meta.env.VITE_HOUSE_VAULT_ADDRESS || '') as Address
-export const USDH_ADDRESS = (import.meta.env.VITE_USDH_TOKEN_ADDRESS || '') as Address
-export const CUSTODY_ADDRESS = (import.meta.env.VITE_NITROLITE_CUSTODY_ADDRESS || '') as Address
 export const SEPOLIA_CHAIN_ID = 11155111
 
-// Nitrolite custody: deposit USDH before opening a state channel session
 export const CUSTODY_ABI = parseAbi([
   'function deposit(address account, address token, uint256 amount) payable',
   'function withdraw(address token, uint256 amount)',
   'function getAccountsBalances(address[] accounts, address[] tokens) view returns (uint256[][])',
 ])
 
-// ERC-4626 vault: deposit, withdraw, and read functions
 export const VAULT_ABI = parseAbi([
   'function deposit(uint256 assets, address receiver) returns (uint256)',
   'function redeem(uint256 shares, address receiver, address owner) returns (uint256)',
@@ -35,18 +33,22 @@ export const ERC20_ABI = parseAbi([
   'function decimals() view returns (uint8)',
 ])
 
-// USDH is the demo token, anyone can mint
+export const HOUSE_SESSION_ABI = parseAbi([
+  'function sessionExists(address player) view returns (bool)',
+  'function getSessionHash(address player) view returns (bytes32)',
+])
+
 export const USDH_MINT_ABI = parseAbi([
   'function mint(address to, uint256 amount)',
 ])
 
 let _publicClient: ReturnType<typeof createPublicClient> | null = null
 
-export function getPublicClient() {
+export function getPublicClient(rpcUrl?: string) {
   if (!_publicClient) {
     _publicClient = createPublicClient({
       chain: sepolia,
-      transport: http(),
+      transport: http(rpcUrl),
     })
   }
   return _publicClient

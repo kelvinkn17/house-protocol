@@ -89,12 +89,68 @@ model GameConfig {
   @@index([gameType])
 }
 
+// builder: someone who creates games using the protocol
+model Builder {
+  id            String            @id @default(cuid())
+  userId        String            @unique
+  walletAddress String            @unique
+  name          String
+  website       String?
+  email         String?
+  isActive      Boolean           @default(true)
+  totalRevenue  String            @default("0")
+  createdAt     DateTime          @default(now())
+  updatedAt     DateTime          @updatedAt
+
+  apiKeys       BuilderApiKey[]
+  gameConfigs   BuilderGameConfig[]
+
+  @@index([walletAddress])
+}
+
+model BuilderApiKey {
+  id          String    @id @default(cuid())
+  builderId   String
+  builder     Builder   @relation(fields: [builderId], references: [id])
+  keyHash     String    @unique  // sha256 of full key
+  prefix      String             // first 16 chars for display
+  environment String    @default("live")
+  isActive    Boolean   @default(true)
+  lastUsedAt  DateTime?
+  createdAt   DateTime  @default(now())
+
+  @@index([keyHash])
+  @@index([builderId])
+}
+
+model BuilderGameConfig {
+  slug         String   @id
+  builderId    String
+  builder      Builder  @relation(fields: [builderId], references: [id])
+  name         String
+  description  String   @default("")
+  gameType     String   // "cash-out" | "reveal-tiles" | "pick-number"
+  houseEdgeBps Int      @default(200)
+  params       Json     @default("{}")
+  isActive     Boolean  @default(true)
+  totalBets    Int      @default(0)
+  totalVolume  String   @default("0")
+  totalRevenue String   @default("0")
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  @@index([builderId])
+  @@index([gameType])
+}
+
 // game session: one per player per active game
 model Session {
   id            String    @id @default(cuid())
   playerId      String    // wallet address
   channelId     String?   // nitrolite channel id
   gameConfigSlug String?  // current active game slug, null when between games
+  builderId       String?
+  builderGameSlug String?
   playerDeposit String    // raw bigint
   houseDeposit  String    // raw bigint
   status        String    @default("ACTIVE") // ACTIVE, CLOSED, EXPIRED
